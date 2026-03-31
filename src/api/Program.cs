@@ -1,4 +1,7 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Clients;
+using DmarcAnalyzer.Api.Application.Domains;
+using DmarcAnalyzer.Api.Application.MailboxSources;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Modules;
 using DmarcAnalyzer.Api.Workers;
@@ -29,6 +32,9 @@ builder.Services.AddCarter();
 builder.Services.AddRouting(options => options.LowercaseUrls = true);
 builder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
     options.UseNpgsql(connectionString));
+builder.Services.AddScoped<IClientService, ClientService>();
+builder.Services.AddScoped<IDomainService, DomainService>();
+builder.Services.AddScoped<IMailboxSourceService, MailboxSourceService>();
 
 if (builder.Environment.IsDevelopment())
 {
