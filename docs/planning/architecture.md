@@ -70,10 +70,11 @@ Technical architecture for `DmarcAnalyzerApp` MVP and near-term post-MVP evoluti
   - Export generation
 - Uses DB job tables and row-level locking for safe retries and concurrency.
 
-### Frontend (React + Vite)
+### Frontend (React + Vite + Tailwind + shadcn-style components)
 
 - Agency UI:
   - Client/domain/mailbox configuration
+  - List-first operations tables with modal create/edit flows
   - Dashboard and trend exploration
   - Sync status and diagnostics
   - Alert and digest management

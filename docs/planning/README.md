@@ -6,6 +6,7 @@ Planning artifacts for `DmarcAnalyzerApp`, a DMARC analyzer platform in the spir
 
 - Build a DMARC analyzer tool for aggregate report visibility, troubleshooting, and policy improvement.
 - Use a C# web application backend with a React frontend.
+- Use Tailwind + shadcn-style component primitives for a reusable UI system.
 - Use PostgreSQL as the primary datastore.
 - Ingest DMARC reports from IMAP or POP3 mailboxes using MailKit (MVP).
 - Parse and serialize DMARC RUA XML with `https://github.com/danielsen/DmarcRua`.
@@ -41,6 +42,7 @@ Planning artifacts for `DmarcAnalyzerApp`, a DMARC analyzer platform in the spir
 
 - `backlog.md` - prioritized implementation tasks.
 - `roadmap.md` - milestone delivery plan.
+- `status.md` - implemented-now snapshot and planned-next summary.
 
 ## Status Legend
 

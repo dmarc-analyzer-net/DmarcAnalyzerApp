@@ -28,6 +28,8 @@ Prioritized list of candidate work.
 - [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, mailbox sources).
 - [x] (done) Add initial client/domain CRUD baseline endpoints for API vertical slice.
 - [x] (done) Add mailbox source CRUD baseline endpoints for API vertical slice.
+- [x] (done) Refactor API route handlers to use an application service layer (DTOs + validation in services).
+- [x] (done) Build admin operations UI for clients/domains/mailbox sources with list-first tables and modal create/edit.
 - [ ] (todo) Add migrations, repository layer, and indexing strategy for PostgreSQL.
 - [ ] (todo) Build React dashboards for pass/fail, SPF/DKIM alignment, disposition, and source IP trends.
 - [ ] (todo) Add domain-level filtering, date range filtering, and per-source drill-down with daily aggregates.
