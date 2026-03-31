@@ -15,4 +15,9 @@ Primary initial endpoints:
 - `POST /api/v1/clients`
 - `PATCH /api/v1/clients/{id}`
 - `GET /api/v1/domains`
+- `GET /api/v1/domains/{id}`
 - `POST /api/v1/domains`
+- `PATCH /api/v1/domains/{id}`
+- `GET /api/v1/mailbox-sources`
+- `POST /api/v1/mailbox-sources`
+- `PATCH /api/v1/mailbox-sources/{id}`

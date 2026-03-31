@@ -47,3 +47,43 @@ Content-Type: application/json
   "name": "example.com",
   "isActive": true
 }
+
+### Get domain by id (replace id)
+GET {{baseUrl}}/api/v1/domains/00000000-0000-0000-0000-000000000000
+
+### Patch domain (replace id)
+PATCH {{baseUrl}}/api/v1/domains/00000000-0000-0000-0000-000000000000
+Content-Type: application/json
+
+{
+  "isActive": false
+}
+
+### List mailbox sources
+GET {{baseUrl}}/api/v1/mailbox-sources
+
+### Create mailbox source (replace defaultClientId)
+POST {{baseUrl}}/api/v1/mailbox-sources
+Content-Type: application/json
+
+{
+  "name": "Acme DMARC Inbox",
+  "protocol": "imap",
+  "host": "imap.example.com",
+  "port": 993,
+  "useTls": true,
+  "username": "dmarc@example.com",
+  "password": "replace-me",
+  "defaultClientId": "00000000-0000-0000-0000-000000000000",
+  "isActive": true
+}
+
+### Patch mailbox source (replace id)
+PATCH {{baseUrl}}/api/v1/mailbox-sources/00000000-0000-0000-0000-000000000000
+Content-Type: application/json
+
+{
+  "isActive": false,
+  "port": 995,
+  "protocol": "pop3"
+}
