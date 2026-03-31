@@ -4,10 +4,10 @@ Prioritized list of candidate work.
 
 ## High Priority
 
-- [ ] (todo) Define MVP feature set by benchmarking core workflows from dmarcian and EasyDMARC.
-- [ ] (todo) Scaffold solution in `src/` with C# web app backend and React frontend.
+- [x] (done) Define MVP feature set by benchmarking core workflows from dmarcian and EasyDMARC.
+- [x] (done) Scaffold solution in `src/` with C# web app backend and React frontend.
 - [ ] (todo) Integrate `DmarcRua` serializer and validate parsing against sample RUA XML fixtures.
-- [ ] (todo) Design PostgreSQL schema for agency, clients, domains, mailbox sources, reports, records, and retention policies.
+- [x] (done) Design PostgreSQL schema for agency, clients, domains, mailbox sources, reports, records, and retention policies.
 - [ ] (todo) Implement mailbox ingestion service supporting both IMAP and POP3 via MailKit.
 - [ ] (todo) Implement tenant-aware data access model with strict client isolation for agency operators.
 - [ ] (todo) Implement single-database tenant-keyed architecture (tenant_id on all client-scoped entities).
@@ -25,6 +25,7 @@ Prioritized list of candidate work.
 ## Medium Priority
 
 - [ ] (todo) Implement API endpoints for report upload, mailbox sync trigger, and report/query retrieval.
+- [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, mailbox sources).
 - [ ] (todo) Add migrations, repository layer, and indexing strategy for PostgreSQL.
 - [ ] (todo) Build React dashboards for pass/fail, SPF/DKIM alignment, disposition, and source IP trends.
 - [ ] (todo) Add domain-level filtering, date range filtering, and per-source drill-down with daily aggregates.
