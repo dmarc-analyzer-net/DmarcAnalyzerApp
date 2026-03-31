@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: dmarc-analyzer-app:dev
+    image: dmarc-analyzer-net:dev
     environment:
       APP_MODE: api
       ASPNETCORE_ENVIRONMENT: Development
@@ -14,7 +14,7 @@ services:
       - postgres
 
   worker:
-    image: dmarc-analyzer-app:dev
+    image: dmarc-analyzer-net:dev
     environment:
       APP_MODE: worker
       ASPNETCORE_ENVIRONMENT: Development
