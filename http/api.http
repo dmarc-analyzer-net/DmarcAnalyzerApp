@@ -1,0 +1,49 @@
+@baseUrl = http://localhost:5076
+
+### Health/status
+GET {{baseUrl}}/api/v1/system/status
+
+### Apply migrations
+POST {{baseUrl}}/api/v1/admin/database/migrate
+
+### List clients
+GET {{baseUrl}}/api/v1/clients
+
+### Create client
+POST {{baseUrl}}/api/v1/clients
+Content-Type: application/json
+
+{
+  "name": "Acme Demo",
+  "slug": "acme-demo",
+  "retentionMonths": 27,
+  "timezone": "UTC",
+  "isActive": true
+}
+
+### Get client by id (replace id)
+GET {{baseUrl}}/api/v1/clients/00000000-0000-0000-0000-000000000000
+
+### Patch client (replace id)
+PATCH {{baseUrl}}/api/v1/clients/00000000-0000-0000-0000-000000000000
+Content-Type: application/json
+
+{
+  "timezone": "Europe/Copenhagen"
+}
+
+### List domains
+GET {{baseUrl}}/api/v1/domains
+
+### List domains by clientId (replace clientId)
+GET {{baseUrl}}/api/v1/domains?clientId=00000000-0000-0000-0000-000000000000
+
+### Create domain (replace clientId)
+POST {{baseUrl}}/api/v1/domains
+Content-Type: application/json
+
+{
+  "clientId": "00000000-0000-0000-0000-000000000000",
+  "name": "example.com",
+  "isActive": true
+}

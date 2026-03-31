@@ -26,6 +26,7 @@ Prioritized list of candidate work.
 
 - [ ] (todo) Implement API endpoints for report upload, mailbox sync trigger, and report/query retrieval.
 - [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, mailbox sources).
+- [x] (done) Add initial client/domain CRUD baseline endpoints for API vertical slice.
 - [ ] (todo) Add migrations, repository layer, and indexing strategy for PostgreSQL.
 - [ ] (todo) Build React dashboards for pass/fail, SPF/DKIM alignment, disposition, and source IP trends.
 - [ ] (todo) Add domain-level filtering, date range filtering, and per-source drill-down with daily aggregates.

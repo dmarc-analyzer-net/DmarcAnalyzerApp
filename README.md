@@ -84,6 +84,13 @@ From `src/web`:
 npm run build
 ```
 
+## API Request File (.http)
+
+Use `http/api.http` with VS Code REST Client or JetBrains HTTP client to run API requests quickly during development.
+
+- File: `http/api.http`
+- Default base URL: `http://localhost:5076`
+
 ## Planning Docs
 
 Start here before implementation details:
