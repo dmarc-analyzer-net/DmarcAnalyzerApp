@@ -1,0 +1,6 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/api/">
+    <Project Path="src/api/DmarcAnalyzer.Api.csproj" />
+  </Folder>
+</Solution>

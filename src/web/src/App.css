@@ -1,0 +1,33 @@
+.app-shell {
+  width: min(920px, calc(100% - 2rem));
+  margin: 2.5rem auto;
+  display: grid;
+  gap: 1.25rem;
+}
+
+.app-shell header {
+  padding: 1.25rem;
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: linear-gradient(145deg, #f7fbff 0%, #edf5ff 100%);
+}
+
+.app-shell h1 {
+  margin: 0;
+  font-size: clamp(1.75rem, 3.5vw, 2.4rem);
+}
+
+.app-shell p {
+  margin: 0.5rem 0 0;
+}
+
+.status-card {
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  padding: 1.25rem;
+  background: #ffffff;
+}
+
+.status-card h2 {
+  margin: 0 0 0.5rem;
+}

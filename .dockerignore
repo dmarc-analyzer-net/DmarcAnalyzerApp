@@ -1,0 +1,9 @@
+.git
+.gitignore
+**/bin
+**/obj
+**/node_modules
+src/web/dist
+docs
+README.md
+LICENSE.txt

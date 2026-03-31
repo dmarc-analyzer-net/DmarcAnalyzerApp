@@ -1,0 +1,15 @@
+<svg width="460" height="160" viewBox="0 0 680 160" xmlns="http://www.w3.org/2000/svg">
+  <!-- Icon badge -->
+  <rect x="225" y="45" width="70" height="70" rx="14" fill="#0D9488"/>
+  <!-- Envelope body -->
+  <rect x="238" y="65" width="44" height="30" rx="3" fill="none" stroke="white" stroke-width="1.8"/>
+  <!-- Envelope flap -->
+  <polyline points="238,65 260,83 282,65" fill="none" stroke="white" stroke-width="1.8" stroke-linejoin="round"/>
+  <!-- DMARC wordmark -->
+  <text x="312" y="93" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="44" font-weight="700" fill="#0F172A" letter-spacing="-1">DMARC</text>
+  <!-- ANALYZER subtitle -->
+  <text x="314" y="114" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="13" font-weight="400" fill="#64748B" letter-spacing="4.5">ANALYZER</text>
+  <!-- .NET badge -->
+  <rect x="422" y="101" width="35" height="17" rx="3" fill="#0D9488"/>
+  <text x="439.5" y="113" font-family="'Helvetica Neue',Helvetica,Arial,sans-serif" font-size="10.5" font-weight="500" fill="white" text-anchor="middle">.NET</text>
+</svg>
