@@ -38,3 +38,152 @@
 .status-card h2 {
   margin: 0 0 0.5rem;
 }
+
+.tab-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.tab-btn {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 0.6rem;
+  padding: 0.55rem 0.9rem;
+  color: var(--heading);
+  cursor: pointer;
+}
+
+.tab-btn.active {
+  background: #dff0ff;
+  border-color: #89b4da;
+}
+
+.tab-btn.primary {
+  background: #0d9488;
+  border-color: #0a7d73;
+  color: white;
+}
+
+.list-panel {
+  min-height: 240px;
+}
+
+.panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.7rem;
+}
+
+.panel-head span {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.panel {
+  border: 1px solid var(--border);
+  border-radius: 0.9rem;
+  background: var(--panel);
+  padding: 1rem;
+}
+
+.panel h3,
+.panel h4 {
+  margin: 0 0 0.7rem;
+}
+
+.form-grid {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.form-grid input,
+.form-grid select,
+.form-grid button {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+}
+
+.form-grid button {
+  background: #ecf6ff;
+  color: var(--heading);
+  cursor: pointer;
+}
+
+.item-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.item-list li {
+  border: 1px solid var(--border);
+  border-radius: 0.55rem;
+  padding: 0.55rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.item-list p {
+  margin: 0.2rem 0 0;
+  font-size: 0.9rem;
+}
+
+.item-list button {
+  border: 1px solid var(--border);
+  border-radius: 0.45rem;
+  background: #f5fbff;
+  color: var(--heading);
+  cursor: pointer;
+  padding: 0.4rem 0.55rem;
+}
+
+.row-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 27, 47, 0.42);
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  z-index: 30;
+}
+
+.modal-card {
+  width: min(560px, 100%);
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: white;
+  padding: 1rem;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.22);
+}
+
+.modal-card h3 {
+  margin: 0 0 0.8rem;
+}
+
+.error {
+  border: 1px solid #f0b0b0;
+  background: #fff3f3;
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.7rem;
+  color: #8f1d1d;
+}
+
+.info {
+  border: 1px solid #c6dcf2;
+  background: #edf6ff;
+  border-radius: 0.5rem;
+  padding: 0.55rem 0.7rem;
+}
