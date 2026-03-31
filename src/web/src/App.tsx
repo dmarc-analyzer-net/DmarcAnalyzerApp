@@ -32,7 +32,11 @@ function App() {
   return (
     <main className="app-shell">
       <header>
-        <h1>DMARC Analyzer</h1>
+        <img
+          className="brand-logo"
+          src="/dmarc-analyzer-net-logo.svg"
+          alt="DMARC Analyzer .NET"
+        />
         <p>Single-image ASP.NET + React baseline is ready.</p>
       </header>
 
