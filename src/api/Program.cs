@@ -2,6 +2,7 @@ using Carter;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Application.MailboxSources;
+using DmarcAnalyzer.Api.Application.Reports;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Modules;
 using DmarcAnalyzer.Api.Workers;
@@ -35,6 +36,7 @@ builder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
 builder.Services.AddScoped<IClientService, ClientService>();
 builder.Services.AddScoped<IDomainService, DomainService>();
 builder.Services.AddScoped<IMailboxSourceService, MailboxSourceService>();
+builder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
 
 if (builder.Environment.IsDevelopment())
 {

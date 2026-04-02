@@ -3,4 +3,7 @@
   <Folder Name="/src/api/">
     <Project Path="src/api/DmarcAnalyzer.Api.csproj" />
   </Folder>
+  <Folder Name="/src/api.tests/">
+    <Project Path="src/api.tests/DmarcAnalyzer.Api.Tests.csproj" />
+  </Folder>
 </Solution>
