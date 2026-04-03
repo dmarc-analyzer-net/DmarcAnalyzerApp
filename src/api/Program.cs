@@ -1,6 +1,7 @@
 using Carter;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Domains;
+using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Application.MailboxSources;
 using DmarcAnalyzer.Api.Application.Reports;
 using DmarcAnalyzer.Api.Data;
@@ -18,6 +19,9 @@ if (mode == "worker")
 
     workerBuilder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
         options.UseNpgsql(workerConnectionString));
+    workerBuilder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
+    workerBuilder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
+    workerBuilder.Services.Configure<WorkerOptions>(workerBuilder.Configuration.GetSection("Worker"));
     workerBuilder.Services.AddHostedService<QueueWorkerService>();
 
     var workerHost = workerBuilder.Build();
@@ -37,6 +41,9 @@ builder.Services.AddScoped<IClientService, ClientService>();
 builder.Services.AddScoped<IDomainService, DomainService>();
 builder.Services.AddScoped<IMailboxSourceService, MailboxSourceService>();
 builder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
+builder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
+builder.Services.AddScoped<IMailboxSyncRunQueryService, MailboxSyncRunQueryService>();
+builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
 
 if (builder.Environment.IsDevelopment())
 {

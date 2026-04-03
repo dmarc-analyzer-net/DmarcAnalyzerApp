@@ -2,6 +2,7 @@
 
 FROM node:22-alpine AS web-build
 WORKDIR /web
+RUN npm install -g npm@11.6.2
 COPY src/web/package*.json ./
 RUN npm ci
 COPY src/web/ ./
@@ -16,6 +17,9 @@ RUN dotnet publish ./api/DmarcAnalyzer.Api.csproj -c Release -o /out --no-restor
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 WORKDIR /app
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=dotnet-build /out ./
 COPY --from=web-build /web/dist ./wwwroot
 

@@ -1,4 +1,5 @@
 @baseUrl = http://localhost:5076
+@mailboxSourceId = 00000000-0000-0000-0000-000000000000
 
 ### Health/status
 GET {{baseUrl}}/api/v1/system/status
@@ -87,3 +88,9 @@ Content-Type: application/json
   "port": 995,
   "protocol": "pop3"
 }
+
+### Manual mailbox sync (IMAP only; read-only, does not delete emails)
+POST {{baseUrl}}/api/v1/mailbox-sources/{{mailboxSourceId}}/sync
+
+### List mailbox sync runs (optional mailboxSourceId, optional limit)
+GET {{baseUrl}}/api/v1/mailbox-sync-runs?mailboxSourceId={{mailboxSourceId}}&limit=20

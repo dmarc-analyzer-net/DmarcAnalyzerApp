@@ -180,6 +180,8 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db) : IMailboxSo
             defaultClientName,
             x.IsActive,
             x.LastSuccessSyncAtUtc,
+            x.LastProcessedUid,
+            x.LastProcessedUidValidity,
             x.CreatedAtUtc,
             x.UpdatedAtUtc);
 }

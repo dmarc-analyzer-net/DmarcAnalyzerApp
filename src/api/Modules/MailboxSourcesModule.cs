@@ -1,4 +1,5 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Application.MailboxSources;
 using DmarcAnalyzer.Api.Contracts.MailboxSources;
 using Microsoft.AspNetCore.Routing;
@@ -43,6 +44,24 @@ public sealed class MailboxSourcesModule : ICarterModule
             }
 
             return Results.Ok(result.Value);
+        });
+
+        app.MapPost("/api/v1/mailbox-sources/{id:guid}/sync", async (Guid id, IMailboxSyncService service, CancellationToken ct) =>
+        {
+            var result = await service.SyncMailboxSourceAsync(id, ct);
+            if (!result.IsSuccess)
+            {
+                if (result.StatusCode == 404)
+                {
+                    return Results.NotFound();
+                }
+
+                return Results.Json(new { error = result.Error }, statusCode: result.StatusCode);
+            }
+
+            var sync = result.Value!;
+            var statusCode = sync.Success ? 200 : 502;
+            return Results.Json(sync, statusCode: statusCode);
         });
     }
 }

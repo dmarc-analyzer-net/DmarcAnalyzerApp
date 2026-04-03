@@ -12,5 +12,7 @@ public sealed record MailboxSourceDto(
     string? DefaultClientName,
     bool IsActive,
     DateTime? LastSuccessSyncAtUtc,
+    long? LastProcessedUid,
+    long? LastProcessedUidValidity,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);

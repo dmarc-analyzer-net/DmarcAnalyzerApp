@@ -13,6 +13,8 @@ public sealed class MailboxSource
     public Guid DefaultClientId { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTime? LastSuccessSyncAtUtc { get; set; }
+    public long? LastProcessedUid { get; set; }
+    public long? LastProcessedUidValidity { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
 

@@ -49,6 +49,62 @@ public sealed class DmarcRuaReportParserTests
         Assert.Contains("readable", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Fact]
+    public void Parse_WithHeloScope_NormalizesAndParses()
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback>
+              <report_metadata>
+                <org_name>scope-test</org_name>
+                <email>noreply@example.com</email>
+                <report_id>scope-helo-1</report_id>
+                <date_range>
+                  <begin>1737446400</begin>
+                  <end>1737532800</end>
+                </date_range>
+              </report_metadata>
+              <policy_published>
+                <domain>example.com</domain>
+                <adkim>r</adkim>
+                <aspf>r</aspf>
+                <p>none</p>
+                <sp>none</sp>
+                <pct>100</pct>
+              </policy_published>
+              <record>
+                <row>
+                  <source_ip>127.0.0.1</source_ip>
+                  <count>1</count>
+                  <policy_evaluated>
+                    <disposition>none</disposition>
+                    <dkim>pass</dkim>
+                    <spf>pass</spf>
+                  </policy_evaluated>
+                </row>
+                <identifiers>
+                  <header_from>example.com</header_from>
+                </identifiers>
+                <auth_results>
+                  <spf>
+                    <domain>example.com</domain>
+                    <result>pass</result>
+                    <scope>helo</scope>
+                  </spf>
+                </auth_results>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal("scope-test", result.OrganizationName);
+        Assert.Equal(1, result.RecordCount);
+        Assert.Contains(result.ValidationMessages, x => x.Contains("normalized SPF scope value 'helo'", StringComparison.Ordinal));
+    }
+
     private static Stream OpenFixture(string fixtureName)
     {
         var basePath = AppContext.BaseDirectory;
