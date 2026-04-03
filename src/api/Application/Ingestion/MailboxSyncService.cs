@@ -234,9 +234,11 @@ public sealed class MailboxSyncService(
             syncRun.ReportsInserted = reportsInserted;
             syncRun.ReportsSkippedAsDuplicate = reportsSkippedAsDuplicate;
             syncRun.ParseFailures = parseFailures;
-            syncRun.Error = ex.Message;
+            syncRun.Error = ex is OperationCanceledException
+                ? "sync cancelled"
+                : ex.Message;
 
-            await db.SaveChangesAsync(ct);
+            await TryPersistRunStateAsync(mailboxSource.Id);
 
             return ServiceResult<MailboxSyncResult>.Success(new MailboxSyncResult(
                 mailboxSource.Id,
@@ -249,6 +251,21 @@ public sealed class MailboxSyncService(
                 ex.Message,
                 startedAtUtc,
                 DateTime.UtcNow));
+        }
+    }
+
+    private async Task TryPersistRunStateAsync(Guid mailboxSourceId)
+    {
+        try
+        {
+            await db.SaveChangesAsync(CancellationToken.None);
+        }
+        catch (Exception persistEx)
+        {
+            logger.LogWarning(
+                persistEx,
+                "Failed to persist mailbox sync run final state for mailbox source {MailboxSourceId}",
+                mailboxSourceId);
         }
     }
 
