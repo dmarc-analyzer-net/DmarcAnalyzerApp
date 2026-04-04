@@ -24,6 +24,7 @@ services:
       Worker__MaxRetryAttempts: 3
       Worker__RetryBaseDelaySeconds: 2
       Worker__StaleRunTimeoutMinutes: 20
+      Worker__SyncRunTimeoutMinutes: 10
     depends_on:
       - postgres
 

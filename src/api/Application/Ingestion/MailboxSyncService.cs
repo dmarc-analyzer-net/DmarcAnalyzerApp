@@ -13,7 +13,7 @@ using MimeKit;
 using System.IO.Compression;
 using System.Linq;
 using DmarcAnalyzer.Api.Workers;
-using Npgsql;
+using System.Threading.Tasks;
 
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
@@ -31,9 +31,13 @@ public sealed class MailboxSyncService(
     public async Task<ServiceResult<MailboxSyncResult>> SyncMailboxSourceAsync(Guid mailboxSourceId, string trigger, CancellationToken ct)
     {
         var startedAtUtc = DateTime.UtcNow;
+        using var syncTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var syncRunTimeoutMinutes = Math.Max(1, _options.SyncRunTimeoutMinutes);
+        syncTimeoutCts.CancelAfter(TimeSpan.FromMinutes(syncRunTimeoutMinutes));
+        var operationToken = syncTimeoutCts.Token;
 
         var mailboxSource = await db.MailboxSources
-            .SingleOrDefaultAsync(x => x.Id == mailboxSourceId, ct);
+            .SingleOrDefaultAsync(x => x.Id == mailboxSourceId, operationToken);
 
         if (mailboxSource is null)
         {
@@ -43,37 +47,6 @@ public sealed class MailboxSyncService(
         if (!string.Equals(mailboxSource.Protocol, "imap", StringComparison.OrdinalIgnoreCase))
         {
             return ServiceResult<MailboxSyncResult>.Failure("manual sync currently supports only IMAP", 400);
-        }
-
-        var hasActiveRun = await db.MailboxSyncRuns.AnyAsync(
-            x => x.MailboxSourceId == mailboxSource.Id && x.Status == "running",
-            ct);
-
-        if (hasActiveRun)
-        {
-            logger.LogInformation(
-                "Skipping sync for mailbox source {MailboxSourceId} because an active run already exists",
-                mailboxSource.Id);
-
-            return ServiceResult<MailboxSyncResult>.Failure("active sync already running", 409);
-        }
-
-        var syncRun = new MailboxSyncRun
-        {
-            MailboxSourceId = mailboxSource.Id,
-            Trigger = string.IsNullOrWhiteSpace(trigger) ? "unknown" : trigger.Trim().ToLowerInvariant(),
-            Status = "running",
-            StartedAtUtc = startedAtUtc,
-            CreatedAtUtc = startedAtUtc,
-        };
-        try
-        {
-            db.MailboxSyncRuns.Add(syncRun);
-            await db.SaveChangesAsync(ct);
-        }
-        catch (DbUpdateException ex) when (IsActiveRunUniqueViolation(ex))
-        {
-            return ServiceResult<MailboxSyncResult>.Failure("active sync already running", 409);
         }
 
         var messagesScanned = 0;
@@ -88,10 +61,10 @@ public sealed class MailboxSyncService(
             var secureSocketOptions = mailboxSource.UseTls ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
 
             await client.ConnectAsync(mailboxSource.Host, mailboxSource.Port, secureSocketOptions, ct);
-            await client.AuthenticateAsync(mailboxSource.Username, mailboxSource.PasswordEncrypted, ct);
+            await client.AuthenticateAsync(mailboxSource.Username, mailboxSource.PasswordEncrypted, operationToken);
 
             var inbox = client.Inbox;
-            await inbox.OpenAsync(FolderAccess.ReadOnly, ct);
+            await inbox.OpenAsync(FolderAccess.ReadOnly, operationToken);
 
             var currentUidValidity = (long)inbox.UidValidity;
             var lastProcessedUid = mailboxSource.LastProcessedUid;
@@ -108,7 +81,7 @@ public sealed class MailboxSyncService(
                 query = SearchQuery.Uids(new UniqueIdRange(startUid, UniqueId.MaxValue));
             }
 
-            var uids = await inbox.SearchAsync(query, ct);
+            var uids = await inbox.SearchAsync(query, operationToken);
             var maxMessagesPerSync = Math.Max(1, _options.MaxMessagesPerSync);
             var selectedUids = uids
                 .Take(maxMessagesPerSync)
@@ -118,11 +91,11 @@ public sealed class MailboxSyncService(
 
             foreach (var uid in selectedUids)
             {
-                ct.ThrowIfCancellationRequested();
+                operationToken.ThrowIfCancellationRequested();
                 messagesScanned++;
                 highestProcessedUid = uid.Id;
 
-                var message = await inbox.GetMessageAsync(uid, ct);
+                var message = await inbox.GetMessageAsync(uid, operationToken);
 
                 if (!message.Attachments.Any())
                 {
@@ -131,9 +104,9 @@ public sealed class MailboxSyncService(
 
                 foreach (var attachment in message.Attachments)
                 {
-                    ct.ThrowIfCancellationRequested();
+                    operationToken.ThrowIfCancellationRequested();
 
-                    var xmlStreams = await ExtractXmlStreamsAsync(attachment, ct);
+                    var xmlStreams = await ExtractXmlStreamsAsync(attachment, operationToken);
                     if (xmlStreams.Count == 0)
                     {
                         continue;
@@ -152,32 +125,22 @@ public sealed class MailboxSyncService(
                                 var normalizedPolicyDomain = result.PolicyDomain.Trim().ToLowerInvariant();
                                 var normalizedReportId = result.ReportId.Trim();
 
-                                var exists = await db.DmarcReportIngests.AnyAsync(x =>
-                                    x.ClientId == mailboxSource.DefaultClientId &&
-                                    x.PolicyDomain == normalizedPolicyDomain &&
-                                    x.ReportId == normalizedReportId &&
-                                    x.ReportRangeBeginUtc == result.RangeBeginUtc &&
-                                    x.ReportRangeEndUtc == result.RangeEndUtc,
-                                    ct);
+                                var inserted = await TryInsertReportIngestAsync(
+                                    mailboxSource.DefaultClientId,
+                                    mailboxSource.Id,
+                                    normalizedPolicyDomain,
+                                    normalizedReportId,
+                                    result.RangeBeginUtc,
+                                    result.RangeEndUtc,
+                                    result.OrganizationName.Trim(),
+                                    result.RecordCount,
+                                    operationToken);
 
-                                if (exists)
+                                if (!inserted)
                                 {
                                     reportsSkippedAsDuplicate++;
                                     continue;
                                 }
-
-                                db.DmarcReportIngests.Add(new DmarcReportIngest
-                                {
-                                    ClientId = mailboxSource.DefaultClientId,
-                                    MailboxSourceId = mailboxSource.Id,
-                                    PolicyDomain = normalizedPolicyDomain,
-                                    ReportId = normalizedReportId,
-                                    ReportRangeBeginUtc = result.RangeBeginUtc,
-                                    ReportRangeEndUtc = result.RangeEndUtc,
-                                    OrganizationName = result.OrganizationName.Trim(),
-                                    RecordCount = result.RecordCount,
-                                    IngestedAtUtc = DateTime.UtcNow,
-                                });
 
                                 reportsInserted++;
                             }
@@ -199,17 +162,29 @@ public sealed class MailboxSyncService(
             }
             mailboxSource.UpdatedAtUtc = DateTime.UtcNow;
 
-            syncRun.Status = "success";
-            syncRun.FinishedAtUtc = DateTime.UtcNow;
-            syncRun.MessagesScanned = messagesScanned;
-            syncRun.AttachmentsProcessed = attachmentsProcessed;
-            syncRun.ReportsInserted = reportsInserted;
-            syncRun.ReportsSkippedAsDuplicate = reportsSkippedAsDuplicate;
-            syncRun.ParseFailures = parseFailures;
+            if (operationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException($"sync run exceeded configured timeout of {syncRunTimeoutMinutes} minute(s)");
+            }
 
-            await db.SaveChangesAsync(ct);
+            db.MailboxSyncRuns.Add(new MailboxSyncRun
+            {
+                MailboxSourceId = mailboxSource.Id,
+                Trigger = string.IsNullOrWhiteSpace(trigger) ? "unknown" : trigger.Trim().ToLowerInvariant(),
+                Status = "success",
+                StartedAtUtc = startedAtUtc,
+                FinishedAtUtc = DateTime.UtcNow,
+                MessagesScanned = messagesScanned,
+                AttachmentsProcessed = attachmentsProcessed,
+                ReportsInserted = reportsInserted,
+                ReportsSkippedAsDuplicate = reportsSkippedAsDuplicate,
+                ParseFailures = parseFailures,
+                CreatedAtUtc = startedAtUtc,
+            });
 
-            await client.DisconnectAsync(true, ct);
+            await db.SaveChangesAsync(operationToken);
+
+            await client.DisconnectAsync(true, operationToken);
 
             return ServiceResult<MailboxSyncResult>.Success(new MailboxSyncResult(
                 mailboxSource.Id,
@@ -227,16 +202,25 @@ public sealed class MailboxSyncService(
         {
             logger.LogError(ex, "Mailbox sync failed for source {MailboxSourceId}", mailboxSource.Id);
 
-            syncRun.Status = "failed";
-            syncRun.FinishedAtUtc = DateTime.UtcNow;
-            syncRun.MessagesScanned = messagesScanned;
-            syncRun.AttachmentsProcessed = attachmentsProcessed;
-            syncRun.ReportsInserted = reportsInserted;
-            syncRun.ReportsSkippedAsDuplicate = reportsSkippedAsDuplicate;
-            syncRun.ParseFailures = parseFailures;
-            syncRun.Error = ex is OperationCanceledException
-                ? "sync cancelled"
-                : ex.Message;
+            db.ChangeTracker.Clear();
+
+            db.MailboxSyncRuns.Add(new MailboxSyncRun
+            {
+                MailboxSourceId = mailboxSource.Id,
+                Trigger = string.IsNullOrWhiteSpace(trigger) ? "unknown" : trigger.Trim().ToLowerInvariant(),
+                Status = "failed",
+                StartedAtUtc = startedAtUtc,
+                FinishedAtUtc = DateTime.UtcNow,
+                MessagesScanned = messagesScanned,
+                AttachmentsProcessed = attachmentsProcessed,
+                ReportsInserted = reportsInserted,
+                ReportsSkippedAsDuplicate = reportsSkippedAsDuplicate,
+                ParseFailures = parseFailures,
+                Error = ex is OperationCanceledException
+                    ? $"sync cancelled or timed out after {syncRunTimeoutMinutes} minute(s)"
+                    : ex.Message,
+                CreatedAtUtc = startedAtUtc,
+            });
 
             await TryPersistRunStateAsync(mailboxSource.Id);
 
@@ -254,6 +238,28 @@ public sealed class MailboxSyncService(
         }
     }
 
+    private async Task<bool> TryInsertReportIngestAsync(
+        Guid clientId,
+        Guid mailboxSourceId,
+        string policyDomain,
+        string reportId,
+        DateTime reportRangeBeginUtc,
+        DateTime reportRangeEndUtc,
+        string organizationName,
+        int recordCount,
+        CancellationToken ct)
+    {
+        var rows = await db.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO dmarc_report_ingest
+                (""Id"", ""ClientId"", ""MailboxSourceId"", ""PolicyDomain"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"", ""OrganizationName"", ""RecordCount"", ""IngestedAtUtc"")
+            VALUES
+                ({Guid.NewGuid()}, {clientId}, {mailboxSourceId}, {policyDomain}, {reportId}, {reportRangeBeginUtc}, {reportRangeEndUtc}, {organizationName}, {recordCount}, {DateTime.UtcNow})
+            ON CONFLICT (""ClientId"", ""PolicyDomain"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"") DO NOTHING;
+            ", ct);
+
+        return rows > 0;
+    }
+
     private async Task TryPersistRunStateAsync(Guid mailboxSourceId)
     {
         try
@@ -267,16 +273,6 @@ public sealed class MailboxSyncService(
                 "Failed to persist mailbox sync run final state for mailbox source {MailboxSourceId}",
                 mailboxSourceId);
         }
-    }
-
-    private static bool IsActiveRunUniqueViolation(DbUpdateException ex)
-    {
-        if (ex.InnerException is PostgresException pg && pg.SqlState == PostgresErrorCodes.UniqueViolation)
-        {
-            return string.Equals(pg.ConstraintName, "IX_mailbox_sync_run_active_unique", StringComparison.Ordinal);
-        }
-
-        return false;
     }
 
     private static async Task<IReadOnlyList<MemoryStream>> ExtractXmlStreamsAsync(MimeEntity attachment, CancellationToken ct)

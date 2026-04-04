@@ -94,10 +94,6 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.Error).HasMaxLength(4000);
             entity.HasIndex(x => x.MailboxSourceId)
                 .HasDatabaseName("IX_mailbox_sync_run_MailboxSourceId");
-            entity.HasIndex(x => x.MailboxSourceId)
-                .HasDatabaseName("IX_mailbox_sync_run_active_unique")
-                .HasFilter("\"Status\" = 'running'")
-                .IsUnique();
             entity.HasIndex(x => x.StartedAtUtc);
 
             entity.HasOne(x => x.MailboxSource)

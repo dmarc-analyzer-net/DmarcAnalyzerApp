@@ -3,7 +3,6 @@ using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using System.Collections.Concurrent;
 
 namespace DmarcAnalyzer.Api.Workers;
 
@@ -13,7 +12,6 @@ public sealed class QueueWorkerService(
     ILogger<QueueWorkerService> logger) : BackgroundService
 {
     private readonly WorkerOptions _options = options.Value;
-    private readonly ConcurrentDictionary<Guid, byte> _inFlightMailboxSourceIds = new();
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -65,59 +63,47 @@ public sealed class QueueWorkerService(
 
         foreach (var mailboxSourceId in activeMailboxSources)
         {
-            if (!_inFlightMailboxSourceIds.TryAdd(mailboxSourceId, 0))
+            try
             {
-                logger.LogDebug("Skipping mailbox source {MailboxSourceId} because sync is already running", mailboxSourceId);
-                continue;
-            }
+                var result = await ExecuteWithRetryAsync(mailboxSourceId, ct);
 
-            _ = Task.Run(async () =>
-            {
-                try
+                if (!result.IsSuccess)
                 {
-                    var result = await ExecuteWithRetryAsync(mailboxSourceId, ct);
-
-                    if (!result.IsSuccess)
-                    {
-                        logger.LogWarning(
-                            "Scheduled sync failed to start for mailbox source {MailboxSourceId}: {Error}",
-                            mailboxSourceId,
-                            result.Error);
-                        return;
-                    }
-
-                    var value = result.Value!;
-                    if (!value.Success)
-                    {
-                        logger.LogWarning(
-                            "Scheduled sync failed for mailbox source {MailboxSourceId}: {Error}",
-                            mailboxSourceId,
-                            value.Error);
-                        return;
-                    }
-
                     logger.LogInformation(
-                        "Scheduled sync completed for mailbox source {MailboxSourceId}. Messages={MessagesScanned}, Attachments={AttachmentsProcessed}, Inserted={ReportsInserted}, Duplicates={ReportsSkippedAsDuplicate}, ParseFailures={ParseFailures}",
+                        "Scheduled sync failed to start for mailbox source {MailboxSourceId}: {Error}",
                         mailboxSourceId,
-                        value.MessagesScanned,
-                        value.AttachmentsProcessed,
-                        value.ReportsInserted,
-                        value.ReportsSkippedAsDuplicate,
-                        value.ParseFailures);
+                        result.Error);
+                    continue;
                 }
-                catch (OperationCanceledException) when (ct.IsCancellationRequested)
+
+                var value = result.Value!;
+                if (!value.Success)
                 {
-                    logger.LogDebug("Scheduled sync cancelled for mailbox source {MailboxSourceId}", mailboxSourceId);
+                    logger.LogWarning(
+                        "Scheduled sync failed for mailbox source {MailboxSourceId}: {Error}",
+                        mailboxSourceId,
+                        value.Error);
+                    continue;
                 }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Scheduled sync crashed for mailbox source {MailboxSourceId}", mailboxSourceId);
-                }
-                finally
-                {
-                    _inFlightMailboxSourceIds.TryRemove(mailboxSourceId, out _);
-                }
-            }, ct);
+
+                logger.LogInformation(
+                    "Scheduled sync completed for mailbox source {MailboxSourceId}. Messages={MessagesScanned}, Attachments={AttachmentsProcessed}, Inserted={ReportsInserted}, Duplicates={ReportsSkippedAsDuplicate}, ParseFailures={ParseFailures}",
+                    mailboxSourceId,
+                    value.MessagesScanned,
+                    value.AttachmentsProcessed,
+                    value.ReportsInserted,
+                    value.ReportsSkippedAsDuplicate,
+                    value.ParseFailures);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                logger.LogDebug("Scheduled sync cancelled for mailbox source {MailboxSourceId}", mailboxSourceId);
+                throw;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Scheduled sync crashed for mailbox source {MailboxSourceId}", mailboxSourceId);
+            }
         }
     }
 
