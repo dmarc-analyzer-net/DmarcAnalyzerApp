@@ -94,3 +94,6 @@ POST {{baseUrl}}/api/v1/mailbox-sources/{{mailboxSourceId}}/sync
 
 ### List mailbox sync runs (optional mailboxSourceId, optional limit)
 GET {{baseUrl}}/api/v1/mailbox-sync-runs?mailboxSourceId={{mailboxSourceId}}&limit=20
+
+### Mailbox health summary (optional mailboxSourceId)
+GET {{baseUrl}}/api/v1/mailbox-health?mailboxSourceId={{mailboxSourceId}}

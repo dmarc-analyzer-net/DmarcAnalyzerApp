@@ -43,6 +43,7 @@ builder.Services.AddScoped<IMailboxSourceService, MailboxSourceService>();
 builder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
 builder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
 builder.Services.AddScoped<IMailboxSyncRunQueryService, MailboxSyncRunQueryService>();
+builder.Services.AddScoped<IMailboxHealthQueryService, MailboxHealthQueryService>();
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
 
 if (builder.Environment.IsDevelopment())
