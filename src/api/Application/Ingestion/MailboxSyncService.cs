@@ -125,7 +125,32 @@ public sealed class MailboxSyncService(
                                 var normalizedPolicyDomain = result.PolicyDomain.Trim().ToLowerInvariant();
                                 var normalizedReportId = result.ReportId.Trim();
 
-                                var inserted = await TryInsertReportIngestAsync(
+                                var domainId = await ResolveOrCreateDomainIdAsync(
+                                    mailboxSource.DefaultClientId,
+                                    normalizedPolicyDomain,
+                                    operationToken);
+
+                                var reportId = await TryInsertDmarcReportAsync(
+                                    domainId,
+                                    mailboxSource.Id,
+                                    result.OrganizationName.Trim(),
+                                    normalizedReportId,
+                                    result.RangeBeginUtc,
+                                    result.RangeEndUtc,
+                                    result.RecordCount,
+                                    operationToken);
+
+                                if (!reportId.HasValue)
+                                {
+                                    reportsSkippedAsDuplicate++;
+                                    continue;
+                                }
+
+                                var reportEntityId = reportId.Value;
+                                await using var transaction = await db.Database.BeginTransactionAsync(operationToken);
+                                await InsertDmarcReportRecordsAsync(reportEntityId, result.Records, operationToken);
+
+                                await TryInsertReportIngestAsync(
                                     mailboxSource.DefaultClientId,
                                     mailboxSource.Id,
                                     normalizedPolicyDomain,
@@ -136,11 +161,7 @@ public sealed class MailboxSyncService(
                                     result.RecordCount,
                                     operationToken);
 
-                                if (!inserted)
-                                {
-                                    reportsSkippedAsDuplicate++;
-                                    continue;
-                                }
+                                await transaction.CommitAsync(operationToken);
 
                                 reportsInserted++;
                             }
@@ -258,6 +279,96 @@ public sealed class MailboxSyncService(
             ", ct);
 
         return rows > 0;
+    }
+
+    private async Task<Guid> ResolveOrCreateDomainIdAsync(Guid defaultClientId, string normalizedPolicyDomain, CancellationToken ct)
+    {
+        var existing = await db.Domains
+            .AsNoTracking()
+            .Where(x => x.Name == normalizedPolicyDomain)
+            .Select(x => new { x.Id })
+            .SingleOrDefaultAsync(ct);
+
+        if (existing is not null)
+        {
+            return existing.Id;
+        }
+
+        var createdId = Guid.NewGuid();
+        await db.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO domain
+                (""Id"", ""ClientId"", ""Name"", ""IsActive"", ""CreatedAtUtc"", ""UpdatedAtUtc"")
+            VALUES
+                ({createdId}, {defaultClientId}, {normalizedPolicyDomain}, {true}, {DateTime.UtcNow}, {DateTime.UtcNow})
+            ON CONFLICT (""Name"") DO NOTHING;
+            ", ct);
+
+        var resolved = await db.Domains
+            .AsNoTracking()
+            .Where(x => x.Name == normalizedPolicyDomain)
+            .Select(x => new { x.Id })
+            .SingleAsync(ct);
+
+        return resolved.Id;
+    }
+
+    private async Task<Guid?> TryInsertDmarcReportAsync(
+        Guid domainId,
+        Guid mailboxSourceId,
+        string organizationName,
+        string reportId,
+        DateTime rangeBeginUtc,
+        DateTime rangeEndUtc,
+        int recordCount,
+        CancellationToken ct)
+    {
+        var id = Guid.NewGuid();
+        var rows = await db.Database.ExecuteSqlInterpolatedAsync($@"
+            INSERT INTO dmarc_report
+                (""Id"", ""DomainId"", ""MailboxSourceId"", ""OrganizationName"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"", ""RecordCount"", ""IngestedAtUtc"")
+            VALUES
+                ({id}, {domainId}, {mailboxSourceId}, {organizationName}, {reportId}, {rangeBeginUtc}, {rangeEndUtc}, {recordCount}, {DateTime.UtcNow})
+            ON CONFLICT (""DomainId"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"") DO NOTHING;
+            ", ct);
+
+        return rows > 0 ? id : null;
+    }
+
+    private async Task InsertDmarcReportRecordsAsync(
+        Guid dmarcReportId,
+        IReadOnlyList<DmarcReportRecordParseResult> records,
+        CancellationToken ct)
+    {
+        foreach (var record in records)
+        {
+            var recordId = Guid.NewGuid();
+            await db.Database.ExecuteSqlInterpolatedAsync($@"
+                INSERT INTO dmarc_report_record
+                    (""Id"", ""DmarcReportId"", ""SourceIp"", ""MessageCount"", ""Disposition"", ""DkimResult"", ""SpfResult"", ""HeaderFrom"", ""EnvelopeFrom"", ""EnvelopeTo"")
+                VALUES
+                    ({recordId}, {dmarcReportId}, {record.SourceIp}, {record.MessageCount}, {record.Disposition}, {record.DkimResult}, {record.SpfResult}, {record.HeaderFrom}, {record.EnvelopeFrom}, {record.EnvelopeTo});
+                ", ct);
+
+            foreach (var dkim in record.DkimAuthResults)
+            {
+                await db.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO dmarc_report_record_dkim_auth_result
+                        (""Id"", ""DmarcReportRecordId"", ""Domain"", ""Selector"", ""Result"", ""HumanResult"")
+                    VALUES
+                        ({Guid.NewGuid()}, {recordId}, {dkim.Domain}, {dkim.Selector}, {dkim.Result}, {dkim.HumanResult});
+                    ", ct);
+            }
+
+            foreach (var spf in record.SpfAuthResults)
+            {
+                await db.Database.ExecuteSqlInterpolatedAsync($@"
+                    INSERT INTO dmarc_report_record_spf_auth_result
+                        (""Id"", ""DmarcReportRecordId"", ""Domain"", ""Scope"", ""Result"", ""HumanResult"")
+                    VALUES
+                        ({Guid.NewGuid()}, {recordId}, {spf.Domain}, {spf.Scope}, {spf.Result}, {spf.HumanResult});
+                    ", ct);
+            }
+        }
     }
 
     private async Task TryPersistRunStateAsync(Guid mailboxSourceId)

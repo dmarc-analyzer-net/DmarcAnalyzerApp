@@ -39,6 +39,42 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             .Concat(normalizationMessages)
             .ToArray();
 
+        var records = feedback.Record?
+            .Select(record =>
+            {
+                var dkimAuth = record.AuthResults?.Dkim?
+                    .Select(x => new DmarcReportRecordDkimAuthParseResult(
+                        x.Domain ?? string.Empty,
+                        x.Selector ?? string.Empty,
+                        x.Result.ToString().ToLowerInvariant(),
+                        x.HumanResult ?? string.Empty))
+                    .ToArray()
+                    ?? Array.Empty<DmarcReportRecordDkimAuthParseResult>();
+
+                var spfAuth = record.AuthResults?.Spf?
+                    .Select(x => new DmarcReportRecordSpfAuthParseResult(
+                        x.Domain ?? string.Empty,
+                        x.Scope?.ToString().ToLowerInvariant() ?? string.Empty,
+                        x.Result.ToString().ToLowerInvariant(),
+                        x.HumanResult ?? string.Empty))
+                    .ToArray()
+                    ?? Array.Empty<DmarcReportRecordSpfAuthParseResult>();
+
+                return new DmarcReportRecordParseResult(
+                    record.Row?.SourceIp ?? string.Empty,
+                    record.Row?.Count ?? 0,
+                    record.Row?.PolicyEvaluated?.Disposition.ToString().ToLowerInvariant() ?? string.Empty,
+                    record.Row?.PolicyEvaluated?.Dkim.ToString().ToLowerInvariant() ?? string.Empty,
+                    record.Row?.PolicyEvaluated?.Spf.ToString().ToLowerInvariant() ?? string.Empty,
+                    record.Identifiers?.HeaderFrom ?? string.Empty,
+                    record.Identifiers?.EnvelopeFrom ?? string.Empty,
+                    record.Identifiers?.EnvelopeTo ?? string.Empty,
+                    dkimAuth,
+                    spfAuth);
+            })
+            .ToArray()
+            ?? Array.Empty<DmarcReportRecordParseResult>();
+
         return new DmarcReportParseResult(
             metadata.OrgName ?? string.Empty,
             metadata.ReportId ?? string.Empty,
@@ -46,6 +82,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             DateTimeOffset.FromUnixTimeSeconds(dateRange.End).UtcDateTime,
             policyPublished.Domain ?? string.Empty,
             feedback.Record?.Length ?? 0,
+            records,
             aggregateReport.HasWarnings || normalizationMessages.Count > 0,
             aggregateReport.HasErrors,
             validationMessages);

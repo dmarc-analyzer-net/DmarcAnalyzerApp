@@ -18,6 +18,10 @@ public sealed class DmarcRuaReportParserTests
         Assert.Equal("1737770612.289931", result.ReportId);
         Assert.Equal("007ed325dddd44e3a0f17488f4312e49.com", result.PolicyDomain);
         Assert.Equal(1, result.RecordCount);
+        Assert.Single(result.Records);
+        Assert.Equal("127.0.0.1", result.Records[0].SourceIp);
+        Assert.Equal(2, result.Records[0].DkimAuthResults.Count);
+        Assert.Single(result.Records[0].SpfAuthResults);
         Assert.Equal(new DateTime(2025, 1, 24, 0, 0, 0, DateTimeKind.Utc), result.RangeBeginUtc);
         Assert.Equal(new DateTime(2025, 1, 24, 23, 59, 59, DateTimeKind.Utc), result.RangeEndUtc);
         Assert.False(result.HasValidationErrors);
@@ -34,6 +38,7 @@ public sealed class DmarcRuaReportParserTests
         Assert.Equal("cd2dab45-f745-495c-845e-87a731db3873", result.ReportId);
         Assert.Equal("000fb7a64b524d7bb8fe8fc8831716a2.com", result.PolicyDomain);
         Assert.Equal(3, result.RecordCount);
+        Assert.Equal(3, result.Records.Count);
         Assert.Equal(new DateTime(2025, 1, 21, 8, 0, 0, DateTimeKind.Utc), result.RangeBeginUtc);
         Assert.Equal(new DateTime(2025, 1, 22, 8, 0, 0, DateTimeKind.Utc), result.RangeEndUtc);
         Assert.False(result.HasValidationErrors);

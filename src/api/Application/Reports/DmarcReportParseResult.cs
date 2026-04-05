@@ -7,6 +7,7 @@ public sealed record DmarcReportParseResult(
     DateTime RangeEndUtc,
     string PolicyDomain,
     int RecordCount,
+    IReadOnlyList<DmarcReportRecordParseResult> Records,
     bool HasValidationWarnings,
     bool HasValidationErrors,
     IReadOnlyList<string> ValidationMessages);

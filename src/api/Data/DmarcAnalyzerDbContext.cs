@@ -7,6 +7,10 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
 {
     public DbSet<Client> Clients => Set<Client>();
     public DbSet<Domain> Domains => Set<Domain>();
+    public DbSet<DmarcReport> DmarcReports => Set<DmarcReport>();
+    public DbSet<DmarcReportRecord> DmarcReportRecords => Set<DmarcReportRecord>();
+    public DbSet<DmarcReportRecordDkimAuthResult> DmarcReportRecordDkimAuthResults => Set<DmarcReportRecordDkimAuthResult>();
+    public DbSet<DmarcReportRecordSpfAuthResult> DmarcReportRecordSpfAuthResults => Set<DmarcReportRecordSpfAuthResult>();
     public DbSet<MailboxSource> MailboxSources => Set<MailboxSource>();
     public DbSet<DmarcReportIngest> DmarcReportIngests => Set<DmarcReportIngest>();
     public DbSet<MailboxSyncRun> MailboxSyncRuns => Set<MailboxSyncRun>();
@@ -100,6 +104,78 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .WithMany()
                 .HasForeignKey(x => x.MailboxSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<DmarcReport>(entity =>
+        {
+            entity.ToTable("dmarc_report");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.OrganizationName).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.ReportId).HasMaxLength(255).IsRequired();
+            entity.HasIndex(x => x.DomainId);
+            entity.HasIndex(x => x.MailboxSourceId);
+            entity.HasIndex(x => new { x.DomainId, x.ReportId, x.RangeBeginUtc, x.RangeEndUtc }).IsUnique();
+
+            entity.HasOne(x => x.Domain)
+                .WithMany()
+                .HasForeignKey(x => x.DomainId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(x => x.MailboxSource)
+                .WithMany()
+                .HasForeignKey(x => x.MailboxSourceId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<DmarcReportRecord>(entity =>
+        {
+            entity.ToTable("dmarc_report_record");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.SourceIp).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.Disposition).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.DkimResult).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.SpfResult).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.HeaderFrom).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.EnvelopeFrom).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.EnvelopeTo).HasMaxLength(255).IsRequired();
+            entity.HasIndex(x => x.DmarcReportId);
+
+            entity.HasOne(x => x.DmarcReport)
+                .WithMany(x => x.Records)
+                .HasForeignKey(x => x.DmarcReportId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DmarcReportRecordDkimAuthResult>(entity =>
+        {
+            entity.ToTable("dmarc_report_record_dkim_auth_result");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Domain).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.Selector).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.Result).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.HumanResult).HasMaxLength(1024).IsRequired();
+            entity.HasIndex(x => x.DmarcReportRecordId);
+
+            entity.HasOne(x => x.DmarcReportRecord)
+                .WithMany(x => x.DkimAuthResults)
+                .HasForeignKey(x => x.DmarcReportRecordId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DmarcReportRecordSpfAuthResult>(entity =>
+        {
+            entity.ToTable("dmarc_report_record_spf_auth_result");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Domain).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.Scope).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.Result).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.HumanResult).HasMaxLength(1024).IsRequired();
+            entity.HasIndex(x => x.DmarcReportRecordId);
+
+            entity.HasOne(x => x.DmarcReportRecord)
+                .WithMany(x => x.SpfAuthResults)
+                .HasForeignKey(x => x.DmarcReportRecordId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }
