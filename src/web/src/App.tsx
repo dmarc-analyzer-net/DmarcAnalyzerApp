@@ -18,6 +18,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 
 type ViewKey = 'clients' | 'domains' | 'mailbox-sources'
 
+type SyncRunStatus = 'success' | 'failed' | 'running' | 'unknown'
+type MailboxOpsFilter = 'all' | 'failed' | 'parse-failures' | 'stale-success'
+
 type Client = {
   id: string
   name: string
@@ -46,6 +49,40 @@ type MailboxSource = {
   defaultClientId: string
   defaultClientName: string | null
   isActive: boolean
+}
+
+type MailboxHealth = {
+  mailboxSourceId: string
+  name: string
+  isActive: boolean
+  lastSuccessSyncAtUtc: string | null
+  lastProcessedUid: number | null
+  lastProcessedUidValidity: number | null
+  lastRunStatus: SyncRunStatus | null
+  lastRunStartedAtUtc: string | null
+  lastRunFinishedAtUtc: string | null
+  lastRunError: string | null
+  lastRunMessagesScanned: number | null
+  lastRunAttachmentsProcessed: number | null
+  lastRunReportsInserted: number | null
+  lastRunReportsSkippedAsDuplicate: number | null
+  lastRunParseFailures: number | null
+}
+
+type MailboxSyncRun = {
+  id: string
+  mailboxSourceId: string
+  trigger: string
+  status: SyncRunStatus
+  startedAtUtc: string
+  finishedAtUtc: string | null
+  messagesScanned: number
+  attachmentsProcessed: number
+  reportsInserted: number
+  reportsSkippedAsDuplicate: number
+  parseFailures: number
+  error: string | null
+  createdAtUtc: string
 }
 
 const sections: Array<{ key: ViewKey; title: string; icon: typeof ShieldCheck }> = [
@@ -156,8 +193,11 @@ function App() {
   const [clients, setClients] = useState<Client[]>([])
   const [domains, setDomains] = useState<Domain[]>([])
   const [mailboxSources, setMailboxSources] = useState<MailboxSource[]>([])
+  const [mailboxHealth, setMailboxHealth] = useState<MailboxHealth[]>([])
+  const [syncRuns, setSyncRuns] = useState<MailboxSyncRun[]>([])
 
   const [search, setSearch] = useState('')
+  const [mailboxOpsFilter, setMailboxOpsFilter] = useState<MailboxOpsFilter>('all')
 
   const [clientDialogOpen, setClientDialogOpen] = useState(false)
   const [domainDialogOpen, setDomainDialogOpen] = useState(false)
@@ -247,9 +287,16 @@ function App() {
         fetchJson<MailboxSource[]>('/api/v1/mailbox-sources'),
       ])
 
+      const [healthData, syncRunData] = await Promise.all([
+        fetchJson<MailboxHealth[]>('/api/v1/mailbox-health'),
+        fetchJson<MailboxSyncRun[]>('/api/v1/mailbox-sync-runs?limit=40'),
+      ])
+
       setClients(clientData)
       setDomains(domainData)
       setMailboxSources(mailboxData)
+      setMailboxHealth(healthData)
+      setSyncRuns(syncRunData)
 
       if (!domainForm.clientId && clientData[0]) {
         setDomainForm((x) => ({ ...x, clientId: clientData[0].id }))
@@ -428,6 +475,62 @@ function App() {
     }
   }
 
+  const recentSyncRunsByMailbox = useMemo(() => {
+    const grouped = new Map<string, MailboxSyncRun[]>()
+    for (const run of syncRuns) {
+      const current = grouped.get(run.mailboxSourceId) ?? []
+      if (current.length < 3) {
+        current.push(run)
+        grouped.set(run.mailboxSourceId, current)
+      }
+    }
+
+    return grouped
+  }, [syncRuns])
+
+  const getStatusBadgeVariant = (status: SyncRunStatus | null) => {
+    if (status === 'success') return 'success' as const
+    if (status === 'failed') return 'danger' as const
+    if (status === 'running') return 'warning' as const
+    return 'muted' as const
+  }
+
+  const formatWhen = (value: string | null) => {
+    if (!value) return 'n/a'
+    const date = new Date(value)
+    if (Number.isNaN(date.getTime())) return value
+    return date.toLocaleString()
+  }
+
+  const filteredMailboxHealth = useMemo(() => {
+    const now = Date.now()
+    const staleThresholdMs = 24 * 60 * 60 * 1000
+
+    return mailboxHealth.filter((health) => {
+      if (mailboxOpsFilter === 'failed') {
+        return health.lastRunStatus === 'failed'
+      }
+
+      if (mailboxOpsFilter === 'parse-failures') {
+        return (health.lastRunParseFailures ?? 0) > 0
+      }
+
+      if (mailboxOpsFilter === 'stale-success') {
+        if (!health.lastSuccessSyncAtUtc) return true
+        const lastSuccessMs = new Date(health.lastSuccessSyncAtUtc).getTime()
+        if (Number.isNaN(lastSuccessMs)) return true
+        return now - lastSuccessMs > staleThresholdMs
+      }
+
+      return true
+    })
+  }, [mailboxHealth, mailboxOpsFilter])
+
+  const filteredMailboxSourcesForOps = useMemo(() => {
+    const ids = new Set(filteredMailboxHealth.map((x) => x.mailboxSourceId))
+    return filteredMailboxSources.filter((source) => ids.has(source.id))
+  }, [filteredMailboxSources, filteredMailboxHealth])
+
   return (
     <div className="mx-auto grid min-h-screen w-full max-w-[1280px] grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[250px_1fr]">
       <aside className="rounded-lg border bg-card p-4 shadow-panel">
@@ -565,48 +668,169 @@ function App() {
         )}
 
         {view === 'mailbox-sources' && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Mailbox Sources</CardTitle>
-              <Badge variant="muted">{filteredMailboxSources.length} records</Badge>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Protocol</TableHead>
-                    <TableHead>Host</TableHead>
-                    <TableHead>Client</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredMailboxSources.map((source) => (
-                    <TableRow key={source.id}>
-                      <TableCell className="font-medium">{source.name}</TableCell>
-                      <TableCell>{source.protocol.toUpperCase()}</TableCell>
-                      <TableCell>
-                        {source.host}:{source.port}
-                      </TableCell>
-                      <TableCell>{source.defaultClientName ?? source.defaultClientId}</TableCell>
-                      <TableCell>
-                        <Badge variant={source.isActive ? 'success' : 'muted'}>
-                          {source.isActive ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="outline" size="sm" onClick={() => openMailboxDialog(source)}>
-                          Edit
-                        </Button>
-                      </TableCell>
+          <>
+            <Card>
+              <CardHeader>
+                <CardTitle>Mailbox Sources</CardTitle>
+                <Badge variant="muted">{filteredMailboxSources.length} records</Badge>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Protocol</TableHead>
+                      <TableHead>Host</TableHead>
+                      <TableHead>Client</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredMailboxSources.map((source) => (
+                      <TableRow key={source.id}>
+                        <TableCell className="font-medium">{source.name}</TableCell>
+                        <TableCell>{source.protocol.toUpperCase()}</TableCell>
+                        <TableCell>
+                          {source.host}:{source.port}
+                        </TableCell>
+                        <TableCell>{source.defaultClientName ?? source.defaultClientId}</TableCell>
+                        <TableCell>
+                          <Badge variant={source.isActive ? 'success' : 'muted'}>
+                            {source.isActive ? 'Active' : 'Inactive'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm" onClick={() => openMailboxDialog(source)}>
+                            Edit
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Mailbox Health</CardTitle>
+                    <CardDescription>Operational view of sync outcomes, checkpoints, and latest issues.</CardDescription>
+                  </div>
+                  <Select
+                    className="w-56"
+                    value={mailboxOpsFilter}
+                    onChange={(e) => setMailboxOpsFilter(e.target.value as MailboxOpsFilter)}
+                  >
+                    <option value="all">All Mailboxes</option>
+                    <option value="failed">Failed Mailboxes</option>
+                    <option value="parse-failures">Parse Failures &gt; 0</option>
+                    <option value="stale-success">Stale Last Success (&gt;24h)</option>
+                  </Select>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Mailbox</TableHead>
+                      <TableHead>Last Status</TableHead>
+                      <TableHead>Last Success</TableHead>
+                      <TableHead>Checkpoint UID</TableHead>
+                      <TableHead>Last Run Metrics</TableHead>
+                      <TableHead>Last Error</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredMailboxHealth.map((health) => (
+                      <TableRow key={health.mailboxSourceId}>
+                        <TableCell className="font-medium">{health.name}</TableCell>
+                        <TableCell>
+                          <Badge variant={getStatusBadgeVariant(health.lastRunStatus)}>
+                            {health.lastRunStatus ?? 'unknown'}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{formatWhen(health.lastSuccessSyncAtUtc)}</TableCell>
+                        <TableCell>{health.lastProcessedUid ?? 'n/a'}</TableCell>
+                        <TableCell>
+                          <div className="text-xs leading-5 text-muted-foreground">
+                            <div>Scanned: {health.lastRunMessagesScanned ?? 0}</div>
+                            <div>Attachments: {health.lastRunAttachmentsProcessed ?? 0}</div>
+                            <div>Inserted: {health.lastRunReportsInserted ?? 0}</div>
+                            <div>Dupes: {health.lastRunReportsSkippedAsDuplicate ?? 0}</div>
+                            <div>Parse Failures: {health.lastRunParseFailures ?? 0}</div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="max-w-[420px]">
+                          <p className="truncate text-xs text-muted-foreground" title={health.lastRunError ?? ''}>
+                            {health.lastRunError ?? 'none'}
+                          </p>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Recent Sync Runs</CardTitle>
+                <CardDescription>Last three runs per mailbox source.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {filteredMailboxSourcesForOps.map((source) => {
+                  const runs = recentSyncRunsByMailbox.get(source.id) ?? []
+                  return (
+                    <div key={source.id} className="rounded-lg border border-border p-3">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-sm font-medium">{source.name}</p>
+                        <p className="text-xs text-muted-foreground">{source.host}:{source.port}</p>
+                      </div>
+                      {runs.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">No sync runs yet.</p>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Status</TableHead>
+                              <TableHead>Started</TableHead>
+                              <TableHead>Finished</TableHead>
+                              <TableHead>Counts</TableHead>
+                              <TableHead>Error</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {runs.map((run) => (
+                              <TableRow key={run.id}>
+                                <TableCell>
+                                  <Badge variant={getStatusBadgeVariant(run.status)}>{run.status}</Badge>
+                                </TableCell>
+                                <TableCell>{formatWhen(run.startedAtUtc)}</TableCell>
+                                <TableCell>{formatWhen(run.finishedAtUtc)}</TableCell>
+                                <TableCell>
+                                  <span className="text-xs text-muted-foreground">
+                                    {run.messagesScanned}/{run.attachmentsProcessed}/{run.reportsInserted}/{run.reportsSkippedAsDuplicate}/{run.parseFailures}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="max-w-[260px]">
+                                  <p className="truncate text-xs text-muted-foreground" title={run.error ?? ''}>
+                                    {run.error ?? 'none'}
+                                  </p>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </div>
+                  )
+                })}
+              </CardContent>
+            </Card>
+          </>
         )}
       </main>
 
