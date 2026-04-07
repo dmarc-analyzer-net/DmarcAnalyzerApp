@@ -91,6 +91,18 @@ Use `http/api.http` with VS Code REST Client or JetBrains HTTP client to run API
 - File: `http/api.http`
 - Default base URL: `http://localhost:5076`
 
+## Mailbox Sync Monitoring
+
+Key operational endpoints:
+
+- `GET /api/v1/mailbox-health`
+- `GET /api/v1/mailbox-sync-runs`
+- `POST /api/v1/mailbox-sources/{id}/sync` (manual trigger)
+
+Ops runbook:
+
+- `docs/ops/mailbox-sync.md`
+
 ## Planning Docs
 
 Start here before implementation details:

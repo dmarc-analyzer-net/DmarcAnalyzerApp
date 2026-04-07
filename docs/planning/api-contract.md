@@ -170,6 +170,15 @@ Notes:
 ### PATCH `/mailbox-sources/{sourceId}`
 ### DELETE `/mailbox-sources/{sourceId}`
 
+### POST `/mailbox-sources/{sourceId}/sync`
+
+Manual sync trigger for operations/testing. Returns sync summary payload immediately from execution.
+
+Notes:
+
+- Intended for operator use; steady-state sync is worker-scheduled.
+- Mailbox processing is read-only (does not delete emails).
+
 ### POST `/mailbox-sources/{sourceId}/test-connection`
 
 Run connectivity/auth test.
@@ -180,44 +189,25 @@ List sync run history.
 
 ## 6) Ingestion and Sync
 
-### POST `/ingestion/run-now`
+### GET `/mailbox-sync-runs`
 
-Trigger immediate sync job.
-
-Request:
-
-```json
-{
-  "sourceId": "src_123"
-}
-```
-
-Response `202`:
-
-```json
-{
-  "jobId": "job_123",
-  "status": "queued"
-}
-```
-
-### GET `/ingestion/jobs`
-
-List queued/running/failed jobs.
+List sync run history across mailbox sources.
 
 Filters:
 
-- `status` (`queued|running|failed|completed|dead_letter`)
-- `jobType`
-- `sourceId`
+- `mailboxSourceId` (optional)
+- `limit` (optional, default server value)
 
-### GET `/ingestion/jobs/{jobId}`
+### GET `/mailbox-health`
 
-Get job detail with attempts and error history.
+Operational health summary by mailbox source.
 
-### POST `/ingestion/jobs/{jobId}/retry`
+Fields include:
 
-Retry dead-letter/failed job.
+- latest run status and error
+- latest run counters (scanned/attachments/inserted/duplicates/parse failures)
+- last success timestamp
+- checkpoint values (`lastProcessedUid`, `lastProcessedUidValidity`)
 
 ## 7) Reports and Records
 
@@ -232,6 +222,10 @@ Filters:
 - `from` / `to` (report period)
 - `sourceId`
 
+Note:
+
+- Report persistence is domain-anchored (`domain_id`) and globally unique domain name policy is enforced.
+
 ### GET `/reports/{reportId}`
 
 Report header + aggregate summary.
@@ -239,6 +233,11 @@ Report header + aggregate summary.
 ### GET `/reports/{reportId}/records`
 
 Get normalized DMARC records for a report.
+
+Record details include full-fidelity auth result collections:
+
+- `auth_results.dkim[]`
+- `auth_results.spf[]`
 
 Filters:
 

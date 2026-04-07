@@ -16,6 +16,8 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - clients: list/get/create/patch
   - domains: list/get/create/patch
   - mailbox sources: list/create/patch
+  - mailbox health: list
+  - mailbox sync runs: list
   - admin migrate endpoint
 - Application service layer extraction (modules delegate to services).
 - Local API request collection in `http/api.http`.
@@ -23,6 +25,20 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - sidebar navigation
   - searchable data tables
   - modal create/edit flows
+  - mailbox operations dashboard filters (failed / parse failures / stale success)
+- DMARC RUA parsing integration via `DmarcRua` with fixture tests.
+- Worker-driven mailbox ingestion orchestration:
+  - sequential mailbox processing
+  - checkpointed sync (`LastProcessedUid`, `LastProcessedUidValidity`)
+  - retry/backoff and run timeout controls
+- Sync operational history persisted in `mailbox_sync_run`.
+- Domain-resolved report persistence:
+  - global unique domain resolution with auto-create when missing
+  - full-fidelity DMARC storage in:
+    - `dmarc_report`
+    - `dmarc_report_record`
+    - `dmarc_report_record_dkim_auth_result`
+    - `dmarc_report_record_spf_auth_result`
 - Frontend design system foundation:
   - Tailwind setup
   - shadcn-style component primitives
@@ -33,8 +49,8 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
 - Repository/service pattern hardening and broader indexing strategy.
 - Authentication baseline (`agency_user`, session flow).
 - Mailbox credential encryption strategy implementation.
-- Ingestion jobs and mailbox polling orchestration.
-- DMARC RUA parsing integration via `DmarcRua`.
+- Attachment extraction hardening for unsupported compression methods.
+- Client-facing analytics dashboards over `dmarc_report*` datasets.
 - Dashboard analytics pages for DMARC/SPF/DKIM trends.
 - Alerting, digest delivery, and export workflows.
 

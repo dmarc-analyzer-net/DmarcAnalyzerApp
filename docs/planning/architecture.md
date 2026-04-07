@@ -58,7 +58,7 @@ Technical architecture for `DmarcAnalyzerApp` MVP and near-term post-MVP evoluti
 
 ### Worker Mode (same image, hosted service enabled)
 
-- Poll scheduler enqueues jobs (global 60m cadence).
+- Poll scheduler processes mailbox sources sequentially (one source at a time per worker pass).
 - Job processors:
   - Mailbox sync
   - Attachment extraction/parsing
@@ -68,7 +68,7 @@ Technical architecture for `DmarcAnalyzerApp` MVP and near-term post-MVP evoluti
   - Digest generation
   - Retention purge
   - Export generation
-- Uses DB job tables and row-level locking for safe retries and concurrency.
+- Uses persisted sync run history and checkpoints for safe retry and operational visibility.
 
 ### Frontend (React + Vite + Tailwind + shadcn-style components)
 
@@ -140,7 +140,7 @@ Core entities:
 Constraints and indexes:
 
 - Unique `domain.name` globally.
-- Dedup unique key: `(client_id, domain_id, report_id, begin_utc, end_utc)`.
+- Dedup unique key for normalized reports: `(domain_id, report_id, begin_utc, end_utc)`.
 - Indexed query paths:
   - `(client_id, domain_id, report_date)`
   - `(client_id, source_ip, report_date)`
@@ -154,15 +154,39 @@ Constraints and indexes:
 3. Fetch candidate messages (checkpoint-aware).
 4. Extract DMARC attachments (`.zip`, `.gz`, raw xml if present).
 5. Parse XML with `DmarcRua`.
-6. Resolve target client:
-   - Primary: `policy_published.domain` -> `domain` owner mapping.
-   - Fallback: source default client.
-   - If unmatched and fallback enabled:
-     - auto-create domain under source default client.
-7. Dedup by `(client, domain, report-id, date-range)`.
-8. Persist normalized entities and update aggregates.
-9. Commit checkpoint and mark job result.
+6. Resolve target domain:
+   - Match by globally unique `domain.name`.
+   - If not found, auto-create domain under source default client.
+   - If found under different client ownership, reuse existing domain.
+7. Dedup normalized report by `(domain, report-id, date-range)`.
+8. Persist full-fidelity normalized entities:
+   - `dmarc_report`
+   - `dmarc_report_record`
+   - `dmarc_report_record_dkim_auth_result`
+   - `dmarc_report_record_spf_auth_result`
+9. Commit checkpoint and mark run result.
 10. Emit audit events and alert triggers.
+
+### Current Operational Endpoints
+
+- `GET /api/v1/mailbox-health`
+- `GET /api/v1/mailbox-sync-runs`
+- `POST /api/v1/mailbox-sources/{id}/sync` (manual operator trigger)
+
+### Current Worker Controls
+
+Configured via `Worker__*` settings:
+
+- `ScheduleIntervalSeconds`
+- `MaxMessagesPerSync`
+- `MaxRetryAttempts`
+- `RetryBaseDelaySeconds`
+- `StaleRunTimeoutMinutes`
+- `SyncRunTimeoutMinutes`
+
+### Known Gap
+
+- Archive extraction compatibility still needs hardening for certain unsupported ZIP compression methods.
 
 ## 7) Queue, Scheduling, and Retry Model
 
