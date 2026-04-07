@@ -14,9 +14,39 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<MailboxSource> MailboxSources => Set<MailboxSource>();
     public DbSet<DmarcReportIngest> DmarcReportIngests => Set<DmarcReportIngest>();
     public DbSet<MailboxSyncRun> MailboxSyncRuns => Set<MailboxSyncRun>();
+    public DbSet<AgencyUser> AgencyUsers => Set<AgencyUser>();
+    public DbSet<UserSession> UserSessions => Set<UserSession>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<AgencyUser>(entity =>
+        {
+            entity.ToTable("agency_user");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Email).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.PasswordHash).HasMaxLength(512).IsRequired();
+            entity.Property(x => x.DisplayName).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Role).HasMaxLength(32).IsRequired();
+            entity.HasIndex(x => x.Email).IsUnique();
+        });
+
+        modelBuilder.Entity<UserSession>(entity =>
+        {
+            entity.ToTable("user_session");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.CookieId).HasMaxLength(128).IsRequired();
+            entity.Property(x => x.IpAddress).HasMaxLength(64);
+            entity.Property(x => x.UserAgent).HasMaxLength(512);
+            entity.HasIndex(x => x.CookieId).IsUnique();
+            entity.HasIndex(x => x.UserId);
+            entity.HasIndex(x => x.ExpiresAtUtc);
+
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         modelBuilder.Entity<Client>(entity =>
         {
             entity.ToTable("client");
