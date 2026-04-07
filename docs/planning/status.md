@@ -8,14 +8,14 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
 - Single image runtime model for API and worker (`APP_MODE=api|worker`).
 - Docker Compose baseline with API, worker, and PostgreSQL.
 - ASP.NET Core API with Carter modules and EF Core + PostgreSQL integration.
-- Initial schema and migration for core entities:
+- Core and ingestion/report schema migrations in place for:
   - `client`
   - `domain`
   - `mailbox_source`
 - API vertical slice endpoints:
   - clients: list/get/create/patch
   - domains: list/get/create/patch
-  - mailbox sources: list/create/patch
+  - mailbox sources: list/create/patch/sync
   - mailbox health: list
   - mailbox sync runs: list
   - admin migrate endpoint
