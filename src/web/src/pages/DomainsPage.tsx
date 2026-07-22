@@ -399,8 +399,8 @@ export function DomainsPage() {
               ))}
             </Select>
             <Input
-              placeholder="Search current list..."
-              className="w-48"
+              placeholder="Search..."
+              className="w-40"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
