@@ -1,7 +1,9 @@
-import { LayoutDashboard, Mail, RefreshCw, ShieldCheck } from 'lucide-react'
+import { LayoutDashboard, Loader2, LogOut, Mail, RefreshCw, ShieldCheck } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 
+import { BrandLogo } from '@/components/BrandLogo'
+import { LoginPage } from '@/components/LoginPage'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -15,6 +17,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { fetchJson } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
 
 type ViewKey = 'clients' | 'domains' | 'mailbox-sources'
 
@@ -117,74 +121,8 @@ const initialMailboxForm = {
   isActive: true,
 }
 
-function BrandLogo({ className }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 248 73"
-      xmlns="http://www.w3.org/2000/svg"
-      preserveAspectRatio="xMinYMid meet"
-      className={className}
-      aria-label="DMARC Analyzer .NET"
-      role="img"
-    >
-      <rect x="1" y="0" width="70" height="70" rx="14" fill="#0D9488" />
-      <rect
-        x="14"
-        y="20"
-        width="44"
-        height="30"
-        rx="3"
-        fill="none"
-        stroke="white"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M15 21.25L36 38L57 21.25"
-        fill="none"
-        stroke="white"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-      <text
-        x="88"
-        y="48"
-        fontFamily="'Helvetica Neue',Helvetica,Arial,sans-serif"
-        fontSize="44"
-        fontWeight="700"
-        fill="#0F172A"
-        letterSpacing="-1"
-      >
-        DMARC
-      </text>
-      <text
-        x="90"
-        y="69"
-        fontFamily="'Helvetica Neue',Helvetica,Arial,sans-serif"
-        fontSize="13"
-        fontWeight="400"
-        fill="#64748B"
-        letterSpacing="4.5"
-      >
-        ANALYZER
-      </text>
-      <rect x="198" y="56" width="35" height="17" rx="3" fill="#0D9488" />
-      <text
-        x="215.5"
-        y="68"
-        fontFamily="'Helvetica Neue',Helvetica,Arial,sans-serif"
-        fontSize="10.5"
-        fontWeight="500"
-        fill="white"
-        textAnchor="middle"
-      >
-        .NET
-      </text>
-    </svg>
-  )
-}
-
-function App() {
+function Console() {
+  const { user, logout } = useAuth()
   const [view, setView] = useState<ViewKey>('clients')
   const [status, setStatus] = useState('Loading API status...')
   const [busy, setBusy] = useState(false)
@@ -248,21 +186,6 @@ function App() {
         x.username.toLowerCase().includes(q),
     )
   }, [search, mailboxSources])
-
-  const fetchJson = async <T,>(url: string, init?: RequestInit): Promise<T> => {
-    const response = await fetch(url, init)
-    if (!response.ok) {
-      let message = `Request failed (${response.status})`
-      try {
-        const payload = (await response.json()) as { error?: string }
-        if (payload.error) message = payload.error
-      } catch {
-        // ignore json parse errors
-      }
-      throw new Error(message)
-    }
-    return (await response.json()) as T
-  }
 
   const resetDialogs = () => {
     setClientDialogOpen(false)
@@ -533,7 +456,7 @@ function App() {
 
   return (
     <div className="mx-auto grid min-h-screen w-full max-w-[1280px] grid-cols-1 gap-6 px-4 py-6 lg:grid-cols-[250px_1fr]">
-      <aside className="rounded-lg border bg-card p-4 shadow-panel">
+      <aside className="flex flex-col rounded-lg border bg-card p-4 shadow-panel">
         <BrandLogo className="mb-4 h-auto w-full max-w-[205px]" />
         <div className="space-y-2">
           {sections.map((section) => {
@@ -554,6 +477,21 @@ function App() {
               </Button>
             )
           })}
+        </div>
+        <div className="mt-auto">
+          <div className="mt-6 border-t pt-4">
+            <p className="truncate text-sm font-medium">{user?.displayName || user?.email}</p>
+            <p className="truncate text-xs text-muted-foreground">{user?.email}</p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 w-full justify-start"
+              onClick={() => void logout()}
+            >
+              <LogOut className="h-4 w-4" />
+              Sign out
+            </Button>
+          </div>
         </div>
       </aside>
 
@@ -922,6 +860,24 @@ function App() {
       </Dialog>
     </div>
   )
+}
+
+function App() {
+  const { status } = useAuth()
+
+  if (status === 'loading') {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-label="Loading" />
+      </div>
+    )
+  }
+
+  if (status === 'unauthenticated') {
+    return <LoginPage />
+  }
+
+  return <Console />
 }
 
 export default App

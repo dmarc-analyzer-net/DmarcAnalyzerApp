@@ -17,7 +17,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
 
         using var sourceBuffer = CopyToMemory(xmlStream);
         var normalizationMessages = new List<string>();
-        using var parserStream = NormalizeUnsupportedSpfScopes(sourceBuffer, normalizationMessages);
+        using var parserStream = NormalizeReportXml(sourceBuffer, normalizationMessages);
 
         var aggregateReport = new AggregateReport(parserStream);
         var feedback = aggregateReport.Feedback
@@ -96,13 +96,32 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         return copy;
     }
 
-    private static MemoryStream NormalizeUnsupportedSpfScopes(Stream xmlStream, List<string> normalizationMessages)
+    private static MemoryStream NormalizeReportXml(Stream xmlStream, List<string> normalizationMessages)
     {
         try
         {
             xmlStream.Position = 0;
             var document = XDocument.Load(xmlStream);
             var updated = false;
+            var scopeNormalized = false;
+
+            // DMARCbis reports namespace the schema (urn:ietf:params:xml:ns:dmarc-2.0),
+            // which the DmarcRua serializer does not expect. The aggregate format is
+            // field-compatible for everything we read, so strip namespaces entirely.
+            if (document.Root is not null && document.Root.Name.Namespace != XNamespace.None)
+            {
+                var reportNamespace = document.Root.Name.NamespaceName;
+                foreach (var element in document.Descendants())
+                {
+                    element.Name = XNamespace.None + element.Name.LocalName;
+                    element.Attributes()
+                        .Where(x => x.IsNamespaceDeclaration)
+                        .Remove();
+                }
+
+                normalizationMessages.Add($"warning: stripped XML namespace '{reportNamespace}' for compatibility");
+                updated = true;
+            }
 
             foreach (var scopeElement in document.Descendants().Where(x => x.Name.LocalName == "scope"))
             {
@@ -115,6 +134,11 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 if (value == "helo")
                 {
                     scopeElement.Value = "mfrom";
+                    if (!scopeNormalized)
+                    {
+                        normalizationMessages.Add("warning: normalized SPF scope value 'helo' to 'mfrom' for compatibility");
+                        scopeNormalized = true;
+                    }
                     updated = true;
                 }
             }
@@ -128,7 +152,6 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 return original;
             }
 
-            normalizationMessages.Add("warning: normalized SPF scope value 'helo' to 'mfrom' for compatibility");
             var normalized = new MemoryStream();
             document.Save(normalized);
             normalized.Position = 0;

@@ -106,7 +106,20 @@ public sealed class MailboxSyncService(
                 {
                     operationToken.ThrowIfCancellationRequested();
 
-                    var xmlStreams = await ExtractXmlStreamsAsync(attachment, operationToken);
+                    IReadOnlyList<MemoryStream> xmlStreams;
+                    try
+                    {
+                        xmlStreams = await ExtractXmlStreamsAsync(attachment, logger, operationToken);
+                    }
+                    catch (Exception ex) when (ex is not OperationCanceledException)
+                    {
+                        parseFailures++;
+                        logger.LogWarning(ex,
+                            "Failed to extract DMARC attachment {AttachmentName} for mailbox source {MailboxSourceId}",
+                            GetAttachmentFileName(attachment), mailboxSource.Id);
+                        continue;
+                    }
+
                     if (xmlStreams.Count == 0)
                     {
                         continue;
@@ -386,7 +399,12 @@ public sealed class MailboxSyncService(
         }
     }
 
-    private static async Task<IReadOnlyList<MemoryStream>> ExtractXmlStreamsAsync(MimeEntity attachment, CancellationToken ct)
+    private static string GetAttachmentFileName(MimeEntity attachment)
+        => (attachment.ContentDisposition?.FileName ?? attachment.ContentType?.Name ?? string.Empty)
+            .Trim()
+            .ToLowerInvariant();
+
+    private static async Task<IReadOnlyList<MemoryStream>> ExtractXmlStreamsAsync(MimeEntity attachment, ILogger logger, CancellationToken ct)
     {
         var result = new List<MemoryStream>();
 
@@ -405,36 +423,47 @@ public sealed class MailboxSyncService(
             return result;
         }
 
-        raw.Position = 0;
-        var fileName = (attachment.ContentDisposition?.FileName ?? attachment.ContentType?.Name ?? string.Empty)
-            .Trim()
-            .ToLowerInvariant();
+        var fileName = GetAttachmentFileName(attachment);
+        var payload = raw.ToArray();
 
-        if (fileName.EndsWith(".zip", StringComparison.Ordinal))
+        // Container detection prefers magic bytes over filename: DMARC senders
+        // frequently misname attachments (.zip holding gzip data and vice versa).
+        if (IsZip(payload))
         {
-            using var zip = new ZipArchive(raw, ZipArchiveMode.Read, leaveOpen: true);
+            using var zipStream = new MemoryStream(payload, writable: false);
+            using var zip = SharpCompress.Archives.ArchiveFactory.OpenArchive(zipStream);
             foreach (var entry in zip.Entries)
             {
                 ct.ThrowIfCancellationRequested();
-                if (!entry.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                if (entry.IsDirectory || entry.Key is null ||
+                    !entry.Key.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
 
-                await using var entryStream = entry.Open();
-                var xml = new MemoryStream();
-                await entryStream.CopyToAsync(xml, ct);
-                xml.Position = 0;
-                result.Add(xml);
+                try
+                {
+                    await using var entryStream = entry.OpenEntryStream();
+                    var xml = new MemoryStream();
+                    await entryStream.CopyToAsync(xml, ct);
+                    xml.Position = 0;
+                    result.Add(xml);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    logger.LogWarning(ex,
+                        "Failed to extract zip entry {EntryName} from attachment {AttachmentName}",
+                        entry.Key, fileName);
+                }
             }
 
             return result;
         }
 
-        if (fileName.EndsWith(".gz", StringComparison.Ordinal) || fileName.EndsWith(".gzip", StringComparison.Ordinal))
+        if (IsGzip(payload))
         {
-            raw.Position = 0;
-            await using var gzip = new GZipStream(raw, CompressionMode.Decompress, leaveOpen: true);
+            using var gzipSource = new MemoryStream(payload, writable: false);
+            await using var gzip = new GZipStream(gzipSource, CompressionMode.Decompress);
             var xml = new MemoryStream();
             await gzip.CopyToAsync(xml, ct);
             xml.Position = 0;
@@ -444,17 +473,41 @@ public sealed class MailboxSyncService(
 
         var mimeType = attachment.ContentType?.MimeType ?? string.Empty;
 
-        if (fileName.EndsWith(".xml", StringComparison.Ordinal) ||
+        if (LooksLikeXml(payload) ||
+            fileName.EndsWith(".xml", StringComparison.Ordinal) ||
             string.Equals(mimeType, "text/xml", StringComparison.OrdinalIgnoreCase) ||
             string.Equals(mimeType, "application/xml", StringComparison.OrdinalIgnoreCase))
         {
-            raw.Position = 0;
-            var xml = new MemoryStream();
-            await raw.CopyToAsync(xml, ct);
-            xml.Position = 0;
+            var xml = new MemoryStream(payload, writable: false);
             result.Add(xml);
         }
 
         return result;
+    }
+
+    private static bool IsZip(byte[] payload)
+        => payload.Length >= 4 && payload[0] == 0x50 && payload[1] == 0x4B &&
+           (payload[2] == 0x03 || payload[2] == 0x05 || payload[2] == 0x07);
+
+    private static bool IsGzip(byte[] payload)
+        => payload.Length >= 2 && payload[0] == 0x1F && payload[1] == 0x8B;
+
+    private static bool LooksLikeXml(byte[] payload)
+    {
+        var start = 0;
+
+        // Skip UTF-8 BOM and leading whitespace.
+        if (payload.Length >= 3 && payload[0] == 0xEF && payload[1] == 0xBB && payload[2] == 0xBF)
+        {
+            start = 3;
+        }
+
+        while (start < payload.Length && (payload[start] == 0x20 || payload[start] == 0x09 ||
+                                          payload[start] == 0x0D || payload[start] == 0x0A))
+        {
+            start++;
+        }
+
+        return start < payload.Length && payload[start] == (byte)'<';
     }
 }

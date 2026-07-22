@@ -8,6 +8,7 @@ services:
       APP_MODE: api
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Default: Host=postgres;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres
+      Database__MigrateOnStartup: "true"
     ports:
       - "8080:8080"
     depends_on:
