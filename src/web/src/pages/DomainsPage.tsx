@@ -1,4 +1,4 @@
-import { RefreshCw } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -47,12 +47,128 @@ const statusMeta: Record<
 
 const statusRank: Record<DomainStatus, number> = {
   critical: 0,
-  issues: 0,
-  aligned: 0,
-  no_data: 1,
+  issues: 1,
+  aligned: 2,
+  no_data: 3,
 }
 
-type DomainRow = DomainAnalytics & { clientName: string | null; crud: Domain | null }
+type DomainRow = Omit<DomainAnalytics, 'clientName' | 'clientSlug'> & {
+  clientName: string | null
+  clientSlug: string | null
+  crud: Domain | null
+}
+
+type SortKey =
+  | 'name'
+  | 'status'
+  | 'compliance'
+  | 'messages'
+  | 'dkim'
+  | 'spf'
+  | 'sources'
+  | 'lastReport'
+  | 'client'
+type SortDir = 'asc' | 'desc'
+
+/** Direction applied when a column first becomes the active sort. */
+const defaultSortDir: Record<SortKey, SortDir> = {
+  name: 'asc',
+  status: 'asc',
+  compliance: 'asc',
+  messages: 'desc',
+  dkim: 'asc',
+  spf: 'asc',
+  sources: 'desc',
+  lastReport: 'desc',
+  client: 'asc',
+}
+
+/** Metric columns render "—" for no_data rows, so those rows always sort last. */
+const metricSortKeys: ReadonlySet<SortKey> = new Set(['compliance', 'messages', 'dkim', 'spf', 'sources'])
+
+function compareRows(a: DomainRow, b: DomainRow, key: SortKey, dir: SortDir): number {
+  const flip = dir === 'asc' ? 1 : -1
+
+  if (metricSortKeys.has(key) && (a.status === 'no_data') !== (b.status === 'no_data')) {
+    return a.status === 'no_data' ? 1 : -1
+  }
+
+  let cmp = 0
+  switch (key) {
+    case 'name':
+      cmp = a.name.localeCompare(b.name)
+      break
+    case 'status':
+      cmp = statusRank[a.status] - statusRank[b.status]
+      break
+    case 'compliance':
+      cmp = a.complianceRate - b.complianceRate
+      break
+    case 'messages':
+      cmp = a.messages - b.messages
+      break
+    case 'dkim':
+      cmp = a.dkimPassRate - b.dkimPassRate
+      break
+    case 'spf':
+      cmp = a.spfPassRate - b.spfPassRate
+      break
+    case 'sources':
+      cmp = a.sources - b.sources
+      break
+    case 'lastReport': {
+      const aTime = a.lastReportEndUtc ? Date.parse(a.lastReportEndUtc) : null
+      const bTime = b.lastReportEndUtc ? Date.parse(b.lastReportEndUtc) : null
+      if ((aTime === null) !== (bTime === null)) return aTime === null ? 1 : -1
+      cmp = (aTime ?? 0) - (bTime ?? 0)
+      break
+    }
+    case 'client': {
+      const aName = a.clientName ?? ''
+      const bName = b.clientName ?? ''
+      if (!aName !== !bName) return aName ? -1 : 1
+      cmp = aName.localeCompare(bName)
+      break
+    }
+  }
+  if (cmp !== 0) return cmp * flip
+
+  // Stable tie-breakers: higher volume first, then name.
+  if (a.messages !== b.messages) return b.messages - a.messages
+  return a.name.localeCompare(b.name)
+}
+
+type SortButtonProps = {
+  label: string
+  column: SortKey
+  sortKey: SortKey
+  sortDir: SortDir
+  onSort: (key: SortKey) => void
+}
+
+function SortButton({ label, column, sortKey, sortDir, onSort }: SortButtonProps) {
+  const active = column === sortKey
+  const Arrow = active ? (sortDir === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
+  return (
+    <button
+      type="button"
+      onClick={() => onSort(column)}
+      className={cn(
+        'group inline-flex items-center gap-1 rounded-sm font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+        active && 'text-foreground',
+      )}
+    >
+      {label}
+      <Arrow
+        aria-hidden
+        className={cn(
+          'h-3 w-3 shrink-0',
+          !active && 'opacity-0 transition-opacity group-hover:opacity-60 group-focus-visible:opacity-60',
+        )}
+      />
+    </button>
+  )
+}
 
 function ComplianceMeter({ row }: { row: DomainRow }) {
   if (row.status === 'no_data') return <span className="text-muted-foreground">—</span>
@@ -76,11 +192,14 @@ export function DomainsPage() {
   const status = useSystemStatus()
   const [searchParams, setSearchParams] = useSearchParams()
   const days = parseAnalyticsDays(searchParams.get('days'))
+  const clientFilter = searchParams.get('client') ?? ''
 
   const [clients, setClients] = useState<Client[]>([])
   const [domains, setDomains] = useState<Domain[]>([])
   const [analytics, setAnalytics] = useState<DomainAnalytics[]>([])
   const [search, setSearch] = useState('')
+  const [sortKey, setSortKey] = useState<SortKey>('compliance')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -112,8 +231,39 @@ export function DomainsPage() {
   }, [loadData])
 
   const setDays = (next: AnalyticsDays) => {
-    setSearchParams(next === 30 ? {} : { days: String(next) }, { replace: true })
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev)
+        if (next === 30) params.delete('days')
+        else params.set('days', String(next))
+        return params
+      },
+      { replace: true },
+    )
   }
+
+  const setClientFilter = (clientId: string) => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev)
+        if (clientId) params.set('client', clientId)
+        else params.delete('client')
+        return params
+      },
+      { replace: true },
+    )
+  }
+
+  const handleSort = (key: SortKey) => {
+    if (key === sortKey) {
+      setSortDir((dir) => (dir === 'asc' ? 'desc' : 'asc'))
+    } else {
+      setSortKey(key)
+      setSortDir(defaultSortDir[key])
+    }
+  }
+
+  const ariaSort: 'ascending' | 'descending' = sortDir === 'asc' ? 'ascending' : 'descending'
 
   const sortedClients = useMemo(
     () => [...clients].sort((a, b) => a.name.localeCompare(b.name)),
@@ -121,20 +271,25 @@ export function DomainsPage() {
   )
 
   const rows = useMemo<DomainRow[]>(() => {
+    const clientById = new Map(clients.map((c) => [c.id, c]))
     const crudById = new Map(domains.map((d) => [d.id, d]))
-    const merged: DomainRow[] = analytics.map((row) => {
-      const crud = crudById.get(row.domainId) ?? null
-      return { ...row, clientName: crud?.clientName ?? null, crud }
-    })
+    const merged: DomainRow[] = analytics.map((row) => ({
+      ...row,
+      crud: crudById.get(row.domainId) ?? null,
+    }))
 
     // Defensive: include CRUD domains the analytics endpoint did not return.
     const seen = new Set(analytics.map((row) => row.domainId))
     for (const domain of domains) {
       if (seen.has(domain.id)) continue
+      const client = clientById.get(domain.clientId)
       merged.push({
         domainId: domain.id,
         name: domain.name,
         isActive: domain.isActive,
+        clientId: domain.clientId,
+        clientName: domain.clientName ?? client?.name ?? null,
+        clientSlug: client?.slug ?? null,
         messages: 0,
         compliantMessages: 0,
         complianceRate: 0,
@@ -147,32 +302,27 @@ export function DomainsPage() {
         rejected: 0,
         lastReportEndUtc: null,
         status: 'no_data',
-        clientName: domain.clientName,
         crud: domain,
       })
     }
 
-    // Worst compliance first, no_data last; ties broken by volume, then name.
-    merged.sort((a, b) => {
-      if (statusRank[a.status] !== statusRank[b.status]) {
-        return statusRank[a.status] - statusRank[b.status]
-      }
-      if (a.status === 'no_data' && b.status === 'no_data') return a.name.localeCompare(b.name)
-      if (a.complianceRate !== b.complianceRate) return a.complianceRate - b.complianceRate
-      if (a.messages !== b.messages) return b.messages - a.messages
-      return a.name.localeCompare(b.name)
-    })
-
     return merged
-  }, [analytics, domains])
+  }, [analytics, domains, clients])
 
   const filteredRows = useMemo(() => {
     const q = search.toLowerCase().trim()
-    if (!q) return rows
-    return rows.filter(
-      (x) => x.name.toLowerCase().includes(q) || (x.clientName ?? '').toLowerCase().includes(q),
-    )
-  }, [search, rows])
+    return rows.filter((row) => {
+      if (clientFilter && row.clientId !== clientFilter) return false
+      if (!q) return true
+      return row.name.toLowerCase().includes(q) || (row.clientName ?? '').toLowerCase().includes(q)
+    })
+  }, [search, clientFilter, rows])
+
+  // Default: worst compliance first, no_data last; ties broken by volume, then name.
+  const sortedRows = useMemo(
+    () => [...filteredRows].sort((a, b) => compareRows(a, b, sortKey, sortDir)),
+    [filteredRows, sortKey, sortDir],
+  )
 
   const resetDialog = () => {
     setDialogOpen(false)
@@ -188,7 +338,7 @@ export function DomainsPage() {
       setEditingDomainId(row.domainId)
       setDomainForm({
         name: row.name,
-        clientId: row.crud?.clientId ?? '',
+        clientId: row.crud?.clientId ?? row.clientId,
         isActive: row.isActive,
       })
     } else {
@@ -235,6 +385,19 @@ export function DomainsPage() {
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
             <DaysSelector value={days} onChange={setDays} disabled={busy} />
+            <Select
+              aria-label="Filter by client"
+              className="w-44"
+              value={clientFilter}
+              onChange={(e) => setClientFilter(e.target.value)}
+            >
+              <option value="">All clients</option>
+              {sortedClients.map((client) => (
+                <option key={client.id} value={client.id}>
+                  {client.name}
+                </option>
+              ))}
+            </Select>
             <Input
               placeholder="Search current list..."
               className="w-64"
@@ -272,28 +435,54 @@ export function DomainsPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Domain</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Compliance</TableHead>
-                  <TableHead className="text-right">Messages</TableHead>
-                  <TableHead className="text-right">DKIM</TableHead>
-                  <TableHead className="text-right">SPF</TableHead>
-                  <TableHead className="text-right">Sources</TableHead>
-                  <TableHead>Last report</TableHead>
+                  <TableHead aria-sort={sortKey === 'name' || sortKey === 'client' ? ariaSort : undefined}>
+                    <span className="inline-flex items-center gap-1.5">
+                      <SortButton label="Domain" column="name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                      <span aria-hidden className="text-muted-foreground/50">/</span>
+                      <SortButton label="Client" column="client" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                    </span>
+                  </TableHead>
+                  <TableHead aria-sort={sortKey === 'status' ? ariaSort : undefined}>
+                    <SortButton label="Status" column="status" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  </TableHead>
+                  <TableHead aria-sort={sortKey === 'compliance' ? ariaSort : undefined}>
+                    <SortButton label="Compliance" column="compliance" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  </TableHead>
+                  <TableHead className="text-right" aria-sort={sortKey === 'messages' ? ariaSort : undefined}>
+                    <SortButton label="Messages" column="messages" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  </TableHead>
+                  <TableHead className="text-right" aria-sort={sortKey === 'dkim' ? ariaSort : undefined}>
+                    <SortButton label="DKIM" column="dkim" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  </TableHead>
+                  <TableHead className="text-right" aria-sort={sortKey === 'spf' ? ariaSort : undefined}>
+                    <SortButton label="SPF" column="spf" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  </TableHead>
+                  <TableHead className="text-right" aria-sort={sortKey === 'sources' ? ariaSort : undefined}>
+                    <SortButton label="Sources" column="sources" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  </TableHead>
+                  <TableHead aria-sort={sortKey === 'lastReport' ? ariaSort : undefined}>
+                    <SortButton label="Last report" column="lastReport" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                  </TableHead>
                   <TableHead>Active</TableHead>
                   <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredRows.map((row) => {
+                {sortedRows.map((row) => {
                   const meta = statusMeta[row.status]
                   const noData = row.status === 'no_data'
                   return (
                     <TableRow key={row.domainId}>
                       <TableCell>
                         <p className="font-medium">{row.name}</p>
-                        {row.clientName && (
-                          <p className="text-xs text-muted-foreground">{row.clientName}</p>
+                        {row.clientSlug === 'default' ? (
+                          <Badge variant="warning" className="mt-0.5">
+                            Default — needs client
+                          </Badge>
+                        ) : (
+                          row.clientName && (
+                            <p className="text-xs text-muted-foreground">{row.clientName}</p>
+                          )
                         )}
                       </TableCell>
                       <TableCell>
@@ -332,9 +521,9 @@ export function DomainsPage() {
                 })}
               </TableBody>
             </Table>
-            {filteredRows.length === 0 && !busy && (
+            {sortedRows.length === 0 && !busy && (
               <p className="py-6 text-center text-sm text-muted-foreground">
-                No domains found{search ? ' for this search' : ''}.
+                No domains found{search || clientFilter ? ' for the current filters' : ''}.
               </p>
             )}
           </div>

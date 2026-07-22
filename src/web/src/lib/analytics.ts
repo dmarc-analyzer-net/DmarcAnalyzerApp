@@ -64,6 +64,9 @@ export type DomainAnalytics = {
   domainId: string
   name: string
   isActive: boolean
+  clientId: string
+  clientName: string
+  clientSlug: string
   messages: number
   compliantMessages: number
   complianceRate: number

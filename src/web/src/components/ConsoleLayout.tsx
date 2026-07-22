@@ -8,8 +8,8 @@ import { cn } from '@/lib/utils'
 
 const navItems: Array<{ to: string; title: string; icon: typeof ShieldCheck }> = [
   { to: '/dashboard', title: 'Dashboard', icon: LayoutDashboard },
-  { to: '/clients', title: 'Clients', icon: ShieldCheck },
   { to: '/domains', title: 'Domains', icon: Globe },
+  { to: '/clients', title: 'Clients', icon: ShieldCheck },
   { to: '/mailbox-sources', title: 'Mailbox Sources', icon: Mail },
 ]
 
