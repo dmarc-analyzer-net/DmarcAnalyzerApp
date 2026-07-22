@@ -136,8 +136,21 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
 
         var records = RecordsInWindow(window);
 
+        // Flattened before grouping for the same reason as ListDomainSourcesAsync:
+        // navigations inside grouped aggregates become per-group correlated subqueries.
         var perDomain = await records
-            .GroupBy(r => r.DmarcReport!.DomainId)
+            .Select(r => new
+            {
+                r.DmarcReport!.DomainId,
+                r.MessageCount,
+                r.DkimResult,
+                r.SpfResult,
+                r.Disposition,
+                r.DmarcReportId,
+                r.SourceIp,
+                r.DmarcReport.OrganizationName,
+            })
+            .GroupBy(r => r.DomainId)
             .Select(g => new
             {
                 DomainId = g.Key,
@@ -149,7 +162,7 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
                 Rejected = g.Sum(r => r.Disposition == "reject" ? (long)r.MessageCount : 0L),
                 Reports = g.Select(r => r.DmarcReportId).Distinct().Count(),
                 Sources = g.Select(r => r.SourceIp).Distinct().Count(),
-                Reporters = g.Select(r => r.DmarcReport!.OrganizationName).Distinct().Count(),
+                Reporters = g.Select(r => r.OrganizationName).Distinct().Count(),
             })
             .ToListAsync(ct);
 
@@ -272,22 +285,28 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
 
         var window = await ResolveWindowAsync(days, ct);
 
-        var rows = await DomainRecordsInWindow(domainId, window)
-            .GroupBy(r => r.SourceIp)
-            .Select(g => new
-            {
-                SourceIp = g.Key,
-                Messages = g.Sum(r => (long)r.MessageCount),
-                Compliant = g.Sum(r => r.DkimResult == "pass" || r.SpfResult == "pass" ? (long)r.MessageCount : 0L),
-                DkimPass = g.Sum(r => r.DkimResult == "pass" ? (long)r.MessageCount : 0L),
-                SpfPass = g.Sum(r => r.SpfResult == "pass" ? (long)r.MessageCount : 0L),
-                Quarantined = g.Sum(r => r.Disposition == "quarantine" ? (long)r.MessageCount : 0L),
-                Rejected = g.Sum(r => r.Disposition == "reject" ? (long)r.MessageCount : 0L),
-                Reporters = g.Select(r => r.DmarcReport!.OrganizationName).Distinct().Count(),
-                HeaderFroms = g.Select(r => r.HeaderFrom).Distinct().Count(),
-                FirstSeen = g.Min(r => r.DmarcReport!.RangeBeginUtc),
-                LastSeen = g.Max(r => r.DmarcReport!.RangeEndUtc),
-            })
+        // Hand-written SQL: EF translates grouped distinct-counts/min/max over
+        // navigations into per-group correlated subqueries (33s for a domain
+        // with 1.3k sources); a single-pass GROUP BY does the same in ~75ms.
+        var rows = await db.Database
+            .SqlQuery<SourceAggregateRow>($@"
+                SELECT rec.""SourceIp"",
+                       SUM(rec.""MessageCount"")::bigint                                                                        AS ""Messages"",
+                       SUM(CASE WHEN rec.""DkimResult"" = 'pass' OR rec.""SpfResult"" = 'pass' THEN rec.""MessageCount"" ELSE 0 END)::bigint AS ""Compliant"",
+                       SUM(CASE WHEN rec.""DkimResult"" = 'pass' THEN rec.""MessageCount"" ELSE 0 END)::bigint                  AS ""DkimPass"",
+                       SUM(CASE WHEN rec.""SpfResult"" = 'pass' THEN rec.""MessageCount"" ELSE 0 END)::bigint                   AS ""SpfPass"",
+                       SUM(CASE WHEN rec.""Disposition"" = 'quarantine' THEN rec.""MessageCount"" ELSE 0 END)::bigint           AS ""Quarantined"",
+                       SUM(CASE WHEN rec.""Disposition"" = 'reject' THEN rec.""MessageCount"" ELSE 0 END)::bigint               AS ""Rejected"",
+                       COUNT(DISTINCT r.""OrganizationName"")::int                                                              AS ""Reporters"",
+                       COUNT(DISTINCT rec.""HeaderFrom"")::int                                                                  AS ""HeaderFroms"",
+                       MIN(r.""RangeBeginUtc"")                                                                                 AS ""FirstSeen"",
+                       MAX(r.""RangeEndUtc"")                                                                                   AS ""LastSeen""
+                FROM dmarc_report_record rec
+                JOIN dmarc_report r ON r.""Id"" = rec.""DmarcReportId""
+                WHERE r.""DomainId"" = {domainId}
+                  AND r.""RangeBeginUtc"" >= {window.BeginUtc}
+                  AND r.""RangeBeginUtc"" <= {window.EndUtc}
+                GROUP BY rec.""SourceIp""")
             .ToListAsync(ct);
 
         return rows
@@ -460,6 +479,21 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
             .Where(x => !string.IsNullOrWhiteSpace(x.Value))
             .Select(x => new SourceValueCountDto(x.Value, x.Messages))
             .ToArray();
+    }
+
+    private sealed class SourceAggregateRow
+    {
+        public string SourceIp { get; set; } = string.Empty;
+        public long Messages { get; set; }
+        public long Compliant { get; set; }
+        public long DkimPass { get; set; }
+        public long SpfPass { get; set; }
+        public long Quarantined { get; set; }
+        public long Rejected { get; set; }
+        public int Reporters { get; set; }
+        public int HeaderFroms { get; set; }
+        public DateTime FirstSeen { get; set; }
+        public DateTime LastSeen { get; set; }
     }
 
     private IQueryable<Data.Entities.DmarcReportRecord> DomainRecordsInWindow(Guid domainId, AnalyticsWindowDto window)
