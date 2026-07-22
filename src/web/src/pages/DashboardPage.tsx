@@ -227,7 +227,7 @@ export function DashboardPage() {
                         <TableRow key={row.domainId}>
                           <TableCell className="font-medium">
                             <Link
-                              to="/domains"
+                              to={`/domains/${row.domainId}${days === 30 ? '' : `?days=${days}`}`}
                               className="hover:text-primary hover:underline"
                             >
                               {row.domain}

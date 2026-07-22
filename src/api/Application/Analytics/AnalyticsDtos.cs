@@ -54,6 +54,72 @@ public sealed record AnalyticsSummaryDto(
     AnalyticsDispositionsDto Dispositions,
     AnalyticsMailboxesDto Mailboxes);
 
+public sealed record DomainDrilldownDomainDto(
+    Guid DomainId,
+    string Name,
+    bool IsActive,
+    Guid ClientId,
+    string ClientName,
+    string ClientSlug);
+
+public sealed record DomainDrilldownTotalsDto(
+    long Messages,
+    long CompliantMessages,
+    double ComplianceRate,
+    double DkimPassRate,
+    double SpfPassRate,
+    int Reports,
+    int Sources,
+    int Reporters,
+    long Quarantined,
+    long Rejected,
+    string Status);
+
+public sealed record DomainDrilldownDto(
+    DomainDrilldownDomainDto Domain,
+    AnalyticsWindowDto Window,
+    DomainDrilldownTotalsDto Totals,
+    IReadOnlyList<AnalyticsTrendPointDto> Trend);
+
+public sealed record DomainSourceDto(
+    string SourceIp,
+    long Messages,
+    long CompliantMessages,
+    long FailedMessages,
+    double ComplianceRate,
+    double DkimPassRate,
+    double SpfPassRate,
+    long Quarantined,
+    long Rejected,
+    int Reporters,
+    int HeaderFroms,
+    DateTime FirstSeenUtc,
+    DateTime LastSeenUtc);
+
+public sealed record SourceEvaluatedComboDto(string Dkim, string Spf, long Messages);
+
+public sealed record SourceValueCountDto(string Value, long Messages);
+
+public sealed record SourceDkimAuthDto(string Domain, string Selector, string Result, long Messages);
+
+public sealed record SourceSpfAuthDto(string Domain, string Scope, string Result, long Messages);
+
+public sealed record SourceReporterDto(string OrganizationName, int Reports, long Messages);
+
+public sealed record SourceDetailDto(
+    string SourceIp,
+    long Messages,
+    long CompliantMessages,
+    double ComplianceRate,
+    AnalyticsDispositionsDto Dispositions,
+    IReadOnlyList<SourceEvaluatedComboDto> Evaluated,
+    IReadOnlyList<SourceValueCountDto> HeaderFroms,
+    IReadOnlyList<SourceValueCountDto> EnvelopeFroms,
+    IReadOnlyList<SourceDkimAuthDto> DkimAuth,
+    IReadOnlyList<SourceSpfAuthDto> SpfAuth,
+    IReadOnlyList<SourceReporterDto> Reporters,
+    IReadOnlyList<AnalyticsTrendPointDto> Trend);
+
 public sealed record DomainAnalyticsDto(
     Guid DomainId,
     string Name,

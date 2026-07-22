@@ -15,7 +15,7 @@ import { cn } from '@/lib/utils'
 const COMPLIANT_COLOR = '#0d9488'
 const FAILED_COLOR = '#d03b3b'
 
-const PLOT_HEIGHT = 224
+const DEFAULT_PLOT_HEIGHT = 224
 const DAY_MS = 24 * 60 * 60 * 1000
 const MAX_DAYS = 370
 
@@ -61,9 +61,11 @@ type TrendChartProps = {
   trend: TrendPoint[]
   beginUtc: string
   endUtc: string
+  /** Plot height in px; defaults to the full-size dashboard chart. */
+  height?: number
 }
 
-export function TrendChart({ trend, beginUtc, endUtc }: TrendChartProps) {
+export function TrendChart({ trend, beginUtc, endUtc, height = DEFAULT_PLOT_HEIGHT }: TrendChartProps) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null)
   const [showTable, setShowTable] = useState(false)
 
@@ -104,7 +106,7 @@ export function TrendChart({ trend, beginUtc, endUtc }: TrendChartProps) {
         <div className="mb-3 flex items-center justify-between">{legend}</div>
         <div
           className="flex items-center justify-center rounded-md border border-dashed"
-          style={{ height: PLOT_HEIGHT }}
+          style={{ height }}
         >
           <p className="text-sm text-muted-foreground">No message volume in this window.</p>
         </div>
@@ -152,13 +154,13 @@ export function TrendChart({ trend, beginUtc, endUtc }: TrendChartProps) {
         </div>
       ) : (
         <div className="relative" onMouseLeave={() => setHoverIndex(null)}>
-          <div className="relative ml-12" style={{ height: PLOT_HEIGHT }}>
+          <div className="relative ml-12" style={{ height }}>
             {/* Gridlines + y ticks: solid hairlines, recessive */}
             {ticks.map((tick) => (
               <div
                 key={tick}
                 className="pointer-events-none absolute inset-x-0"
-                style={{ top: PLOT_HEIGHT - (tick / niceMax) * PLOT_HEIGHT }}
+                style={{ top: height - (tick / niceMax) * height }}
               >
                 <div className={cn('border-t', tick === 0 ? 'border-[#c9d4de]' : 'border-[#e8edf2]')} />
                 <span className="absolute -left-12 top-0 w-10 -translate-y-1/2 text-right text-[11px] tabular-nums text-muted-foreground">
@@ -170,8 +172,8 @@ export function TrendChart({ trend, beginUtc, endUtc }: TrendChartProps) {
             {/* Bars: full-height bands are the hit targets */}
             <div className="absolute inset-0 flex items-stretch gap-[2px]">
               {days.map((d, i) => {
-                const compliantH = (d.compliant / niceMax) * PLOT_HEIGHT
-                const failedH = (d.failed / niceMax) * PLOT_HEIGHT
+                const compliantH = (d.compliant / niceMax) * height
+                const failedH = (d.failed / niceMax) * height
                 const isHovered = hoverIndex === i
                 return (
                   <div

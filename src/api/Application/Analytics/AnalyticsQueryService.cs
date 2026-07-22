@@ -136,8 +136,21 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
 
         var records = RecordsInWindow(window);
 
+        // Flattened before grouping for the same reason as ListDomainSourcesAsync:
+        // navigations inside grouped aggregates become per-group correlated subqueries.
         var perDomain = await records
-            .GroupBy(r => r.DmarcReport!.DomainId)
+            .Select(r => new
+            {
+                r.DmarcReport!.DomainId,
+                r.MessageCount,
+                r.DkimResult,
+                r.SpfResult,
+                r.Disposition,
+                r.DmarcReportId,
+                r.SourceIp,
+                r.DmarcReport.OrganizationName,
+            })
+            .GroupBy(r => r.DomainId)
             .Select(g => new
             {
                 DomainId = g.Key,
@@ -149,7 +162,7 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
                 Rejected = g.Sum(r => r.Disposition == "reject" ? (long)r.MessageCount : 0L),
                 Reports = g.Select(r => r.DmarcReportId).Distinct().Count(),
                 Sources = g.Select(r => r.SourceIp).Distinct().Count(),
-                Reporters = g.Select(r => r.DmarcReport!.OrganizationName).Distinct().Count(),
+                Reporters = g.Select(r => r.OrganizationName).Distinct().Count(),
             })
             .ToListAsync(ct);
 
@@ -205,6 +218,286 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
             })
             .ToArray();
     }
+
+    public async Task<DomainDrilldownDto?> GetDomainDrilldownAsync(Guid domainId, int days, CancellationToken ct)
+    {
+        days = ClampDays(days);
+
+        var domain = await db.Domains
+            .AsNoTracking()
+            .Where(x => x.Id == domainId)
+            .Select(x => new DomainDrilldownDomainDto(
+                x.Id, x.Name, x.IsActive, x.ClientId, x.Client!.Name, x.Client.Slug))
+            .SingleOrDefaultAsync(ct);
+
+        if (domain is null)
+        {
+            return null;
+        }
+
+        var window = await ResolveWindowAsync(days, ct);
+        var records = DomainRecordsInWindow(domainId, window);
+
+        var totalsRow = await records
+            .GroupBy(_ => 1)
+            .Select(g => new
+            {
+                Messages = g.Sum(r => (long)r.MessageCount),
+                Compliant = g.Sum(r => r.DkimResult == "pass" || r.SpfResult == "pass" ? (long)r.MessageCount : 0L),
+                DkimPass = g.Sum(r => r.DkimResult == "pass" ? (long)r.MessageCount : 0L),
+                SpfPass = g.Sum(r => r.SpfResult == "pass" ? (long)r.MessageCount : 0L),
+                Quarantined = g.Sum(r => r.Disposition == "quarantine" ? (long)r.MessageCount : 0L),
+                Rejected = g.Sum(r => r.Disposition == "reject" ? (long)r.MessageCount : 0L),
+                Reports = g.Select(r => r.DmarcReportId).Distinct().Count(),
+                Sources = g.Select(r => r.SourceIp).Distinct().Count(),
+                Reporters = g.Select(r => r.DmarcReport!.OrganizationName).Distinct().Count(),
+            })
+            .FirstOrDefaultAsync(ct);
+
+        var messages = totalsRow?.Messages ?? 0;
+        var compliant = totalsRow?.Compliant ?? 0;
+        var rate = Rate(compliant, messages);
+
+        var totals = new DomainDrilldownTotalsDto(
+            messages,
+            compliant,
+            rate,
+            Rate(totalsRow?.DkimPass ?? 0, messages),
+            Rate(totalsRow?.SpfPass ?? 0, messages),
+            totalsRow?.Reports ?? 0,
+            totalsRow?.Sources ?? 0,
+            totalsRow?.Reporters ?? 0,
+            totalsRow?.Quarantined ?? 0,
+            totalsRow?.Rejected ?? 0,
+            ResolveStatus(messages, rate));
+
+        return new DomainDrilldownDto(domain, window, totals, await TrendAsync(records, ct));
+    }
+
+    public async Task<IReadOnlyList<DomainSourceDto>?> ListDomainSourcesAsync(Guid domainId, int days, CancellationToken ct)
+    {
+        days = ClampDays(days);
+
+        if (!await db.Domains.AnyAsync(x => x.Id == domainId, ct))
+        {
+            return null;
+        }
+
+        var window = await ResolveWindowAsync(days, ct);
+
+        // Hand-written SQL: EF translates grouped distinct-counts/min/max over
+        // navigations into per-group correlated subqueries (33s for a domain
+        // with 1.3k sources); a single-pass GROUP BY does the same in ~75ms.
+        var rows = await db.Database
+            .SqlQuery<SourceAggregateRow>($@"
+                SELECT rec.""SourceIp"",
+                       SUM(rec.""MessageCount"")::bigint                                                                        AS ""Messages"",
+                       SUM(CASE WHEN rec.""DkimResult"" = 'pass' OR rec.""SpfResult"" = 'pass' THEN rec.""MessageCount"" ELSE 0 END)::bigint AS ""Compliant"",
+                       SUM(CASE WHEN rec.""DkimResult"" = 'pass' THEN rec.""MessageCount"" ELSE 0 END)::bigint                  AS ""DkimPass"",
+                       SUM(CASE WHEN rec.""SpfResult"" = 'pass' THEN rec.""MessageCount"" ELSE 0 END)::bigint                   AS ""SpfPass"",
+                       SUM(CASE WHEN rec.""Disposition"" = 'quarantine' THEN rec.""MessageCount"" ELSE 0 END)::bigint           AS ""Quarantined"",
+                       SUM(CASE WHEN rec.""Disposition"" = 'reject' THEN rec.""MessageCount"" ELSE 0 END)::bigint               AS ""Rejected"",
+                       COUNT(DISTINCT r.""OrganizationName"")::int                                                              AS ""Reporters"",
+                       COUNT(DISTINCT rec.""HeaderFrom"")::int                                                                  AS ""HeaderFroms"",
+                       MIN(r.""RangeBeginUtc"")                                                                                 AS ""FirstSeen"",
+                       MAX(r.""RangeEndUtc"")                                                                                   AS ""LastSeen""
+                FROM dmarc_report_record rec
+                JOIN dmarc_report r ON r.""Id"" = rec.""DmarcReportId""
+                WHERE r.""DomainId"" = {domainId}
+                  AND r.""RangeBeginUtc"" >= {window.BeginUtc}
+                  AND r.""RangeBeginUtc"" <= {window.EndUtc}
+                GROUP BY rec.""SourceIp""")
+            .ToListAsync(ct);
+
+        return rows
+            .Select(x => new DomainSourceDto(
+                x.SourceIp,
+                x.Messages,
+                x.Compliant,
+                x.Messages - x.Compliant,
+                Rate(x.Compliant, x.Messages),
+                Rate(x.DkimPass, x.Messages),
+                Rate(x.SpfPass, x.Messages),
+                x.Quarantined,
+                x.Rejected,
+                x.Reporters,
+                x.HeaderFroms,
+                x.FirstSeen,
+                x.LastSeen))
+            .OrderByDescending(x => x.FailedMessages)
+            .ThenByDescending(x => x.Messages)
+            .ToArray();
+    }
+
+    public async Task<SourceDetailDto?> GetSourceDetailAsync(Guid domainId, string sourceIp, int days, CancellationToken ct)
+    {
+        days = ClampDays(days);
+
+        if (!await db.Domains.AnyAsync(x => x.Id == domainId, ct))
+        {
+            return null;
+        }
+
+        var window = await ResolveWindowAsync(days, ct);
+        var records = DomainRecordsInWindow(domainId, window).Where(r => r.SourceIp == sourceIp);
+
+        var evaluated = await records
+            .GroupBy(r => new { r.DkimResult, r.SpfResult, r.Disposition })
+            .Select(g => new
+            {
+                g.Key.DkimResult,
+                g.Key.SpfResult,
+                g.Key.Disposition,
+                Messages = g.Sum(r => (long)r.MessageCount),
+            })
+            .ToListAsync(ct);
+
+        var messages = evaluated.Sum(x => x.Messages);
+        var compliant = evaluated.Where(x => x.DkimResult == "pass" || x.SpfResult == "pass").Sum(x => x.Messages);
+
+        var dispositions = new AnalyticsDispositionsDto(
+            evaluated.Where(x => x.Disposition == "none").Sum(x => x.Messages),
+            evaluated.Where(x => x.Disposition == "quarantine").Sum(x => x.Messages),
+            evaluated.Where(x => x.Disposition == "reject").Sum(x => x.Messages));
+
+        var combos = evaluated
+            .GroupBy(x => new { x.DkimResult, x.SpfResult })
+            .Select(g => new SourceEvaluatedComboDto(g.Key.DkimResult, g.Key.SpfResult, g.Sum(x => x.Messages)))
+            .OrderByDescending(x => x.Messages)
+            .ToArray();
+
+        var headerFroms = await GroupValuesAsync(records.GroupBy(r => r.HeaderFrom), ct);
+        var envelopeFroms = await GroupValuesAsync(records.GroupBy(r => r.EnvelopeFrom), ct);
+
+        var dkimAuthRows = await db.DmarcReportRecordDkimAuthResults
+            .AsNoTracking()
+            .Where(a => a.DmarcReportRecord!.SourceIp == sourceIp &&
+                        a.DmarcReportRecord.DmarcReport!.DomainId == domainId &&
+                        a.DmarcReportRecord.DmarcReport.RangeBeginUtc >= window.BeginUtc &&
+                        a.DmarcReportRecord.DmarcReport.RangeBeginUtc <= window.EndUtc)
+            .GroupBy(a => new { a.Domain, a.Selector, a.Result })
+            .Select(g => new
+            {
+                g.Key.Domain,
+                g.Key.Selector,
+                g.Key.Result,
+                Messages = g.Sum(a => (long)a.DmarcReportRecord!.MessageCount),
+            })
+            .OrderByDescending(x => x.Messages)
+            .Take(15)
+            .ToListAsync(ct);
+        var dkimAuth = dkimAuthRows
+            .Select(x => new SourceDkimAuthDto(x.Domain, x.Selector, x.Result, x.Messages))
+            .ToArray();
+
+        var spfAuthRows = await db.DmarcReportRecordSpfAuthResults
+            .AsNoTracking()
+            .Where(a => a.DmarcReportRecord!.SourceIp == sourceIp &&
+                        a.DmarcReportRecord.DmarcReport!.DomainId == domainId &&
+                        a.DmarcReportRecord.DmarcReport.RangeBeginUtc >= window.BeginUtc &&
+                        a.DmarcReportRecord.DmarcReport.RangeBeginUtc <= window.EndUtc)
+            .GroupBy(a => new { a.Domain, a.Scope, a.Result })
+            .Select(g => new
+            {
+                g.Key.Domain,
+                g.Key.Scope,
+                g.Key.Result,
+                Messages = g.Sum(a => (long)a.DmarcReportRecord!.MessageCount),
+            })
+            .OrderByDescending(x => x.Messages)
+            .Take(15)
+            .ToListAsync(ct);
+        var spfAuth = spfAuthRows
+            .Select(x => new SourceSpfAuthDto(x.Domain, x.Scope, x.Result, x.Messages))
+            .ToArray();
+
+        var reporterRows = await records
+            .GroupBy(r => r.DmarcReport!.OrganizationName)
+            .Select(g => new
+            {
+                OrganizationName = g.Key,
+                Reports = g.Select(r => r.DmarcReportId).Distinct().Count(),
+                Messages = g.Sum(r => (long)r.MessageCount),
+            })
+            .OrderByDescending(x => x.Messages)
+            .Take(10)
+            .ToListAsync(ct);
+        var reporters = reporterRows
+            .Select(x => new SourceReporterDto(x.OrganizationName, x.Reports, x.Messages))
+            .ToArray();
+
+        return new SourceDetailDto(
+            sourceIp,
+            messages,
+            compliant,
+            Rate(compliant, messages),
+            dispositions,
+            combos,
+            headerFroms,
+            envelopeFroms,
+            dkimAuth,
+            spfAuth,
+            reporters,
+            await TrendAsync(records, ct));
+    }
+
+    private async Task<IReadOnlyList<AnalyticsTrendPointDto>> TrendAsync(
+        IQueryable<Data.Entities.DmarcReportRecord> records,
+        CancellationToken ct)
+    {
+        var rows = await records
+            .GroupBy(r => r.DmarcReport!.RangeBeginUtc.Date)
+            .Select(g => new
+            {
+                Date = g.Key,
+                Messages = g.Sum(r => (long)r.MessageCount),
+                Compliant = g.Sum(r => r.DkimResult == "pass" || r.SpfResult == "pass" ? (long)r.MessageCount : 0L),
+            })
+            .OrderBy(x => x.Date)
+            .ToListAsync(ct);
+
+        return rows
+            .Select(x => new AnalyticsTrendPointDto(
+                x.Date.ToString("yyyy-MM-dd"),
+                x.Messages,
+                x.Compliant,
+                x.Messages - x.Compliant))
+            .ToArray();
+    }
+
+    private static async Task<IReadOnlyList<SourceValueCountDto>> GroupValuesAsync(
+        IQueryable<IGrouping<string, Data.Entities.DmarcReportRecord>> grouped,
+        CancellationToken ct)
+    {
+        var rows = await grouped
+            .Select(g => new { Value = g.Key, Messages = g.Sum(r => (long)r.MessageCount) })
+            .OrderByDescending(x => x.Messages)
+            .Take(10)
+            .ToListAsync(ct);
+
+        return rows
+            .Where(x => !string.IsNullOrWhiteSpace(x.Value))
+            .Select(x => new SourceValueCountDto(x.Value, x.Messages))
+            .ToArray();
+    }
+
+    private sealed class SourceAggregateRow
+    {
+        public string SourceIp { get; set; } = string.Empty;
+        public long Messages { get; set; }
+        public long Compliant { get; set; }
+        public long DkimPass { get; set; }
+        public long SpfPass { get; set; }
+        public long Quarantined { get; set; }
+        public long Rejected { get; set; }
+        public int Reporters { get; set; }
+        public int HeaderFroms { get; set; }
+        public DateTime FirstSeen { get; set; }
+        public DateTime LastSeen { get; set; }
+    }
+
+    private IQueryable<Data.Entities.DmarcReportRecord> DomainRecordsInWindow(Guid domainId, AnalyticsWindowDto window)
+        => RecordsInWindow(window).Where(r => r.DmarcReport!.DomainId == domainId);
 
     private IQueryable<Data.Entities.DmarcReportRecord> RecordsInWindow(AnalyticsWindowDto window)
         => db.DmarcReportRecords
