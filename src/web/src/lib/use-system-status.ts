@@ -8,7 +8,13 @@ function loadSystemStatus(): Promise<string> {
   statusPromise ??= fetchJson<{ service: string; mode: string; timestampUtc: string }>(
     '/api/v1/system/status',
   )
-    .then((payload) => `${payload.service} (${payload.mode}) at ${payload.timestampUtc}`)
+    .then((payload) => {
+      const at = new Date(payload.timestampUtc)
+      const shortTime = Number.isNaN(at.getTime())
+        ? payload.timestampUtc
+        : at.toISOString().slice(0, 19).replace('T', ' ') + ' UTC'
+      return `${payload.service} (${payload.mode}) at ${shortTime}`
+    })
     .catch((statusError: unknown) =>
       statusError instanceof Error ? `API unavailable: ${statusError.message}` : 'API unavailable',
     )

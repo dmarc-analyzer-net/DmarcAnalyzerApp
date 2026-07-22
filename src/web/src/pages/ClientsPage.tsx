@@ -1,4 +1,3 @@
-import { RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 
@@ -135,11 +134,6 @@ export function ClientsPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <Button variant="outline" onClick={() => void loadData()} disabled={busy}>
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
-            <Button onClick={() => openClientDialog()}>New Client</Button>
           </div>
         </CardHeader>
         {!!error && (
@@ -154,7 +148,12 @@ export function ClientsPage() {
       <Card>
         <CardHeader>
           <CardTitle>Clients</CardTitle>
-          <Badge variant="muted">{filteredClients.length} records</Badge>
+          <div className="flex items-center gap-3">
+            <Badge variant="muted">{filteredClients.length} records</Badge>
+            <Button onClick={() => openClientDialog()} disabled={busy}>
+              New Client
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <Table>

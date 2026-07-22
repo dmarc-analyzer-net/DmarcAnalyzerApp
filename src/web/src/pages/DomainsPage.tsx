@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ArrowUpDown, RefreshCw } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useSearchParams } from 'react-router-dom'
@@ -399,16 +399,11 @@ export function DomainsPage() {
               ))}
             </Select>
             <Input
-              placeholder="Search current list..."
-              className="w-64"
+              placeholder="Search..."
+              className="w-40"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
-            <Button variant="outline" onClick={() => void loadData()} disabled={busy}>
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
-            <Button onClick={() => openDomainDialog()}>New Domain</Button>
           </div>
         </CardHeader>
         {!!error && (
@@ -428,7 +423,10 @@ export function DomainsPage() {
               DMARC posture per domain over the last {days} days
             </CardDescription>
           </div>
-          <Badge variant="muted">{filteredRows.length} records</Badge>
+          <div className="flex items-center gap-3">
+            <Badge variant="muted">{filteredRows.length} records</Badge>
+            <Button onClick={() => openDomainDialog()}>New Domain</Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className={cn('overflow-x-auto transition-opacity', busy && 'opacity-60')}>
