@@ -52,6 +52,8 @@ builder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
 builder.Services.AddScoped<IMailboxSyncRunQueryService, MailboxSyncRunQueryService>();
 builder.Services.AddScoped<IMailboxHealthQueryService, MailboxHealthQueryService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<IHostnameResolver, HostnameResolver>();
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
 
 if (builder.Environment.IsDevelopment())

@@ -60,5 +60,25 @@ public sealed class AnalyticsModule : ICarterModule
             var detail = await service.GetSourceDetailAsync(domainId, ip.Trim(), days ?? 30, ct);
             return detail is null ? Results.NotFound() : Results.Ok(detail);
         });
+
+        app.MapGet("/api/v1/analytics/hostnames", async (
+            string? ips,
+            IHostnameResolver resolver,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(ips))
+            {
+                return Results.Json(new { error = "ips query parameter is required" }, statusCode: 400);
+            }
+
+            var list = ips.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (list.Length > 100)
+            {
+                return Results.Json(new { error = "at most 100 ips per request" }, statusCode: 400);
+            }
+
+            var resolved = await resolver.ResolveAsync(list, ct);
+            return Results.Ok(resolved);
+        });
     }
 }

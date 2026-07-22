@@ -443,6 +443,7 @@ export function DomainDetailPage() {
   const [notFound, setNotFound] = useState(false)
   const [sortKey, setSortKey] = useState<SourceSortKey | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [hostnames, setHostnames] = useState<Record<string, string | null>>({})
   const requestSeq = useRef(0)
 
   const loadData = useCallback(async () => {
@@ -478,6 +479,26 @@ export function DomainDetailPage() {
   useEffect(() => {
     void loadData()
   }, [loadData])
+
+  // Reverse-DNS enrichment: resolved lazily after the table renders so slow
+  // PTR lookups never block the sources list. Merges keep earlier answers.
+  useEffect(() => {
+    if (sources.length === 0) return
+    let cancelled = false
+    const ips = sources.slice(0, 100).map((s) => s.sourceIp)
+    void fetchJson<Record<string, string | null>>(
+      `/api/v1/analytics/hostnames?ips=${encodeURIComponent(ips.join(','))}`,
+    )
+      .then((resolved) => {
+        if (!cancelled) setHostnames((prev) => ({ ...prev, ...resolved }))
+      })
+      .catch(() => {
+        // Hostname enrichment is best-effort; the table stays IP-only on failure.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [sources])
 
   // Back link to the domains list, preserving the window and client filter it was opened with.
   const backHref = useMemo(() => {
@@ -759,6 +780,11 @@ export function DomainDetailPage() {
                                   />
                                   {source.sourceIp}
                                 </button>
+                                {hostnames[source.sourceIp] && (
+                                  <div className="mt-0.5 pl-5 text-xs text-muted-foreground">
+                                    {hostnames[source.sourceIp]}
+                                  </div>
+                                )}
                               </TableCell>
                               <TableCell className="text-right tabular-nums">
                                 {formatCompact(source.messages)}
