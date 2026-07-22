@@ -6,6 +6,7 @@ import { LoginPage } from '@/components/LoginPage'
 import { useAuth } from '@/lib/auth-context'
 import { ClientsPage } from '@/pages/ClientsPage'
 import { DashboardPage } from '@/pages/DashboardPage'
+import { DomainDetailPage } from '@/pages/DomainDetailPage'
 import { DomainsPage } from '@/pages/DomainsPage'
 import { MailboxSourcesPage } from '@/pages/MailboxSourcesPage'
 
@@ -33,6 +34,7 @@ function App() {
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/clients" element={<ClientsPage />} />
         <Route path="/domains" element={<DomainsPage />} />
+        <Route path="/domains/:domainId" element={<DomainDetailPage />} />
         <Route path="/mailbox-sources" element={<MailboxSourcesPage />} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>

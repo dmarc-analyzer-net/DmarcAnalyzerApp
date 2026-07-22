@@ -24,5 +24,41 @@ public sealed class AnalyticsModule : ICarterModule
             var items = await service.ListDomainAnalyticsAsync(days ?? 30, ct);
             return Results.Ok(items);
         });
+
+        app.MapGet("/api/v1/analytics/domains/{domainId:guid}/drilldown", async (
+            Guid domainId,
+            int? days,
+            IAnalyticsQueryService service,
+            CancellationToken ct) =>
+        {
+            var drilldown = await service.GetDomainDrilldownAsync(domainId, days ?? 30, ct);
+            return drilldown is null ? Results.NotFound() : Results.Ok(drilldown);
+        });
+
+        app.MapGet("/api/v1/analytics/domains/{domainId:guid}/sources", async (
+            Guid domainId,
+            int? days,
+            IAnalyticsQueryService service,
+            CancellationToken ct) =>
+        {
+            var sources = await service.ListDomainSourcesAsync(domainId, days ?? 30, ct);
+            return sources is null ? Results.NotFound() : Results.Ok(sources);
+        });
+
+        app.MapGet("/api/v1/analytics/domains/{domainId:guid}/source-detail", async (
+            Guid domainId,
+            string? ip,
+            int? days,
+            IAnalyticsQueryService service,
+            CancellationToken ct) =>
+        {
+            if (string.IsNullOrWhiteSpace(ip))
+            {
+                return Results.Json(new { error = "ip query parameter is required" }, statusCode: 400);
+            }
+
+            var detail = await service.GetSourceDetailAsync(domainId, ip.Trim(), days ?? 30, ct);
+            return detail is null ? Results.NotFound() : Results.Ok(detail);
+        });
     }
 }

@@ -49,6 +49,10 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - `GET /api/v1/analytics/domains` (per-domain compliance, DKIM/SPF pass rates, volume, sources, reporters, status classification)
   - relative windows anchored to newest report data (`days` query parameter)
 - Dashboard frontpage with compliance overview and URL routing for all console pages.
+- Per-source drill-down (`/domains/{id}`):
+  - domain drilldown/sources/source-detail analytics endpoints
+  - per-IP DMARC results with evaluated DKIM×SPF combos, raw auth breakdowns, identifiers, reporters, and per-source trend
+  - linkable expanded state via `?source=` query parameter
 
 - Authentication baseline:
   - `agency_user` and `user_session` entities with EF Core configuration

@@ -32,7 +32,7 @@ Prioritized list of candidate work.
 - [x] (done) Build admin operations UI for clients/domains/mailbox sources with list-first tables and modal create/edit.
 - [ ] (todo) Add migrations, repository layer, and indexing strategy for PostgreSQL.
 - [x] (done) Build React dashboards for pass/fail, SPF/DKIM alignment, and disposition (source IP trends pending drill-down below).
-- [ ] (todo) Add per-source drill-down with daily aggregates (domain/client/date-window filtering is implemented).
+- [x] (done) Add per-source drill-down with daily aggregates (domain detail page with per-IP DMARC results and raw auth breakdown).
 - [x] (done) Add scheduled polling orchestration with retries and sync audit history (worker-driven, `mailbox_sync_run`).
 - [ ] (todo) Implement per-client retention rules with default 27 months plus archival/purge jobs and legal-hold support.
 - [ ] (todo) Add Kubernetes deployment assets (manifests/Helm), health checks, and stateless service patterns.

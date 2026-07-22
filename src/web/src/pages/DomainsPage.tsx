@@ -1,9 +1,9 @@
-import { ArrowDown, ArrowUp, ArrowUpDown } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { DaysSelector } from '@/components/DaysSelector'
+import { SortButton, type SortDir } from '@/components/SortButton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
+  DOMAIN_STATUS_META,
   parseAnalyticsDays,
   type AnalyticsDays,
   type DomainAnalytics,
@@ -35,15 +36,7 @@ const initialDomainForm = {
   isActive: true,
 }
 
-const statusMeta: Record<
-  DomainStatus,
-  { label: string; badge: 'success' | 'warning' | 'danger' | 'muted'; fill: string; track: string }
-> = {
-  aligned: { label: 'Aligned', badge: 'success', fill: '#059669', track: '#d1fae5' },
-  issues: { label: 'Issues', badge: 'warning', fill: '#d97706', track: '#fef3c7' },
-  critical: { label: 'Critical', badge: 'danger', fill: '#e11d48', track: '#ffe4e6' },
-  no_data: { label: 'No data', badge: 'muted', fill: '#94a3b8', track: '#e2e8f0' },
-}
+const statusMeta = DOMAIN_STATUS_META
 
 const statusRank: Record<DomainStatus, number> = {
   critical: 0,
@@ -68,7 +61,6 @@ type SortKey =
   | 'sources'
   | 'lastReport'
   | 'client'
-type SortDir = 'asc' | 'desc'
 
 /** Direction applied when a column first becomes the active sort. */
 const defaultSortDir: Record<SortKey, SortDir> = {
@@ -136,38 +128,6 @@ function compareRows(a: DomainRow, b: DomainRow, key: SortKey, dir: SortDir): nu
   // Stable tie-breakers: higher volume first, then name.
   if (a.messages !== b.messages) return b.messages - a.messages
   return a.name.localeCompare(b.name)
-}
-
-type SortButtonProps = {
-  label: string
-  column: SortKey
-  sortKey: SortKey
-  sortDir: SortDir
-  onSort: (key: SortKey) => void
-}
-
-function SortButton({ label, column, sortKey, sortDir, onSort }: SortButtonProps) {
-  const active = column === sortKey
-  const Arrow = active ? (sortDir === 'asc' ? ArrowUp : ArrowDown) : ArrowUpDown
-  return (
-    <button
-      type="button"
-      onClick={() => onSort(column)}
-      className={cn(
-        'group inline-flex items-center gap-1 rounded-sm font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        active && 'text-foreground',
-      )}
-    >
-      {label}
-      <Arrow
-        aria-hidden
-        className={cn(
-          'h-3 w-3 shrink-0',
-          !active && 'opacity-0 transition-opacity group-hover:opacity-60 group-focus-visible:opacity-60',
-        )}
-      />
-    </button>
-  )
 }
 
 function ComplianceMeter({ row }: { row: DomainRow }) {
@@ -324,6 +284,15 @@ export function DomainsPage() {
     [filteredRows, sortKey, sortDir],
   )
 
+  // Carries the current window and client filter into the drill-down page (and its back link).
+  const detailSearch = useMemo(() => {
+    const params = new URLSearchParams()
+    if (days !== 30) params.set('days', String(days))
+    if (clientFilter) params.set('client', clientFilter)
+    const query = params.toString()
+    return query ? `?${query}` : ''
+  }, [days, clientFilter])
+
   const resetDialog = () => {
     setDialogOpen(false)
     setEditingDomainId(null)
@@ -472,7 +441,14 @@ export function DomainsPage() {
                   return (
                     <TableRow key={row.domainId}>
                       <TableCell>
-                        <p className="font-medium">{row.name}</p>
+                        <p>
+                          <Link
+                            to={`/domains/${row.domainId}${detailSearch}`}
+                            className="font-medium hover:text-primary hover:underline"
+                          >
+                            {row.name}
+                          </Link>
+                        </p>
                         {row.clientSlug === 'default' ? (
                           <Badge variant="warning" className="mt-0.5">
                             Default — needs client
