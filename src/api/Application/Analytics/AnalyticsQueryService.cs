@@ -161,6 +161,15 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
         var domains = await db.Domains
             .AsNoTracking()
             .OrderBy(x => x.Name)
+            .Select(x => new
+            {
+                x.Id,
+                x.Name,
+                x.IsActive,
+                x.ClientId,
+                ClientName = x.Client!.Name,
+                ClientSlug = x.Client.Slug,
+            })
             .ToListAsync(ct);
 
         var statsByDomain = perDomain.ToDictionary(x => x.DomainId);
@@ -178,6 +187,9 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
                     d.Id,
                     d.Name,
                     d.IsActive,
+                    d.ClientId,
+                    d.ClientName,
+                    d.ClientSlug,
                     messages,
                     compliant,
                     rate,
