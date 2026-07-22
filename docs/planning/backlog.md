@@ -6,20 +6,20 @@ Prioritized list of candidate work.
 
 - [x] (done) Define MVP feature set by benchmarking core workflows from dmarcian and EasyDMARC.
 - [x] (done) Scaffold solution in `src/` with C# web app backend and React frontend.
-- [ ] (todo) Integrate `DmarcRua` serializer and validate parsing against sample RUA XML fixtures.
+- [x] (done) Integrate `DmarcRua` serializer and validate parsing against sample RUA XML fixtures.
 - [x] (done) Design PostgreSQL schema for agency, clients, domains, mailbox sources, reports, records, and retention policies.
-- [ ] (todo) Implement mailbox ingestion service supporting both IMAP and POP3 via MailKit.
+- [ ] (todo) Add POP3 support to mailbox ingestion (IMAP via MailKit is implemented).
 - [ ] (todo) Implement tenant-aware data access model with strict client isolation for agency operators.
 - [ ] (todo) Implement single-database tenant-keyed architecture (tenant_id on all client-scoped entities).
 - [ ] (todo) Define RBAC with agency-admin/agency-analyst roles and future client-viewer role.
 - [x] (done) Implement local username/password authentication with secure password hashing and session flow.
-- [ ] (todo) Add secure mailbox credential storage with app-level encryption key management.
-- [ ] (todo) Add Dockerfiles and Docker Compose stack (api, ui, db, worker) for self-hosted deployment.
-- [ ] (todo) Define and implement global 60-minute polling schedule (24/7) with operational override at deployment level.
-- [ ] (todo) Implement report deduplication using client + domain + report-id + begin/end date range.
-- [ ] (todo) Enforce globally unique domain ownership across clients.
-- [ ] (todo) Add support for ZIP and GZIP attachment extraction in ingestion pipeline.
-- [ ] (todo) Implement unlimited initial mailbox backfill (oldest-to-newest) with durable checkpoints.
+- [x] (done) Add secure mailbox credential storage with app-level encryption key management (AES-256-GCM, key via `Security:CredentialEncryptionKey`).
+- [x] (done) Add Dockerfiles and Docker Compose stack (api, ui, db, worker) for self-hosted deployment.
+- [ ] (todo) Define and implement global 60-minute polling schedule (24/7) with operational override at deployment level (interval is configurable; production default not yet set).
+- [x] (done) Implement report deduplication using client + domain + report-id + begin/end date range.
+- [x] (done) Enforce globally unique domain ownership across clients.
+- [x] (done) Add support for ZIP and GZIP attachment extraction in ingestion pipeline (magic-byte detection; SharpCompress codecs incl. deflate64/bzip2/lzma/zstd).
+- [x] (done) Implement unlimited initial mailbox backfill (oldest-to-newest) with durable checkpoints.
 - [ ] (todo) Add magic link access model (single-client, read-only, 7-day default expiry).
 
 ## Medium Priority
@@ -31,9 +31,9 @@ Prioritized list of candidate work.
 - [x] (done) Refactor API route handlers to use an application service layer (DTOs + validation in services).
 - [x] (done) Build admin operations UI for clients/domains/mailbox sources with list-first tables and modal create/edit.
 - [ ] (todo) Add migrations, repository layer, and indexing strategy for PostgreSQL.
-- [ ] (todo) Build React dashboards for pass/fail, SPF/DKIM alignment, disposition, and source IP trends.
-- [ ] (todo) Add domain-level filtering, date range filtering, and per-source drill-down with daily aggregates.
-- [ ] (todo) Add scheduled polling orchestration with DB-backed job queue, retries, and sync audit history.
+- [x] (done) Build React dashboards for pass/fail, SPF/DKIM alignment, and disposition (source IP trends pending drill-down below).
+- [ ] (todo) Add per-source drill-down with daily aggregates (domain/client/date-window filtering is implemented).
+- [x] (done) Add scheduled polling orchestration with retries and sync audit history (worker-driven, `mailbox_sync_run`).
 - [ ] (todo) Implement per-client retention rules with default 27 months plus archival/purge jobs and legal-hold support.
 - [ ] (todo) Add Kubernetes deployment assets (manifests/Helm), health checks, and stateless service patterns.
 - [ ] (todo) Add branded PDF report generation (server-side HTML to PDF) with agency logo/colors/footer.

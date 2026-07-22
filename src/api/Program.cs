@@ -6,6 +6,7 @@ using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Application.MailboxSources;
 using DmarcAnalyzer.Api.Application.Reports;
+using DmarcAnalyzer.Api.Application.Security;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Middleware;
 using DmarcAnalyzer.Api.Modules;
@@ -22,6 +23,7 @@ if (mode == "worker")
 
     workerBuilder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
         options.UseNpgsql(workerConnectionString));
+    workerBuilder.Services.AddCredentialProtection(workerBuilder.Configuration);
     workerBuilder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
     workerBuilder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
     workerBuilder.Services.Configure<WorkerOptions>(workerBuilder.Configuration.GetSection("Worker"));
@@ -40,6 +42,7 @@ builder.Services.AddCarter();
 builder.Services.AddRouting(options => options.LowercaseUrls = true);
 builder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
     options.UseNpgsql(connectionString));
+builder.Services.AddCredentialProtection(builder.Configuration);
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IClientService, ClientService>();
 builder.Services.AddScoped<IDomainService, DomainService>();

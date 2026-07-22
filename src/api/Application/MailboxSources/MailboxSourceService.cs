@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Application.Common;
+using DmarcAnalyzer.Api.Application.Security;
 using DmarcAnalyzer.Api.Contracts.MailboxSources;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
@@ -6,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.MailboxSources;
 
-public sealed class MailboxSourceService(DmarcAnalyzerDbContext db) : IMailboxSourceService
+public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialProtector credentialProtector) : IMailboxSourceService
 {
     private static readonly string[] SupportedProtocols = ["imap", "pop3"];
 
@@ -53,7 +54,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db) : IMailboxSo
             Port = request.Port,
             UseTls = request.UseTls,
             Username = request.Username.Trim(),
-            PasswordEncrypted = request.Password,
+            PasswordEncrypted = credentialProtector.Protect(request.Password),
             DefaultClientId = request.DefaultClientId,
             IsActive = request.IsActive,
             CreatedAtUtc = now,
@@ -132,7 +133,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db) : IMailboxSo
                 return ServiceResult<MailboxSourceDto>.Failure("password cannot be empty", 400);
             }
 
-            source.PasswordEncrypted = request.Password;
+            source.PasswordEncrypted = credentialProtector.Protect(request.Password);
         }
 
         if (request.DefaultClientId.HasValue)

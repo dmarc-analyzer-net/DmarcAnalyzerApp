@@ -20,6 +20,7 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 public sealed class MailboxSyncService(
     DmarcAnalyzerDbContext db,
     IDmarcReportParser parser,
+    Security.ICredentialProtector credentialProtector,
     IOptions<WorkerOptions> options,
     ILogger<MailboxSyncService> logger) : IMailboxSyncService
 {
@@ -55,13 +56,28 @@ public sealed class MailboxSyncService(
         var reportsSkippedAsDuplicate = 0;
         var parseFailures = 0;
 
+        // Legacy rows store the password in plaintext; re-protect them on first use.
+        if (!credentialProtector.IsProtected(mailboxSource.PasswordEncrypted))
+        {
+            var reprotected = credentialProtector.Protect(mailboxSource.PasswordEncrypted);
+            if (reprotected != mailboxSource.PasswordEncrypted)
+            {
+                mailboxSource.PasswordEncrypted = reprotected;
+                mailboxSource.UpdatedAtUtc = DateTime.UtcNow;
+                await db.SaveChangesAsync(operationToken);
+                logger.LogInformation("Re-protected stored credential for mailbox source {MailboxSourceId}", mailboxSource.Id);
+            }
+        }
+
+        var mailboxPassword = credentialProtector.Unprotect(mailboxSource.PasswordEncrypted);
+
         try
         {
             using var client = new ImapClient();
             var secureSocketOptions = mailboxSource.UseTls ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
 
             await client.ConnectAsync(mailboxSource.Host, mailboxSource.Port, secureSocketOptions, ct);
-            await client.AuthenticateAsync(mailboxSource.Username, mailboxSource.PasswordEncrypted, operationToken);
+            await client.AuthenticateAsync(mailboxSource.Username, mailboxPassword, operationToken);
 
             var inbox = client.Inbox;
             await inbox.OpenAsync(FolderAccess.ReadOnly, operationToken);
