@@ -58,11 +58,14 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - auth endpoints: register, login, logout, me
   - CORS credentials support for frontend dev
 
+- Mailbox credential encryption at rest:
+  - AES-256-GCM via `Security:CredentialEncryptionKey` (base64, 32 bytes)
+  - legacy plaintext rows re-protected lazily on first sync
+  - plaintext passthrough with startup warning when no key is configured
+
 ## Planned Next
 
 - Repository/service pattern hardening and broader indexing strategy.
-- Mailbox credential encryption strategy implementation.
-- Attachment extraction hardening for unsupported compression methods.
 - Per-domain drill-down analytics (sources, auth-result detail over time).
 - Persist `policy_published` fields from reports to show published DMARC policy per domain.
 - Alerting, digest delivery, and export workflows.
