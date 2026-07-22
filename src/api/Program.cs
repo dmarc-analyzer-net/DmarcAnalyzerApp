@@ -1,4 +1,5 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Analytics;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Domains;
@@ -47,6 +48,7 @@ builder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
 builder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
 builder.Services.AddScoped<IMailboxSyncRunQueryService, MailboxSyncRunQueryService>();
 builder.Services.AddScoped<IMailboxHealthQueryService, MailboxHealthQueryService>();
+builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
 
 if (builder.Environment.IsDevelopment())
