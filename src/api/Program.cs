@@ -65,6 +65,13 @@ if (builder.Environment.IsDevelopment())
 
 var app = builder.Build();
 
+if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
+{
+    using var migrationScope = app.Services.CreateScope();
+    var db = migrationScope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>();
+    await db.Database.MigrateAsync();
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.UseCors("frontend-dev");
@@ -73,6 +80,13 @@ if (app.Environment.IsDevelopment())
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseMiddleware<SessionAuthMiddleware>();
+
+app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
+app.MapGet("/health/ready", async (DmarcAnalyzerDbContext db, CancellationToken ct) =>
+    await db.Database.CanConnectAsync(ct)
+        ? Results.Ok(new { status = "ready" })
+        : Results.Json(new { status = "unavailable" }, statusCode: 503));
+
 app.MapCarter();
 app.MapFallbackToFile("index.html");
 

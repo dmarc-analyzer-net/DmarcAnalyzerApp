@@ -110,6 +110,71 @@ public sealed class DmarcRuaReportParserTests
         Assert.Contains(result.ValidationMessages, x => x.Contains("normalized SPF scope value 'helo'", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void Parse_WithDmarcBisNamespace_StripsNamespaceAndParses()
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback xmlns="urn:ietf:params:xml:ns:dmarc-2.0">
+              <version>2.0</version>
+              <report_metadata>
+                <org_name>bis-test</org_name>
+                <email>noreply@example.com</email>
+                <report_id>bis-1</report_id>
+                <date_range>
+                  <begin>1737446400</begin>
+                  <end>1737532800</end>
+                </date_range>
+              </report_metadata>
+              <policy_published>
+                <domain>example.com</domain>
+                <adkim>r</adkim>
+                <aspf>r</aspf>
+                <p>none</p>
+                <sp>none</sp>
+                <pct>100</pct>
+              </policy_published>
+              <record>
+                <row>
+                  <source_ip>127.0.0.1</source_ip>
+                  <count>2</count>
+                  <policy_evaluated>
+                    <disposition>none</disposition>
+                    <dkim>pass</dkim>
+                    <spf>pass</spf>
+                  </policy_evaluated>
+                </row>
+                <identifiers>
+                  <header_from>example.com</header_from>
+                </identifiers>
+                <auth_results>
+                  <dkim>
+                    <domain>example.com</domain>
+                    <selector>s1</selector>
+                    <result>pass</result>
+                  </dkim>
+                  <spf>
+                    <domain>example.com</domain>
+                    <result>pass</result>
+                  </spf>
+                </auth_results>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal("bis-test", result.OrganizationName);
+        Assert.Equal("bis-1", result.ReportId);
+        Assert.Equal("example.com", result.PolicyDomain);
+        Assert.Equal(1, result.RecordCount);
+        Assert.Single(result.Records);
+        Assert.Equal(2, result.Records[0].MessageCount);
+        Assert.Contains(result.ValidationMessages, x => x.Contains("stripped XML namespace 'urn:ietf:params:xml:ns:dmarc-2.0'", StringComparison.Ordinal));
+    }
+
     private static Stream OpenFixture(string fixtureName)
     {
         var basePath = AppContext.BaseDirectory;
