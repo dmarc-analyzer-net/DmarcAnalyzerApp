@@ -44,6 +44,12 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - shadcn-style component primitives
   - reusable UI utility helpers
 
+- Analytics endpoints over ingested DMARC data:
+  - `GET /api/v1/analytics/summary` (compliance totals, daily trend, top failing domains, top reporters, dispositions, mailbox rollup)
+  - `GET /api/v1/analytics/domains` (per-domain compliance, DKIM/SPF pass rates, volume, sources, reporters, status classification)
+  - relative windows anchored to newest report data (`days` query parameter)
+- Dashboard frontpage with compliance overview and URL routing for all console pages.
+
 - Authentication baseline:
   - `agency_user` and `user_session` entities with EF Core configuration
   - local username/password auth with PBKDF2-SHA256 password hashing
@@ -57,8 +63,8 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
 - Repository/service pattern hardening and broader indexing strategy.
 - Mailbox credential encryption strategy implementation.
 - Attachment extraction hardening for unsupported compression methods.
-- Client-facing analytics dashboards over `dmarc_report*` datasets.
-- Dashboard analytics pages for DMARC/SPF/DKIM trends.
+- Per-domain drill-down analytics (sources, auth-result detail over time).
+- Persist `policy_published` fields from reports to show published DMARC policy per domain.
 - Alerting, digest delivery, and export workflows.
 
 ## Notes
