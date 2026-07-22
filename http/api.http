@@ -1,6 +1,32 @@
 @baseUrl = http://localhost:5076
 @mailboxSourceId = 00000000-0000-0000-0000-000000000000
 
+### Register agency user
+POST {{baseUrl}}/api/v1/auth/register
+Content-Type: application/json
+
+{
+  "email": "admin@agency.tld",
+  "password": "changeme1234",
+  "displayName": "Agency Admin",
+  "role": "agency_admin"
+}
+
+### Login
+POST {{baseUrl}}/api/v1/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@agency.tld",
+  "password": "changeme1234"
+}
+
+### Get current user
+GET {{baseUrl}}/api/v1/auth/me
+
+### Logout
+POST {{baseUrl}}/api/v1/auth/logout
+
 ### Health/status
 GET {{baseUrl}}/api/v1/system/status
 

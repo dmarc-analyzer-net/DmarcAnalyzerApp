@@ -12,7 +12,7 @@ Prioritized list of candidate work.
 - [ ] (todo) Implement tenant-aware data access model with strict client isolation for agency operators.
 - [ ] (todo) Implement single-database tenant-keyed architecture (tenant_id on all client-scoped entities).
 - [ ] (todo) Define RBAC with agency-admin/agency-analyst roles and future client-viewer role.
-- [ ] (todo) Implement local username/password authentication with secure password hashing and reset flow.
+- [x] (done) Implement local username/password authentication with secure password hashing and session flow.
 - [ ] (todo) Add secure mailbox credential storage with app-level encryption key management.
 - [ ] (todo) Add Dockerfiles and Docker Compose stack (api, ui, db, worker) for self-hosted deployment.
 - [ ] (todo) Define and implement global 60-minute polling schedule (24/7) with operational override at deployment level.

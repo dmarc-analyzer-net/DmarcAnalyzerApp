@@ -1,10 +1,12 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Application.MailboxSources;
 using DmarcAnalyzer.Api.Application.Reports;
 using DmarcAnalyzer.Api.Data;
+using DmarcAnalyzer.Api.Middleware;
 using DmarcAnalyzer.Api.Modules;
 using DmarcAnalyzer.Api.Workers;
 using Microsoft.EntityFrameworkCore;
@@ -37,6 +39,7 @@ builder.Services.AddCarter();
 builder.Services.AddRouting(options => options.LowercaseUrls = true);
 builder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
     options.UseNpgsql(connectionString));
+builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IClientService, ClientService>();
 builder.Services.AddScoped<IDomainService, DomainService>();
 builder.Services.AddScoped<IMailboxSourceService, MailboxSourceService>();
@@ -54,7 +57,8 @@ if (builder.Environment.IsDevelopment())
         {
             policy.WithOrigins("http://localhost:5173")
                 .AllowAnyHeader()
-                .AllowAnyMethod();
+                .AllowAnyMethod()
+                .AllowCredentials();
         });
     });
 }
@@ -68,6 +72,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+app.UseMiddleware<SessionAuthMiddleware>();
 app.MapCarter();
 app.MapFallbackToFile("index.html");
 

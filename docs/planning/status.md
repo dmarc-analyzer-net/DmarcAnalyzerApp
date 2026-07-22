@@ -44,10 +44,17 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - shadcn-style component primitives
   - reusable UI utility helpers
 
+- Authentication baseline:
+  - `agency_user` and `user_session` entities with EF Core configuration
+  - local username/password auth with PBKDF2-SHA256 password hashing
+  - HTTP-only secure cookie session (12h idle timeout, 7d absolute max)
+  - session auth middleware protecting all `/api/v1/` endpoints
+  - auth endpoints: register, login, logout, me
+  - CORS credentials support for frontend dev
+
 ## Planned Next
 
 - Repository/service pattern hardening and broader indexing strategy.
-- Authentication baseline (`agency_user`, session flow).
 - Mailbox credential encryption strategy implementation.
 - Attachment extraction hardening for unsupported compression methods.
 - Client-facing analytics dashboards over `dmarc_report*` datasets.
