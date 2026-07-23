@@ -40,6 +40,9 @@ Prioritized list of candidate work.
 - [ ] (todo) Add monthly email digest delivery and SMTP relay configuration.
 - [ ] (todo) Add alert engine for failure spikes and policy regression with per-client thresholds.
 - [ ] (todo) Add core audit logging for login events, config changes, sync runs, and magic-link usage.
+- [ ] (todo) Add guided path to enforcement: per-domain policy recommendation engine surfacing the next safe policy step (none -> quarantine -> reject) and the sources still blocking full enforcement (marketing site headline feature; not yet built).
+- [ ] (todo) Persist published DMARC policy (`policy_published` from reports) and add a record-inspection view comparing published DMARC/SPF/DKIM records against observed report data (site "Record inspection"; noted as Planned Next in status.md).
+- [ ] (todo) Add a threat feed view: dedicated list of unauthenticated/failing sending sources with IP, volume, and first/last-seen for spoofing investigation (site "Threats" / spoofing detection; distinct from the alert engine above).
 
 ## Low Priority
 
@@ -48,9 +51,11 @@ Prioritized list of candidate work.
 - [x] (done) Add optional OIDC support for external identity providers (hybrid handler + JIT provisioning; Zitadel tested, any OIDC provider via config).
 - [ ] (todo) Add read-only client portal mode for selected clients.
 - [ ] (todo) Add mailbox connectors for Microsoft 365 and Google Workspace APIs.
+- [ ] (todo) Add forensic/failure (RUF) report ingestion and parsing (MVP is scoped to aggregate/RUA only; marketing site advertises "aggregate and forensic").
 
 ## Parking Lot
 
 - [ ] (todo) Investigate DNS and WHOIS enrichment for sending infrastructure insights.
+- [ ] (todo) Add sending-source enrichment: map sending IPs/hostnames to known ESPs/services (beyond reverse DNS, which exists in HostnameResolver) and add IP geolocation for threat context (site claims sources "resolved to a recognisable service" and shown with "geography").
 - [ ] (todo) Evaluate anomaly detection for sudden DMARC/SPF/DKIM failure spikes.
 - [ ] (todo) Evaluate optional BIMI and TLS-RPT support after DMARC MVP.
