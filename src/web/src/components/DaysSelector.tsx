@@ -7,31 +7,32 @@ type DaysSelectorProps = {
   disabled?: boolean
 }
 
-/** Preset time-window selector (7 / 30 / 90 days) shared by analytics pages. */
+/** Segmented time-window selector (7 / 30 / 90 days) shared by analytics pages. */
 export function DaysSelector({ value, onChange, disabled }: DaysSelectorProps) {
   return (
-    <div
+    <span
       role="group"
       aria-label="Time window"
-      className="inline-flex shrink-0 items-center rounded-md border border-input bg-card p-0.5"
+      className="inline-flex shrink-0 gap-0.5 rounded-md bg-gray-100 p-[3px]"
     >
-      {ANALYTICS_DAYS_OPTIONS.map((days) => (
-        <button
-          key={days}
-          type="button"
-          disabled={disabled}
-          aria-pressed={value === days}
-          onClick={() => onChange(days)}
-          className={cn(
-            'h-8 rounded-[0.45rem] px-3 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50',
-            value === days
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
-          )}
-        >
-          {days} days
-        </button>
-      ))}
-    </div>
+      {ANALYTICS_DAYS_OPTIONS.map((days) => {
+        const active = value === days
+        return (
+          <button
+            key={days}
+            type="button"
+            disabled={disabled}
+            aria-pressed={active}
+            onClick={() => onChange(days)}
+            className={cn(
+              'rounded-[7px] px-3 py-[5px] font-body text-sm font-semibold transition-colors duration-[120ms] ease-out focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50',
+              active ? 'bg-surface-card text-body shadow-card' : 'text-secondary hover:text-body',
+            )}
+          >
+            {days}d
+          </button>
+        )
+      })}
+    </span>
   )
 }
