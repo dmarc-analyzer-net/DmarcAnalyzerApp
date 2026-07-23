@@ -2,6 +2,37 @@
 
 Prioritized list of candidate work.
 
+## Next Up (recommended sequence)
+
+The MVP is functionally complete: multi-tenant RBAC, pluggable auth (local +
+OIDC), worker ingestion, analytics dashboards, and per-source drill-down are
+all shipped. The near-term sequence below turns it from "works" into
+"operable and client-facing", ordered by value and dependencies.
+
+1. **Production polling schedule + worker hardening.** The worker interval is
+   configurable but still set to a dev cadence; define the 60-minute 24/7
+   production default with a deployment override. Small, and a prerequisite
+   for any real deployment. (Closes the High-Priority polling item.)
+2. **Retention + purge jobs.** `client.retention_months` (default 27) exists
+   but nothing enforces it — `dmarc_report*` data grows unbounded. Add
+   scheduled archival/purge with legal-hold support. Compliance-relevant.
+3. **Alert engine for failure spikes / policy regression.** The drill-down
+   surfaces problems reactively; per-client thresholds + notifications make it
+   proactive. Highest client-facing value now that the data is trustworthy.
+4. **Email digest + SMTP relay.** Monthly per-client summaries; shares
+   delivery infrastructure with #3, so build them together.
+5. **Audit logging.** Login, config change, sync run, and (future) magic-link
+   events. Needed for agency trust and as a prerequisite for #6.
+6. **Client access: portal polish + magic links.** The `client_viewer` role
+   already approximates a read-only portal; add magic-link (single-client,
+   read-only, 7-day) sharing for occasional client access without accounts.
+
+Smaller, independent items to slot in opportunistically: **POP3 ingestion**,
+the **report upload/query API endpoints**, and **CSV/JSON export**. Deferred
+until a deployment needs them: **Kubernetes assets**, **branded PDF reports**,
+**M365/Google Workspace connectors**. See the categorized lists below for the
+full inventory.
+
 ## High Priority
 
 - [x] (done) Define MVP feature set by benchmarking core workflows from dmarcian and EasyDMARC.
