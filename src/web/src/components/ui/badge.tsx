@@ -1,29 +1,57 @@
 import { cva, type VariantProps } from 'class-variance-authority'
 import type * as React from 'react'
+
 import { cn } from '@/lib/utils'
 
+/**
+ * Status pill. `dot` prepends a small status dot. `default`/`brand` and
+ * `muted`/`neutral` are kept as aliases so existing pages keep compiling.
+ */
 const badgeVariants = cva(
-  'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-medium',
+  'inline-flex items-center gap-1.5 whitespace-nowrap rounded-pill px-2.5 py-0.5 font-body text-xs font-semibold leading-[18px]',
   {
     variants: {
       variant: {
-        default: 'border-primary/20 bg-primary/10 text-primary',
-        muted: 'border-border bg-muted text-muted-foreground',
-        success: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-        warning: 'border-amber-200 bg-amber-50 text-amber-700',
-        danger: 'border-rose-200 bg-rose-50 text-rose-700',
+        brand: 'bg-brand-subtle text-teal-800',
+        default: 'bg-brand-subtle text-teal-800',
+        success: 'bg-[var(--status-ok-bg)] text-[var(--status-ok-fg)]',
+        warning: 'bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]',
+        danger: 'bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]',
+        neutral: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
+        muted: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
       },
     },
     defaultVariants: {
-      variant: 'default',
+      variant: 'neutral',
     },
   },
 )
 
-export function Badge({
-  className,
-  variant,
-  ...props
-}: React.ComponentProps<'span'> & VariantProps<typeof badgeVariants>) {
-  return <span className={cn(badgeVariants({ variant }), className)} {...props} />
+const DOT_COLOR: Record<NonNullable<VariantProps<typeof badgeVariants>['variant']>, string> = {
+  brand: 'var(--status-ok-dot)',
+  default: 'var(--status-ok-dot)',
+  success: 'var(--status-ok-dot)',
+  warning: 'var(--status-warn-dot)',
+  danger: 'var(--status-danger-dot)',
+  neutral: 'var(--status-neutral-dot)',
+  muted: 'var(--status-neutral-dot)',
+}
+
+type BadgeProps = React.ComponentProps<'span'> &
+  VariantProps<typeof badgeVariants> & {
+    dot?: boolean
+  }
+
+export function Badge({ className, variant, dot = false, children, ...props }: BadgeProps) {
+  return (
+    <span className={cn(badgeVariants({ variant }), className)} {...props}>
+      {dot ? (
+        <span
+          className="h-[7px] w-[7px] shrink-0 rounded-full"
+          style={{ background: DOT_COLOR[variant ?? 'neutral'] }}
+        />
+      ) : null}
+      {children}
+    </span>
+  )
 }

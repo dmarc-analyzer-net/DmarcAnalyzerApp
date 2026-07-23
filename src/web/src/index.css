@@ -1,20 +1,110 @@
+/* Self-hosted fonts (no CDN dependency) via Fontsource. */
+@import '@fontsource/space-grotesk/400.css';
+@import '@fontsource/space-grotesk/500.css';
+@import '@fontsource/space-grotesk/700.css';
+@import '@fontsource/public-sans/400.css';
+@import '@fontsource/public-sans/500.css';
+@import '@fontsource/public-sans/600.css';
+@import '@fontsource/public-sans/700.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/500.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  /* Semantic aliases — the source of truth referenced by the Tailwind theme. */
+  --brand: #0e9481;
+  --brand-hover: #0c7568;
+  --brand-active: #0b5d54;
+  --brand-subtle: #effaf7;
+  --brand-ring: rgba(14, 148, 129, 0.28);
+
+  --surface-page: #f5f8f7;
+  --surface-card: #ffffff;
+  --surface-sunken: #eef3f1;
+  --surface-ink: #0b1d18;
+
+  --text-body: #101f1c;
+  --text-secondary: #6b807a;
+  --text-faint: #9fb0ab;
+  --text-on-brand: #ffffff;
+
+  --border-default: #e3eae8;
+  --border-strong: #cfdad6;
+
+  --status-ok-fg: #0b5d54;
+  --status-ok-bg: #d7f4ec;
+  --status-ok-dot: #0e9481;
+  --status-warn-fg: #8a4406;
+  --status-warn-bg: #fdf0d5;
+  --status-warn-dot: #d97706;
+  --status-danger-fg: #a81f3d;
+  --status-danger-bg: #fde5ea;
+  --status-danger-dot: #dc3d5c;
+  --status-neutral-fg: #54685f;
+  --status-neutral-bg: #eef3f1;
+  --status-neutral-dot: #9fb0ab;
+
+  --link: #0c7568;
+  --link-hover: #0b5d54;
+  --focus-ring: 0 0 0 3px var(--brand-ring);
+
+  /* Raw scale tokens (design-system source of truth) so ported inline styles resolve. */
+  --teal-600: #0e9481; --teal-300: #7eddc7;
+  --mint-400: #3ae0b0;
+  --ink-900: #0b1d18; --ink-800: #0e2620;
+  --gray-50: #f5f8f7; --gray-100: #eef3f1; --gray-200: #e3eae8; --gray-300: #cfdad6;
+  --gray-400: #9fb0ab; --gray-500: #6b807a; --gray-600: #54685f; --gray-900: #101f1c;
+
+  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-body: 'Public Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --text-xs: 12px; --text-sm: 13px; --text-base: 14px; --text-md: 15px; --text-lg: 18px;
+  --text-xl: 22px; --text-2xl: 28px; --text-3xl: 36px; --text-4xl: 48px; --text-5xl: 60px;
+  --leading-tight: 1.1; --leading-snug: 1.3; --leading-normal: 1.55;
+  --tracking-tight: -0.02em; --tracking-display: -0.03em; --tracking-wide: 0.06em;
+  --weight-regular: 400; --weight-medium: 500; --weight-semibold: 600; --weight-bold: 700;
+
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px; --space-5: 20px;
+  --space-6: 24px; --space-8: 32px; --space-10: 40px; --space-12: 48px; --space-16: 64px;
+  --radius-xs: 6px; --radius-sm: 8px; --radius-md: 10px; --radius-lg: 14px; --radius-xl: 18px; --radius-pill: 999px;
+  --control-h-sm: 32px; --control-h-md: 36px; --control-h-lg: 42px;
+  --container-max: 1160px; --sidebar-w: 230px;
+
+  --shadow-card: 0 1px 2px rgba(11,29,24,.05);
+  --shadow-raised: 0 4px 12px rgba(11,29,24,.08),0 1px 2px rgba(11,29,24,.05);
+  --shadow-overlay: 0 20px 48px rgba(11,29,24,.18),0 4px 12px rgba(11,29,24,.08);
+  --shadow-ink-panel: 0 24px 60px rgba(6,47,43,.25);
+  --ease-out: cubic-bezier(.2,.8,.3,1); --dur-fast: 120ms; --dur-normal: 200ms;
+}
+
 @layer base {
   * {
-    @apply border-border;
+    border-color: var(--border-default);
   }
 
   body {
-    @apply bg-background text-foreground antialiased;
-    background-image: radial-gradient(circle at 90% -10%, #d5ebff 0%, #f4f8fd 52%);
-    font-family: 'IBM Plex Sans', 'Segoe UI', sans-serif;
+    background: var(--surface-page);
+    color: var(--text-body);
+    font-family: 'Public Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
 
   #root {
     min-height: 100vh;
+  }
+}
+
+@layer utilities {
+  .focus-ring {
+    outline: none;
+  }
+  .focus-ring:focus-visible {
+    box-shadow: var(--focus-ring);
   }
 }

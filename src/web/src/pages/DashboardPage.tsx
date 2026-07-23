@@ -1,44 +1,33 @@
-import { Inbox, Loader2, RefreshCw } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { DaysSelector } from '@/components/DaysSelector'
-import { TrendChart } from '@/components/TrendChart'
+import { StatCard } from '@/components/data/StatCard'
+import { TrendChart } from '@/components/data/TrendChart'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Card, CardHeader } from '@/components/ui/card'
+import { Icon } from '@/components/ui/icon'
+import { Table, TableBody, TableCell, TableRow } from '@/components/ui/table'
 import { parseAnalyticsDays, type AnalyticsDays, type AnalyticsSummary } from '@/lib/analytics'
 import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isStaff } from '@/lib/authz'
-import { formatCompact, formatFullDate, formatPercent } from '@/lib/format'
-import { useSystemStatus } from '@/lib/use-system-status'
-import { cn } from '@/lib/utils'
+import { formatCompact, formatFullDate, formatPercent, formatShortDate } from '@/lib/format'
 
-type StatTileProps = {
-  label: string
-  value: string
-  sub?: string
-  subClassName?: string
-}
+type BadgeVariant = 'success' | 'warning' | 'danger'
 
-function StatTile({ label, value, sub, subClassName }: StatTileProps) {
-  return (
-    <Card>
-      <CardContent className="pt-4">
-        <p className="text-xs font-medium text-muted-foreground">{label}</p>
-        <p className="mt-1 text-2xl font-semibold">{value}</p>
-        {sub && <p className={cn('mt-0.5 text-xs text-muted-foreground', subClassName)}>{sub}</p>}
-      </CardContent>
-    </Card>
-  )
+/** Severity for a per-domain compliance fraction (0..1). */
+function complianceVariant(rate: number): BadgeVariant {
+  if (rate < 0.75) return 'danger'
+  if (rate < 0.95) return 'warning'
+  return 'success'
 }
 
 export function DashboardPage() {
-  const status = useSystemStatus()
   const { user } = useAuth()
   const staff = isStaff(user)
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const days = parseAnalyticsDays(searchParams.get('days'))
 
@@ -74,246 +63,143 @@ export function DashboardPage() {
   const totals = summary?.totals
   const isEmpty = !!summary && totals?.reports === 0
 
+  const subtitle = (() => {
+    if (!summary || !totals) return 'Monitoring across all domains'
+    const parts = [`${formatCompact(totals.domains)} monitored`]
+    parts.push(
+      summary.window.anchoredToLatestData
+        ? `data through ${formatFullDate(summary.window.endUtc)}`
+        : `last ${summary.window.days} days`,
+    )
+    if (summary.mailboxes) {
+      parts.push(`${summary.mailboxes.healthy}/${summary.mailboxes.total} mailboxes healthy`)
+    }
+    parts.push(`${summary.topFailingDomains.length} need attention`)
+    return parts.join(' · ')
+  })()
+
   return (
     <>
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle>Dashboard</CardTitle>
-            <CardDescription className="mt-1">{status}</CardDescription>
-            {summary && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                {summary.window.anchoredToLatestData
-                  ? `Data through ${formatFullDate(summary.window.endUtc)} — window anchored to the latest report data`
-                  : `Last ${summary.window.days} days`}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <DaysSelector value={days} onChange={setDays} disabled={busy} />
-            <Button variant="outline" onClick={() => void loadData()} disabled={busy}>
-              <RefreshCw className="h-4 w-4" />
-              Refresh
-            </Button>
-          </div>
-        </CardHeader>
-        {!!error && (
-          <CardContent>
-            <p className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </p>
-          </CardContent>
-        )}
-      </Card>
-
-      {!summary && busy && (
-        <div className="flex justify-center py-20">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-label="Loading" />
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-xl font-bold tracking-tight text-body">Dashboard</h1>
+          <p className="mt-1 text-sm text-secondary">{subtitle}</p>
         </div>
-      )}
+        <div className="flex shrink-0 gap-2.5">
+          <DaysSelector value={days} onChange={setDays} disabled={busy} />
+          <Button variant="secondary" icon="refresh-cw" onClick={() => void loadData()} disabled={busy}>
+            Refresh
+          </Button>
+        </div>
+      </div>
 
-      {isEmpty && summary && (
-        <Card>
-          <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
-            <Inbox className="h-10 w-10 text-muted-foreground" />
+      {error ? (
+        <div className="mb-3.5 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+          {error}
+        </div>
+      ) : null}
+
+      {!summary && busy ? (
+        <div className="flex justify-center py-20">
+          <Icon name="loader-circle" size={24} className="animate-spin text-secondary" />
+        </div>
+      ) : null}
+
+      {isEmpty && summary ? (
+        <Card pad>
+          <div className="flex flex-col items-center gap-3 py-16 text-center">
+            <Icon name="inbox" size={40} className="text-faint" />
             <div>
-              <p className="text-base font-semibold">No DMARC reports yet</p>
-              <p className="mt-1 max-w-md text-sm text-muted-foreground">
+              <p className="text-base font-semibold text-body">No DMARC reports yet</p>
+              <p className="mt-1 max-w-md text-sm text-secondary">
                 Analytics will appear once aggregate reports have been ingested.
-                {summary.mailboxes &&
-                  ` Mailboxes connected: ${summary.mailboxes.healthy}/${summary.mailboxes.total} healthy.`}
+                {summary.mailboxes
+                  ? ` Mailboxes connected: ${summary.mailboxes.healthy}/${summary.mailboxes.total} healthy.`
+                  : ''}
               </p>
             </div>
-            {staff && (
-              <Button asChild variant="outline" size="sm">
+            {staff ? (
+              <Button asChild variant="secondary" size="sm">
                 <Link to="/mailbox-sources">Review mailbox sources</Link>
               </Button>
-            )}
-          </CardContent>
+            ) : null}
+          </div>
         </Card>
-      )}
+      ) : null}
 
-      {summary && totals && !isEmpty && (
-        <div className={cn('space-y-4 transition-opacity', busy && 'opacity-60')}>
-          {/* Hero + primary stat tiles */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Card>
-              <CardContent className="pt-4">
-                <p className="text-xs font-medium text-muted-foreground">DMARC compliance</p>
-                <p className="mt-1 text-5xl font-semibold leading-tight text-primary">
-                  {formatPercent(totals.complianceRate)}
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {formatCompact(totals.compliantMessages)} of {formatCompact(totals.messages)}{' '}
-                  messages compliant
-                </p>
-              </CardContent>
-            </Card>
-            <StatTile
-              label="Total messages"
-              value={formatCompact(totals.messages)}
-              sub={`across ${formatCompact(totals.reports)} reports`}
-            />
-            <StatTile
-              label="Active domains"
-              value={`${totals.activeDomains}/${totals.domains}`}
-              sub="active / total"
-            />
-            <StatTile
-              label="Reports received"
-              value={formatCompact(totals.reports)}
-              sub={`${formatCompact(totals.failingSources)} failing sources`}
+      {summary && totals && !isEmpty ? (
+        <div className={busy ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+          <div className="mb-3.5 grid grid-cols-2 gap-3.5 sm:grid-cols-4">
+            <StatCard label="Domains monitored" value={formatCompact(totals.domains)} />
+            <StatCard label="DMARC compliance" value={formatPercent(totals.complianceRate)} />
+            <StatCard label="Messages analyzed" value={formatCompact(totals.messages)} />
+            <StatCard
+              label="Spoofing blocked"
+              value={formatCompact(summary.dispositions.quarantine + summary.dispositions.reject)}
+              extra={
+                totals.failingSources > 0 ? (
+                  <Badge variant="danger">{formatCompact(totals.failingSources)} sources</Badge>
+                ) : undefined
+              }
             />
           </div>
 
-          {/* Secondary tiles */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <StatTile label="DKIM pass rate" value={formatPercent(totals.dkimPassRate)} />
-            <StatTile label="SPF pass rate" value={formatPercent(totals.spfPassRate)} />
-            {summary.mailboxes && (
-              <StatTile
-                label="Mailboxes"
-                value={`${summary.mailboxes.healthy}/${summary.mailboxes.total}`}
-                sub={
-                  summary.mailboxes.failing > 0
-                    ? `${summary.mailboxes.failing} failing`
-                    : 'All healthy'
-                }
-                subClassName={
-                  summary.mailboxes.failing > 0 ? 'font-medium text-destructive' : undefined
-                }
-              />
-            )}
-          </div>
-
-          {/* Main chart */}
-          <Card>
-            <CardHeader>
-              <div>
-                <CardTitle>Message volume</CardTitle>
-                <CardDescription className="mt-1">
-                  Daily messages, compliant vs failed
-                </CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent>
+          <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-[1.6fr_1fr]">
+            <Card pad>
+              <CardHeader title="Messages by day" description="Pass vs fail across all domains" />
               <TrendChart
-                trend={summary.trend}
-                beginUtc={summary.window.beginUtc}
-                endUtc={summary.window.endUtc}
+                height={170}
+                data={summary.trend.map((point) => ({
+                  label: formatShortDate(point.date),
+                  pass: point.compliant,
+                  fail: point.failed,
+                }))}
               />
-            </CardContent>
-          </Card>
-
-          {/* Side-by-side tables */}
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <div>
-                  <CardTitle>Domains needing attention</CardTitle>
-                  <CardDescription className="mt-1">
-                    Highest failing volume in this window
-                  </CardDescription>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {summary.topFailingDomains.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-muted-foreground">
-                    No failing domains — everything is aligned.
-                  </p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Domain</TableHead>
-                        <TableHead className="text-right">Messages</TableHead>
-                        <TableHead className="text-right">Failed</TableHead>
-                        <TableHead className="text-right">Compliance</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {summary.topFailingDomains.map((row) => (
-                        <TableRow key={row.domainId}>
-                          <TableCell className="font-medium">
-                            <Link
-                              to={`/domains/${row.domainId}${days === 30 ? '' : `?days=${days}`}`}
-                              className="hover:text-primary hover:underline"
-                            >
-                              {row.domain}
-                            </Link>
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {formatCompact(row.messages)}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {formatCompact(row.failedMessages)}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {formatPercent(row.complianceRate)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <div>
-                  <CardTitle>Top reporters</CardTitle>
-                  <CardDescription className="mt-1">
-                    Organizations sending aggregate reports
-                  </CardDescription>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {summary.topReporters.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-muted-foreground">
-                    No reports received in this window.
-                  </p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Organization</TableHead>
-                        <TableHead className="text-right">Reports</TableHead>
-                        <TableHead className="text-right">Messages</TableHead>
+            <Card pad={false}>
+              <div className="px-5 pt-4 pb-2">
+                <CardHeader
+                  title="Needs attention"
+                  description={
+                    summary.topFailingDomains.length === 1
+                      ? '1 domain below target'
+                      : `${summary.topFailingDomains.length} domains below target`
+                  }
+                />
+              </div>
+              {summary.topFailingDomains.length === 0 ? (
+                <p className="px-5 pb-5 text-sm text-secondary">
+                  No domains below target — everything is aligned.
+                </p>
+              ) : (
+                <Table>
+                  <TableBody>
+                    {summary.topFailingDomains.map((row, index) => (
+                      <TableRow
+                        key={row.domainId}
+                        last={index === summary.topFailingDomains.length - 1}
+                        onClick={() =>
+                          navigate(
+                            `/domains/${row.domainId}${days === 30 ? '' : `?days=${days}`}`,
+                          )
+                        }
+                      >
+                        <TableCell mono>{row.domain}</TableCell>
+                        <TableCell align="right">
+                          <Badge variant={complianceVariant(row.complianceRate)}>
+                            {formatPercent(row.complianceRate)}
+                          </Badge>
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {summary.topReporters.map((row) => (
-                        <TableRow key={row.organizationName}>
-                          <TableCell className="font-medium">{row.organizationName}</TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {formatCompact(row.reports)}
-                          </TableCell>
-                          <TableCell className="text-right tabular-nums">
-                            {formatCompact(row.messages)}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </CardContent>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
             </Card>
           </div>
-
-          {/* Disposition summary */}
-          <Card>
-            <CardContent className="flex flex-wrap items-center gap-3 py-4">
-              <p className="text-sm font-medium text-muted-foreground">Dispositions</p>
-              <Badge variant="muted">none · {formatCompact(summary.dispositions.none)}</Badge>
-              <Badge variant="warning">
-                quarantine · {formatCompact(summary.dispositions.quarantine)}
-              </Badge>
-              <Badge variant="danger">reject · {formatCompact(summary.dispositions.reject)}</Badge>
-            </CardContent>
-          </Card>
         </div>
-      )}
+      ) : null}
     </>
   )
 }
