@@ -39,10 +39,11 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     - `dmarc_report_record`
     - `dmarc_report_record_dkim_auth_result`
     - `dmarc_report_record_spf_auth_result`
-- Frontend design system foundation:
-  - Tailwind setup
-  - shadcn-style component primitives
-  - reusable UI utility helpers
+- Console visual redesign (new "ink-green/teal" design system):
+  - design tokens as CSS vars + Tailwind theme; self-hosted fonts (Space Grotesk / Public Sans / JetBrains Mono) via Fontsource, no CDN
+  - primitives ported from the design handoff (Button/Badge/Card/Input/Select/Dialog/Table/Icon/StatCard/PolicyBadge/ComplianceBar/DaysSelector/TrendChart)
+  - new sidebar shell; all six screens rebuilt (Dashboard, Domains, Domain Detail, Clients, Users, Mailbox Sources) + Login
+  - Domains/Detail surface published policy (PolicyBadge p=…) and enforcement status (Enforced/Ramping/Spoofing/Monitoring)
 
 - Analytics endpoints over ingested DMARC data:
   - `GET /api/v1/analytics/summary` (compliance totals, daily trend, top failing domains, top reporters, dispositions, mailbox rollup)

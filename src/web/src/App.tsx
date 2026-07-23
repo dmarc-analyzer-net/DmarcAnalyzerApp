@@ -18,7 +18,7 @@ function App() {
   if (status === 'loading') {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-label="Loading" />
+        <Loader2 className="h-6 w-6 animate-spin text-secondary" aria-label="Loading" />
       </div>
     )
   }

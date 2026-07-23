@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -11,13 +11,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin } from '@/lib/authz'
 import type { Client } from '@/lib/entities'
-import { useSystemStatus } from '@/lib/use-system-status'
 
 const initialClientForm = {
   name: '',
@@ -28,13 +28,12 @@ const initialClientForm = {
 }
 
 export function ClientsPage() {
-  const status = useSystemStatus()
   const { user } = useAuth()
   const canManage = isAdmin(user)
 
   const [clients, setClients] = useState<Client[]>([])
   const [search, setSearch] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -123,99 +122,154 @@ export function ClientsPage() {
     }
   }
 
+  const subtitle = `${clients.length} ${clients.length === 1 ? 'client' : 'clients'}`
+
   return (
     <>
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle>Operations Console</CardTitle>
-            <CardDescription className="mt-1">{status}</CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="Search current list..."
-              className="w-64"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        </CardHeader>
-        {!!error && (
-          <CardContent>
-            <p className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </p>
-          </CardContent>
-        )}
-      </Card>
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-xl font-bold tracking-tight text-body">Clients</h1>
+          <p className="mt-1 text-sm text-secondary">{subtitle}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2.5">
+          <Input
+            icon="search"
+            placeholder="Search clients"
+            className="w-56"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {canManage && (
+            <Button icon="plus" onClick={() => openClientDialog()}>
+              Add client
+            </Button>
+          )}
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Clients</CardTitle>
-          <div className="flex items-center gap-3">
-            <Badge variant="muted">{filteredClients.length} records</Badge>
-            {canManage && (
-              <Button onClick={() => openClientDialog()} disabled={busy}>
-                New Client
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Slug</TableHead>
-                <TableHead>Timezone</TableHead>
-                <TableHead>Retention</TableHead>
-                <TableHead>Status</TableHead>
-                {canManage && <TableHead className="text-right">Actions</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredClients.map((client) => (
-                <TableRow key={client.id}>
-                  <TableCell className="font-medium">{client.name}</TableCell>
-                  <TableCell>{client.slug}</TableCell>
-                  <TableCell>{client.timezone}</TableCell>
-                  <TableCell>{client.retentionMonths} mo</TableCell>
-                  <TableCell>
-                    <Badge variant={client.isActive ? 'success' : 'muted'}>
-                      {client.isActive ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </TableCell>
-                  {canManage && (
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm" onClick={() => openClientDialog(client)}>
-                        Edit
-                      </Button>
-                    </TableCell>
-                  )}
+      {error ? (
+        <div className="mb-3.5 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+          {error}
+        </div>
+      ) : null}
+
+      {busy && clients.length === 0 ? (
+        <div className="flex justify-center py-20">
+          <Icon name="loader-circle" size={24} className="animate-spin text-secondary" />
+        </div>
+      ) : (
+        <Card pad={false} className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Client</TableHead>
+                  <TableHead>Slug</TableHead>
+                  <TableHead className="text-right">Retention</TableHead>
+                  <TableHead>Timezone</TableHead>
+                  <TableHead className={canManage ? undefined : 'text-right'}>Status</TableHead>
+                  {canManage && <TableHead className="text-right">Actions</TableHead>}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              </TableHeader>
+              <TableBody>
+                {filteredClients.map((client, index) => (
+                  <TableRow key={client.id} last={index === filteredClients.length - 1}>
+                    <TableCell className="font-semibold">{client.name}</TableCell>
+                    <TableCell mono>{client.slug}</TableCell>
+                    <TableCell mono align="right">
+                      {client.retentionMonths} mo
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm text-secondary">{client.timezone}</span>
+                    </TableCell>
+                    <TableCell align={canManage ? 'left' : 'right'}>
+                      <Badge variant={client.isActive ? 'success' : 'neutral'}>
+                        {client.isActive ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </TableCell>
+                    {canManage && (
+                      <TableCell align="right">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          icon="pencil"
+                          onClick={() => openClientDialog(client)}
+                        >
+                          Edit
+                        </Button>
+                      </TableCell>
+                    )}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+          {filteredClients.length === 0 ? (
+            <p className="px-5 py-10 text-center text-sm text-secondary">
+              No clients found{search ? ' for the current search' : ''}.
+            </p>
+          ) : null}
+        </Card>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={(open) => (!open ? resetDialog() : setDialogOpen(true))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingClientId ? 'Edit Client' : 'Create Client'}</DialogTitle>
-            <DialogDescription>Manage agency client account profile and settings.</DialogDescription>
+            <DialogTitle>{editingClientId ? 'Edit client' : 'Add client'}</DialogTitle>
+            <DialogDescription>
+              Manage the agency client account profile and settings.
+            </DialogDescription>
           </DialogHeader>
-          <form className="grid gap-3" onSubmit={createOrUpdateClient}>
-            <Input placeholder="Name" value={clientForm.name} onChange={(e) => setClientForm((x) => ({ ...x, name: e.target.value }))} required />
-            <Input placeholder="Slug" value={clientForm.slug} onChange={(e) => setClientForm((x) => ({ ...x, slug: e.target.value }))} required />
-            <Input placeholder="Timezone" value={clientForm.timezone} onChange={(e) => setClientForm((x) => ({ ...x, timezone: e.target.value }))} required />
-            <Input type="number" min={1} value={clientForm.retentionMonths} onChange={(e) => setClientForm((x) => ({ ...x, retentionMonths: Number(e.target.value || 27) }))} required />
-            <label className="text-sm text-muted-foreground">
-              <input className="mr-2" type="checkbox" checked={clientForm.isActive} onChange={(e) => setClientForm((x) => ({ ...x, isActive: e.target.checked }))} />
+          <form className="grid gap-4" onSubmit={createOrUpdateClient}>
+            <label className="grid gap-1.5 text-sm font-medium text-body">
+              Name
+              <Input
+                value={clientForm.name}
+                onChange={(e) => setClientForm((x) => ({ ...x, name: e.target.value }))}
+                required
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium text-body">
+              Slug
+              <Input
+                mono
+                value={clientForm.slug}
+                onChange={(e) => setClientForm((x) => ({ ...x, slug: e.target.value }))}
+                required
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium text-body">
+              Timezone
+              <Input
+                value={clientForm.timezone}
+                onChange={(e) => setClientForm((x) => ({ ...x, timezone: e.target.value }))}
+                required
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium text-body">
+              Retention (months)
+              <Input
+                type="number"
+                min={1}
+                value={clientForm.retentionMonths}
+                onChange={(e) =>
+                  setClientForm((x) => ({ ...x, retentionMonths: Number(e.target.value || 27) }))
+                }
+                required
+              />
+            </label>
+            <label className="flex items-center gap-2 text-sm text-secondary">
+              <input
+                type="checkbox"
+                checked={clientForm.isActive}
+                onChange={(e) => setClientForm((x) => ({ ...x, isActive: e.target.checked }))}
+              />
               Active
             </label>
             <div className="flex justify-end gap-2 pt-1">
-              <Button type="button" variant="outline" onClick={resetDialog}>Cancel</Button>
+              <Button type="button" variant="secondary" onClick={resetDialog}>
+                Cancel
+              </Button>
               <Button type="submit">{editingClientId ? 'Save' : 'Create'}</Button>
             </div>
           </form>

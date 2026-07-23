@@ -1,28 +1,33 @@
-import { ArrowLeft, ChevronRight, Loader2, SearchX } from 'lucide-react'
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
+import { ComplianceBar } from '@/components/data/ComplianceBar'
+import { PolicyBadge } from '@/components/data/PolicyBadge'
+import { SortHeader, type SortDir } from '@/components/data/SortHeader'
+import { StatCard } from '@/components/data/StatCard'
+import { TrendChart } from '@/components/data/TrendChart'
 import { DaysSelector } from '@/components/DaysSelector'
-import { SortButton, type SortDir } from '@/components/SortButton'
-import { TrendChart } from '@/components/TrendChart'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardHeader } from '@/components/ui/card'
+import { Icon, type IconName } from '@/components/ui/icon'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
-  DOMAIN_STATUS_META,
+  ENFORCEMENT_STATUS_META,
   parseAnalyticsDays,
+  resolveEnforcementStatus,
   type AnalyticsDays,
   type DomainDrilldown,
   type DomainSourceAnalytics,
-  type DomainStatus,
+  type DrilldownDomain,
+  type DrilldownTotals,
   type EvaluatedCombo,
   type SourceDetail,
   type ValueCount,
 } from '@/lib/analytics'
 import { ApiError, fetchJson } from '@/lib/api'
-import { formatCompact, formatFullDate, formatPercent, formatRelativeOrDate } from '@/lib/format'
+import { formatCompact, formatFullDate, formatPercent, formatRelativeOrDate, formatShortDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 // --- Sources table sorting (same interaction pattern as DomainsPage) ---
@@ -105,86 +110,62 @@ function compareSources(
 
 // --- Small presentational helpers ---
 
-/** Maps a per-source compliance rate onto the shared domain status colors. */
-function rateStatus(rate: number): DomainStatus {
-  if (rate >= 0.98) return 'aligned'
-  if (rate >= 0.8) return 'issues'
-  return 'critical'
+/** Maps a pass/fail trend series onto the shared TrendChart datum shape. */
+function trendData(trend: DomainDrilldown['trend']) {
+  return trend.map((point) => ({
+    label: formatShortDate(point.date),
+    pass: point.compliant,
+    fail: point.failed,
+  }))
 }
 
-function RateMeter({ rate }: { rate: number }) {
-  const meta = DOMAIN_STATUS_META[rateStatus(rate)]
-  const pct = Math.max(0, Math.min(1, rate)) * 100
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-12 text-right tabular-nums">{formatPercent(rate)}</span>
-      <div
-        className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full"
-        style={{ background: meta.track }}
-        role="presentation"
-      >
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: meta.fill }} />
-      </div>
-    </div>
-  )
+type StatusTone = 'ok' | 'warn' | 'danger' | 'neutral'
+
+const TONE_DOT: Record<StatusTone, string> = {
+  ok: 'var(--status-ok-dot)',
+  warn: 'var(--status-warn-dot)',
+  danger: 'var(--status-danger-dot)',
+  neutral: 'var(--status-neutral-dot)',
 }
 
-type StatTileProps = {
-  label: string
-  value: string
-  sub?: string
-  subClassName?: string
-}
-
-function StatTile({ label, value, sub, subClassName }: StatTileProps) {
-  return (
-    <Card>
-      <CardContent className="pt-4">
-        <p className="text-xs font-medium text-muted-foreground">{label}</p>
-        <p className="mt-1 text-2xl font-semibold">{value}</p>
-        {sub && <p className={cn('mt-0.5 text-xs text-muted-foreground', subClassName)}>{sub}</p>}
-      </CardContent>
-    </Card>
-  )
+const TONE_ICON: Record<StatusTone, IconName> = {
+  ok: 'circle-check',
+  warn: 'triangle-alert',
+  danger: 'circle-alert',
+  neutral: 'info',
 }
 
 function PanelSectionTitle({ children }: { children: ReactNode }) {
   return (
-    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-      {children}
-    </h4>
+    <h4 className="text-xs font-semibold uppercase tracking-wide text-secondary">{children}</h4>
   )
 }
 
-/** Colors a raw DKIM/SPF verdict: pass green, hard failures red, soft results amber. */
+/** Colors a raw DKIM/SPF verdict: pass ok, hard failures danger, soft results warn. */
 function resultTone(result: string): string {
   const value = result.toLowerCase()
-  if (value === 'pass') return 'text-emerald-700'
-  if (value === 'fail' || value === 'permerror' || value === 'temperror') return 'text-rose-700'
-  return 'text-amber-700'
+  if (value === 'pass') return 'text-[var(--status-ok-fg)]'
+  if (value === 'fail' || value === 'permerror' || value === 'temperror')
+    return 'text-[var(--status-danger-fg)]'
+  return 'text-[var(--status-warn-fg)]'
 }
 
 function EvaluatedChip({ combo }: { combo: EvaluatedCombo }) {
   const compliant = combo.dkim === 'pass' || combo.spf === 'pass'
   const tone = (result: 'pass' | 'fail') =>
-    result === 'pass' ? 'text-emerald-700' : 'text-rose-700'
+    result === 'pass' ? 'text-[var(--status-ok-fg)]' : 'text-[var(--status-danger-fg)]'
   return (
-    <div
-      className={cn(
-        'flex items-center gap-2 rounded-md border bg-card px-3 py-1.5 text-xs',
-        compliant ? 'border-emerald-200' : 'border-rose-200',
-      )}
-    >
-      <span className="text-muted-foreground">
+    <div className="flex items-center gap-2 rounded-md border border-border bg-surface-card px-3 py-1.5 text-xs">
+      <span className="text-secondary">
         DKIM <span className={cn('font-semibold uppercase', tone(combo.dkim))}>{combo.dkim}</span>
       </span>
-      <span aria-hidden className="text-muted-foreground/50">
+      <span aria-hidden className="text-faint">
         /
       </span>
-      <span className="text-muted-foreground">
+      <span className="text-secondary">
         SPF <span className={cn('font-semibold uppercase', tone(combo.spf))}>{combo.spf}</span>
       </span>
-      <span className="font-semibold tabular-nums">{formatCompact(combo.messages)} msgs</span>
+      <span className="font-semibold tabular-nums text-body">{formatCompact(combo.messages)} msgs</span>
       <Badge variant={compliant ? 'success' : 'danger'}>{compliant ? 'compliant' : 'failed'}</Badge>
     </div>
   )
@@ -192,20 +173,78 @@ function EvaluatedChip({ combo }: { combo: EvaluatedCombo }) {
 
 function ValueList({ items, emptyText }: { items: ValueCount[]; emptyText: string }) {
   if (items.length === 0) {
-    return <p className="mt-2 text-sm text-muted-foreground">{emptyText}</p>
+    return <p className="mt-2 text-sm text-secondary">{emptyText}</p>
   }
   return (
     <ul className="mt-2 space-y-1.5">
       {items.map((item) => (
         <li key={item.value} className="flex items-baseline justify-between gap-3">
-          <span className="min-w-0 break-all font-mono text-xs">{item.value}</span>
-          <span className="text-xs tabular-nums text-muted-foreground">
-            {formatCompact(item.messages)}
-          </span>
+          <span className="min-w-0 break-all font-mono text-xs text-body">{item.value}</span>
+          <span className="text-xs tabular-nums text-secondary">{formatCompact(item.messages)}</span>
         </li>
       ))}
     </ul>
   )
+}
+
+// --- Path to enforcement checklist (derived from real signals) ---
+
+type EnforcementCheck = {
+  tone: StatusTone
+  title: string
+  detail: string
+}
+
+function buildEnforcementChecks(
+  domain: DrilldownDomain,
+  totals: DrilldownTotals,
+): EnforcementCheck[] {
+  const policy = domain.publishedPolicy ?? 'none'
+  const atQuarantine = policy === 'quarantine' || policy === 'reject'
+  return [
+    {
+      tone: totals.reports > 0 ? 'ok' : 'danger',
+      title: totals.reports > 0 ? 'Receiving DMARC reports' : 'No DMARC reports yet',
+      detail:
+        totals.reports > 0
+          ? `${formatCompact(totals.reports)} reports · ${formatCompact(totals.messages)} messages`
+          : 'Aggregate reports are not arriving for this domain',
+    },
+    {
+      tone: totals.dkimPassRate >= 0.95 ? 'ok' : 'warn',
+      title: totals.dkimPassRate >= 0.95 ? 'DKIM aligned' : 'DKIM alignment gaps',
+      detail: `${formatPercent(totals.dkimPassRate)} of mail passes DKIM`,
+    },
+    {
+      tone: totals.spfPassRate >= 0.95 ? 'ok' : 'warn',
+      title: totals.spfPassRate >= 0.95 ? 'SPF aligned' : 'SPF alignment gaps',
+      detail: `${formatPercent(totals.spfPassRate)} of mail passes SPF`,
+    },
+    {
+      tone: atQuarantine ? 'ok' : 'warn',
+      title: atQuarantine ? 'Policy at quarantine or stronger' : 'Policy still monitoring',
+      detail: `Published p=${policy}`,
+    },
+    {
+      tone: policy === 'reject' ? 'ok' : 'neutral',
+      title: policy === 'reject' ? 'Full enforcement reached' : 'Not yet at p=reject',
+      detail:
+        policy === 'reject'
+          ? 'DMARC is enforcing at reject'
+          : 'Reject blocks spoofed mail outright',
+    },
+  ]
+}
+
+/** Short SPF/DKIM alignment + rollout summary, or null when unknown. */
+function alignmentSummary(domain: DrilldownDomain): string | null {
+  const parts: string[] = []
+  if (domain.spfAlignment) parts.push(`SPF ${domain.spfAlignment}`)
+  if (domain.dkimAlignment) parts.push(`DKIM ${domain.dkimAlignment}`)
+  if (domain.publishedPct != null && domain.publishedPct < 100) {
+    parts.push(`${domain.publishedPct}% rollout`)
+  }
+  return parts.length ? parts.join(' · ') : null
 }
 
 // --- Expandable per-source detail panel ---
@@ -214,17 +253,9 @@ type SourceDetailPanelProps = {
   domainId: string
   sourceIp: string
   days: AnalyticsDays
-  windowBeginUtc: string
-  windowEndUtc: string
 }
 
-function SourceDetailPanel({
-  domainId,
-  sourceIp,
-  days,
-  windowBeginUtc,
-  windowEndUtc,
-}: SourceDetailPanelProps) {
+function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPanelProps) {
   const [detail, setDetail] = useState<SourceDetail | null>(null)
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -255,8 +286,8 @@ function SourceDetailPanel({
 
   if (busy) {
     return (
-      <div className="flex items-center gap-2 px-5 py-6 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+      <div className="flex items-center gap-2 px-5 py-6 text-sm text-secondary">
+        <Icon name="loader-circle" size={16} className="animate-spin" />
         Loading source detail…
       </div>
     )
@@ -265,7 +296,7 @@ function SourceDetailPanel({
   if (error) {
     return (
       <div className="px-5 py-4">
-        <p className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
           {error}
         </p>
       </div>
@@ -281,13 +312,13 @@ function SourceDetailPanel({
       {/* Policy-evaluated DKIM x SPF combos: this is what DMARC compliance is judged on. */}
       <section>
         <PanelSectionTitle>DMARC evaluation</PanelSectionTitle>
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="mt-1 text-xs text-secondary">
           {formatCompact(detail.compliantMessages)} of {formatCompact(detail.messages)} messages
           compliant ({formatPercent(detail.complianceRate)}) — a message is compliant when DKIM or
           SPF passes with alignment.
         </p>
         {evaluated.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">No evaluation results reported.</p>
+          <p className="mt-2 text-sm text-secondary">No evaluation results reported.</p>
         ) : (
           <div className="mt-2 flex flex-wrap gap-2">
             {evaluated.map((combo) => (
@@ -296,21 +327,19 @@ function SourceDetailPanel({
           </div>
         )}
         <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <span className="font-medium text-muted-foreground">Dispositions</span>
-          <Badge variant="muted">none · {formatCompact(detail.dispositions.none)}</Badge>
-          <Badge variant="warning">
-            quarantine · {formatCompact(detail.dispositions.quarantine)}
-          </Badge>
+          <span className="font-medium text-secondary">Dispositions</span>
+          <Badge variant="neutral">none · {formatCompact(detail.dispositions.none)}</Badge>
+          <Badge variant="warning">quarantine · {formatCompact(detail.dispositions.quarantine)}</Badge>
           <Badge variant="danger">reject · {formatCompact(detail.dispositions.reject)}</Badge>
         </div>
       </section>
 
       {/* Raw auth results identify the actual sending service. */}
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <section className="rounded-md border bg-card p-3">
+        <section className="rounded-md border border-border bg-surface-card p-3">
           <PanelSectionTitle>Raw DKIM authentication</PanelSectionTitle>
           {detail.dkimAuth.length === 0 ? (
-            <p className="mt-2 text-sm text-muted-foreground">No DKIM signatures reported.</p>
+            <p className="mt-2 text-sm text-secondary">No DKIM signatures reported.</p>
           ) : (
             <Table className="mt-1">
               <TableHeader>
@@ -324,14 +353,14 @@ function SourceDetailPanel({
               <TableBody>
                 {detail.dkimAuth.map((row, index) => (
                   <TableRow key={`${row.domain}-${row.selector ?? ''}-${row.result}-${index}`}>
-                    <TableCell className="break-all font-mono text-xs">{row.domain}</TableCell>
-                    <TableCell className="font-mono text-xs">{row.selector ?? '—'}</TableCell>
-                    <TableCell>
-                      <span className={cn('font-medium', resultTone(row.result))}>
-                        {row.result}
-                      </span>
+                    <TableCell mono className="break-all">
+                      {row.domain}
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell mono>{row.selector ?? '—'}</TableCell>
+                    <TableCell>
+                      <span className={cn('font-medium', resultTone(row.result))}>{row.result}</span>
+                    </TableCell>
+                    <TableCell align="right" className="tabular-nums">
                       {formatCompact(row.messages)}
                     </TableCell>
                   </TableRow>
@@ -341,10 +370,10 @@ function SourceDetailPanel({
           )}
         </section>
 
-        <section className="rounded-md border bg-card p-3">
+        <section className="rounded-md border border-border bg-surface-card p-3">
           <PanelSectionTitle>Raw SPF authentication</PanelSectionTitle>
           {detail.spfAuth.length === 0 ? (
-            <p className="mt-2 text-sm text-muted-foreground">No SPF checks reported.</p>
+            <p className="mt-2 text-sm text-secondary">No SPF checks reported.</p>
           ) : (
             <Table className="mt-1">
               <TableHeader>
@@ -358,16 +387,14 @@ function SourceDetailPanel({
               <TableBody>
                 {detail.spfAuth.map((row, index) => (
                   <TableRow key={`${row.domain}-${row.scope ?? ''}-${row.result}-${index}`}>
-                    <TableCell className="break-all font-mono text-xs">{row.domain}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {row.scope ?? '—'}
+                    <TableCell mono className="break-all">
+                      {row.domain}
                     </TableCell>
+                    <TableCell className="text-xs text-secondary">{row.scope ?? '—'}</TableCell>
                     <TableCell>
-                      <span className={cn('font-medium', resultTone(row.result))}>
-                        {row.result}
-                      </span>
+                      <span className={cn('font-medium', resultTone(row.result))}>{row.result}</span>
                     </TableCell>
-                    <TableCell className="text-right tabular-nums">
+                    <TableCell align="right" className="tabular-nums">
                       {formatCompact(row.messages)}
                     </TableCell>
                   </TableRow>
@@ -379,29 +406,25 @@ function SourceDetailPanel({
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <section className="rounded-md border bg-card p-3">
-          <PanelSectionTitle>Header From</PanelSectionTitle>
+        <section className="rounded-md border border-border bg-surface-card p-3">
+          <PanelSectionTitle>Header from</PanelSectionTitle>
           <ValueList items={detail.headerFroms} emptyText="No header-from domains reported." />
         </section>
-        <section className="rounded-md border bg-card p-3">
-          <PanelSectionTitle>Envelope From</PanelSectionTitle>
+        <section className="rounded-md border border-border bg-surface-card p-3">
+          <PanelSectionTitle>Envelope from</PanelSectionTitle>
           <ValueList items={detail.envelopeFroms} emptyText="No envelope-from domains reported." />
         </section>
-        <section className="rounded-md border bg-card p-3">
+        <section className="rounded-md border border-border bg-surface-card p-3">
           <PanelSectionTitle>Reporters</PanelSectionTitle>
           {detail.reporters.length === 0 ? (
-            <p className="mt-2 text-sm text-muted-foreground">No reporters in this window.</p>
+            <p className="mt-2 text-sm text-secondary">No reporters in this window.</p>
           ) : (
             <ul className="mt-2 space-y-1.5">
               {detail.reporters.map((reporter) => (
-                <li
-                  key={reporter.organizationName}
-                  className="flex items-baseline justify-between gap-3"
-                >
-                  <span className="min-w-0 break-all text-sm">{reporter.organizationName}</span>
-                  <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground">
-                    {formatCompact(reporter.messages)} msgs · {formatCompact(reporter.reports)}{' '}
-                    rpts
+                <li key={reporter.organizationName} className="flex items-baseline justify-between gap-3">
+                  <span className="min-w-0 break-all text-sm text-body">{reporter.organizationName}</span>
+                  <span className="whitespace-nowrap text-xs tabular-nums text-secondary">
+                    {formatCompact(reporter.messages)} msgs · {formatCompact(reporter.reports)} rpts
                   </span>
                 </li>
               ))}
@@ -410,16 +433,9 @@ function SourceDetailPanel({
         </section>
       </div>
 
-      <section className="rounded-md border bg-card p-3">
+      <section className="rounded-md border border-border bg-surface-card p-3">
         <PanelSectionTitle>Daily volume from {detail.sourceIp}</PanelSectionTitle>
-        <div className="mt-2">
-          <TrendChart
-            trend={detail.trend}
-            beginUtc={windowBeginUtc}
-            endUtc={windowEndUtc}
-            height={128}
-          />
-        </div>
+        <TrendChart className="mt-2" data={trendData(detail.trend)} height={128} />
       </section>
     </div>
   )
@@ -467,9 +483,7 @@ export function DomainDetailPage() {
       if (loadError instanceof ApiError && loadError.status === 404) {
         setNotFound(true)
       } else {
-        setError(
-          loadError instanceof Error ? loadError.message : 'Failed to load domain analytics',
-        )
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load domain analytics')
       }
     } finally {
       if (seq === requestSeq.current) setBusy(false)
@@ -553,299 +567,285 @@ export function DomainDetailPage() {
 
   if (notFound) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center gap-3 py-16 text-center">
-          <SearchX className="h-10 w-10 text-muted-foreground" aria-hidden />
+      <Card pad>
+        <div className="flex flex-col items-center gap-3 py-16 text-center">
+          <Icon name="search" size={40} className="text-faint" />
           <div>
-            <p className="text-base font-semibold">Domain not found</p>
-            <p className="mt-1 max-w-md text-sm text-muted-foreground">
+            <p className="text-base font-semibold text-body">Domain not found</p>
+            <p className="mt-1 max-w-md text-sm text-secondary">
               This domain does not exist or may have been removed.
             </p>
           </div>
-          <Button asChild variant="outline" size="sm">
+          <Button asChild variant="secondary" size="sm">
             <Link to={backHref}>
-              <ArrowLeft className="h-4 w-4" />
-              Back to Domains
+              <Icon name="chevron-left" size={14} />
+              Back to domains
             </Link>
           </Button>
-        </CardContent>
+        </div>
       </Card>
     )
   }
 
+  const domain = drilldown?.domain
   const totals = drilldown?.totals
-  const statusMeta = totals ? DOMAIN_STATUS_META[totals.status] : null
+  const enforcement =
+    totals && domain
+      ? resolveEnforcementStatus(totals.messages, totals.complianceRate, domain.publishedPolicy)
+      : null
+  const enfMeta = enforcement ? ENFORCEMENT_STATUS_META[enforcement] : null
+  const alignment = domain ? alignmentSummary(domain) : null
+
+  const subtitleParts: string[] = []
+  if (domain && domain.clientSlug !== 'default') subtitleParts.push(domain.clientName)
+  if (drilldown) {
+    subtitleParts.push(
+      drilldown.window.anchoredToLatestData
+        ? `data through ${formatFullDate(drilldown.window.endUtc)}`
+        : `last ${drilldown.window.days} days`,
+    )
+  }
 
   return (
     <>
-      <Card>
-        <CardHeader>
+      <div className="mb-5">
+        <Link
+          to={backHref}
+          className="inline-flex items-center gap-1.5 text-sm text-secondary transition-colors hover:text-brand"
+        >
+          <Icon name="chevron-left" size={14} />
+          Domains
+        </Link>
+        <div className="mt-2.5 flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <Link
-              to={backHref}
-              className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-primary"
-            >
-              <ArrowLeft className="h-3.5 w-3.5" aria-hidden />
-              Domains
-            </Link>
-            <div className="mt-1.5 flex flex-wrap items-center gap-2">
-              <CardTitle className="break-all font-mono text-2xl">
-                {drilldown?.domain.name ?? 'Domain drill-down'}
-              </CardTitle>
-              {drilldown && (
-                <>
-                  {drilldown.domain.clientSlug === 'default' ? (
-                    <Badge variant="warning">Default — needs client</Badge>
-                  ) : (
-                    <Badge variant="muted">{drilldown.domain.clientName}</Badge>
-                  )}
-                  {statusMeta && <Badge variant={statusMeta.badge}>{statusMeta.label}</Badge>}
-                  <Badge variant={drilldown.domain.isActive ? 'success' : 'muted'}>
-                    {drilldown.domain.isActive ? 'Active' : 'Inactive'}
-                  </Badge>
-                </>
-              )}
-            </div>
-            {drilldown && (
-              <p className="mt-1 text-xs text-muted-foreground">
-                {drilldown.window.anchoredToLatestData
-                  ? `Data through ${formatFullDate(drilldown.window.endUtc)} — window anchored to the latest report data`
-                  : `Last ${drilldown.window.days} days`}
-              </p>
-            )}
+            <h1 className="break-all font-mono text-xl font-semibold tracking-tight text-body">
+              {domain?.name ?? 'Domain drill-down'}
+            </h1>
+            {subtitleParts.length > 0 ? (
+              <p className="mt-1 text-sm text-secondary">{subtitleParts.join(' · ')}</p>
+            ) : null}
           </div>
           <DaysSelector value={days} onChange={setDays} disabled={busy} />
-        </CardHeader>
-        {!!error && (
-          <CardContent>
-            <p className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </p>
-          </CardContent>
-        )}
-      </Card>
-
-      {!drilldown && busy && (
-        <div className="flex justify-center py-20">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-label="Loading" />
         </div>
-      )}
+        {domain && enfMeta ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <PolicyBadge policy={domain.publishedPolicy ?? 'none'} />
+            <Badge variant={enfMeta.badge}>{enfMeta.label}</Badge>
+            {domain.clientSlug === 'default' ? (
+              <Badge variant="warning">Default — needs client</Badge>
+            ) : null}
+            <Badge variant={domain.isActive ? 'success' : 'neutral'}>
+              {domain.isActive ? 'Active' : 'Inactive'}
+            </Badge>
+            {alignment ? (
+              <span className="font-mono text-xs text-secondary">{alignment}</span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
 
-      {drilldown && totals && (
-        <div className={cn('space-y-4 transition-opacity', busy && 'opacity-60')}>
-          {/* Stat tiles: compliance hero + the numbers that explain it */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <Card>
-              <CardContent className="pt-4">
-                <p className="text-xs font-medium text-muted-foreground">DMARC compliance</p>
-                <p className="mt-1 text-5xl font-semibold leading-tight text-primary">
-                  {totals.status === 'no_data' ? '—' : formatPercent(totals.complianceRate)}
-                </p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {formatCompact(totals.compliantMessages)} of {formatCompact(totals.messages)}{' '}
-                  messages compliant
-                </p>
-              </CardContent>
-            </Card>
-            <StatTile
-              label="Messages"
-              value={formatCompact(totals.messages)}
-              sub={`across ${formatCompact(totals.reports)} reports`}
+      {error ? (
+        <div className="mb-3.5 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+          {error}
+        </div>
+      ) : null}
+
+      {!drilldown && busy ? (
+        <div className="flex justify-center py-20">
+          <Icon name="loader-circle" size={24} className="animate-spin text-secondary" />
+        </div>
+      ) : null}
+
+      {drilldown && totals && domain ? (
+        <div className={cn('space-y-3.5 transition-opacity', busy && 'opacity-60')}>
+          <div className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
+            <StatCard
+              label="Compliance"
+              value={totals.status === 'no_data' ? '—' : formatPercent(totals.complianceRate)}
             />
-            <StatTile label="DKIM pass rate" value={formatPercent(totals.dkimPassRate)} />
-            <StatTile label="SPF pass rate" value={formatPercent(totals.spfPassRate)} />
+            <StatCard label={`Messages ${days}d`} value={formatCompact(totals.messages)} />
+            <StatCard label="DKIM pass rate" value={formatPercent(totals.dkimPassRate)} />
+            <StatCard label="SPF pass rate" value={formatPercent(totals.spfPassRate)} />
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <StatTile
-              label="Sending sources"
-              value={totals.sources.toLocaleString('en-US')}
-              sub="unique IPs in this window"
-            />
-            <StatTile
-              label="Reporters"
-              value={totals.reporters.toLocaleString('en-US')}
-              sub="organizations reporting"
-            />
-            <StatTile
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+            <StatCard label="Sending sources" value={totals.sources.toLocaleString('en-US')} />
+            <StatCard label="Reporters" value={totals.reporters.toLocaleString('en-US')} />
+            <StatCard
               label="Quarantined + rejected"
               value={formatCompact(totals.quarantined + totals.rejected)}
-              sub={`${formatCompact(totals.quarantined)} quarantined · ${formatCompact(totals.rejected)} rejected`}
-              subClassName={
-                totals.quarantined + totals.rejected > 0
-                  ? 'font-medium text-destructive'
-                  : undefined
+              extra={
+                totals.quarantined + totals.rejected > 0 ? (
+                  <Badge variant="danger">blocked</Badge>
+                ) : undefined
               }
             />
           </div>
 
-          {/* Domain-level trend */}
-          <Card>
-            <CardHeader>
-              <div>
-                <CardTitle>Message volume</CardTitle>
-                <CardDescription className="mt-1">
-                  Daily messages, compliant vs failed
-                </CardDescription>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <TrendChart
-                trend={drilldown.trend}
-                beginUtc={drilldown.window.beginUtc}
-                endUtc={drilldown.window.endUtc}
+          <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-[1.6fr_1fr]">
+            <Card pad>
+              <CardHeader title="Message volume" description="Daily messages, compliant vs failed" />
+              <TrendChart data={trendData(drilldown.trend)} height={170} />
+            </Card>
+
+            <Card pad>
+              <CardHeader
+                title="Path to enforcement"
+                description="What stands between p=none and p=reject"
               />
-            </CardContent>
-          </Card>
+              <div className="flex flex-col gap-3">
+                {buildEnforcementChecks(domain, totals).map((check) => (
+                  <div key={check.title} className="flex items-start gap-2.5">
+                    <span className="mt-px inline-flex" style={{ color: TONE_DOT[check.tone] }}>
+                      <Icon name={TONE_ICON[check.tone]} size={16} />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-body">{check.title}</div>
+                      <div className="mt-0.5 font-mono text-xs text-secondary">{check.detail}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
 
           {/* The centerpiece: per-source breakdown */}
           <Card>
-            <CardHeader>
-              <div>
-                <CardTitle>Sending sources</CardTitle>
-                <CardDescription className="mt-1">
-                  Per-IP DMARC results over the last {days} days, worst offenders first — expand a
-                  row for the full authentication breakdown
-                </CardDescription>
-              </div>
-              <Badge variant="muted">{sources.length} sources</Badge>
-            </CardHeader>
-            <CardContent>
-              {sources.length === 0 ? (
-                <p className="py-6 text-center text-sm text-muted-foreground">
-                  No sending sources reported in this window.
-                </p>
-              ) : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead aria-sort={sortKey === 'ip' ? ariaSort : undefined}>
-                          <SortButton label="Source IP" column="ip" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead className="text-right" aria-sort={sortKey === 'messages' ? ariaSort : undefined}>
-                          <SortButton label="Messages" column="messages" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead className="text-right" aria-sort={sortKey === 'failed' ? ariaSort : undefined}>
-                          <SortButton label="Failed" column="failed" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead aria-sort={sortKey === 'compliance' ? ariaSort : undefined}>
-                          <SortButton label="Compliance" column="compliance" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead className="text-right" aria-sort={sortKey === 'dkim' ? ariaSort : undefined}>
-                          <SortButton label="DKIM" column="dkim" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead className="text-right" aria-sort={sortKey === 'spf' ? ariaSort : undefined}>
-                          <SortButton label="SPF" column="spf" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead className="text-right" aria-sort={sortKey === 'quarantined' ? ariaSort : undefined}>
-                          <SortButton label="Quarantined" column="quarantined" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead className="text-right" aria-sort={sortKey === 'rejected' ? ariaSort : undefined}>
-                          <SortButton label="Rejected" column="rejected" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead className="text-right" aria-sort={sortKey === 'reporters' ? ariaSort : undefined}>
-                          <SortButton label="Reporters" column="reporters" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                        <TableHead aria-sort={sortKey === 'lastSeen' ? ariaSort : undefined}>
-                          <SortButton label="Last seen" column="lastSeen" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                        </TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {sortedSources.map((source) => {
-                        const expanded = selectedSource === source.sourceIp
-                        return (
-                          <Fragment key={source.sourceIp}>
-                            <TableRow
-                              className={cn('cursor-pointer', expanded && 'bg-muted/35')}
-                              onClick={() => toggleSource(source.sourceIp)}
-                            >
-                              <TableCell>
-                                <button
-                                  type="button"
-                                  aria-expanded={expanded}
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    toggleSource(source.sourceIp)
-                                  }}
-                                  className="inline-flex items-center gap-1.5 rounded-sm font-mono text-sm font-medium transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                                >
-                                  <ChevronRight
-                                    aria-hidden
-                                    className={cn(
-                                      'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform',
-                                      expanded && 'rotate-90',
-                                    )}
-                                  />
-                                  {source.sourceIp}
-                                </button>
-                                {hostnames[source.sourceIp] && (
-                                  <div className="mt-0.5 pl-5 text-xs text-muted-foreground">
-                                    {hostnames[source.sourceIp]}
-                                  </div>
-                                )}
-                              </TableCell>
-                              <TableCell className="text-right tabular-nums">
-                                {formatCompact(source.messages)}
-                              </TableCell>
-                              <TableCell
-                                className={cn(
-                                  'text-right tabular-nums',
-                                  source.failedMessages > 0 && 'font-medium text-rose-700',
-                                )}
+            <div className="flex items-start justify-between gap-3 px-5 pt-5">
+              <CardHeader
+                title="Sending sources"
+                description={`Per-IP DMARC results over the last ${days} days, worst offenders first — expand a row for the full authentication breakdown`}
+              />
+              <Badge variant="neutral">{sources.length} sources</Badge>
+            </div>
+            {sources.length === 0 ? (
+              <p className="px-5 pb-6 pt-2 text-sm text-secondary">
+                No sending sources reported in this window.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead aria-sort={sortKey === 'ip' ? ariaSort : undefined}>
+                        <SortHeader label="Source IP" column="ip" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                      </TableHead>
+                      <TableHead className="text-right" aria-sort={sortKey === 'messages' ? ariaSort : undefined}>
+                        <SortHeader label="Messages" column="messages" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                      </TableHead>
+                      <TableHead className="text-right" aria-sort={sortKey === 'failed' ? ariaSort : undefined}>
+                        <SortHeader label="Failed" column="failed" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                      </TableHead>
+                      <TableHead aria-sort={sortKey === 'compliance' ? ariaSort : undefined}>
+                        <SortHeader label="Compliance" column="compliance" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                      </TableHead>
+                      <TableHead className="text-right" aria-sort={sortKey === 'dkim' ? ariaSort : undefined}>
+                        <SortHeader label="DKIM" column="dkim" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                      </TableHead>
+                      <TableHead className="text-right" aria-sort={sortKey === 'spf' ? ariaSort : undefined}>
+                        <SortHeader label="SPF" column="spf" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                      </TableHead>
+                      <TableHead className="text-right" aria-sort={sortKey === 'quarantined' ? ariaSort : undefined}>
+                        <SortHeader label="Quarantined" column="quarantined" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                      </TableHead>
+                      <TableHead className="text-right" aria-sort={sortKey === 'rejected' ? ariaSort : undefined}>
+                        <SortHeader label="Rejected" column="rejected" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                      </TableHead>
+                      <TableHead className="text-right" aria-sort={sortKey === 'reporters' ? ariaSort : undefined}>
+                        <SortHeader label="Reporters" column="reporters" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                      </TableHead>
+                      <TableHead aria-sort={sortKey === 'lastSeen' ? ariaSort : undefined}>
+                        <SortHeader label="Last seen" column="lastSeen" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedSources.map((source) => {
+                      const expanded = selectedSource === source.sourceIp
+                      return (
+                        <Fragment key={source.sourceIp}>
+                          <TableRow
+                            className={cn(expanded && 'bg-gray-50')}
+                            onClick={() => toggleSource(source.sourceIp)}
+                          >
+                            <TableCell>
+                              <button
+                                type="button"
+                                aria-expanded={expanded}
+                                onClick={(event) => {
+                                  event.stopPropagation()
+                                  toggleSource(source.sourceIp)
+                                }}
+                                className="inline-flex items-center gap-1.5 rounded-xs font-mono text-sm font-medium text-body transition-colors hover:text-brand focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none"
                               >
-                                {formatCompact(source.failedMessages)}
-                              </TableCell>
-                              <TableCell>
-                                <RateMeter rate={source.complianceRate} />
-                              </TableCell>
-                              <TableCell className="text-right tabular-nums">
-                                {formatPercent(source.dkimPassRate)}
-                              </TableCell>
-                              <TableCell className="text-right tabular-nums">
-                                {formatPercent(source.spfPassRate)}
-                              </TableCell>
-                              <TableCell className="text-right tabular-nums">
-                                {formatCompact(source.quarantined)}
-                              </TableCell>
-                              <TableCell className="text-right tabular-nums">
-                                {formatCompact(source.rejected)}
-                              </TableCell>
-                              <TableCell className="text-right tabular-nums">
-                                {source.reporters.toLocaleString('en-US')}
-                              </TableCell>
-                              <TableCell className="whitespace-nowrap text-muted-foreground">
-                                {formatRelativeOrDate(source.lastSeenUtc)}
+                                <Icon
+                                  name="chevron-right"
+                                  size={14}
+                                  className={cn('shrink-0 text-secondary transition-transform', expanded && 'rotate-90')}
+                                />
+                                {source.sourceIp}
+                              </button>
+                              {hostnames[source.sourceIp] ? (
+                                <div className="mt-0.5 pl-5 text-xs text-secondary">
+                                  {hostnames[source.sourceIp]}
+                                </div>
+                              ) : null}
+                            </TableCell>
+                            <TableCell align="right" className="tabular-nums">
+                              {formatCompact(source.messages)}
+                            </TableCell>
+                            <TableCell
+                              align="right"
+                              className={cn(
+                                'tabular-nums',
+                                source.failedMessages > 0 && 'font-medium text-[var(--status-danger-fg)]',
+                              )}
+                            >
+                              {formatCompact(source.failedMessages)}
+                            </TableCell>
+                            <TableCell>
+                              <ComplianceBar value={+(source.complianceRate * 100).toFixed(1)} width={110} />
+                            </TableCell>
+                            <TableCell align="right" className="tabular-nums">
+                              {formatPercent(source.dkimPassRate)}
+                            </TableCell>
+                            <TableCell align="right" className="tabular-nums">
+                              {formatPercent(source.spfPassRate)}
+                            </TableCell>
+                            <TableCell align="right" className="tabular-nums">
+                              {formatCompact(source.quarantined)}
+                            </TableCell>
+                            <TableCell align="right" className="tabular-nums">
+                              {formatCompact(source.rejected)}
+                            </TableCell>
+                            <TableCell align="right" className="tabular-nums">
+                              {source.reporters.toLocaleString('en-US')}
+                            </TableCell>
+                            <TableCell className="whitespace-nowrap text-secondary">
+                              {formatRelativeOrDate(source.lastSeenUtc)}
+                            </TableCell>
+                          </TableRow>
+                          {expanded ? (
+                            <TableRow className="hover:bg-transparent">
+                              <TableCell colSpan={SOURCE_COLUMN_COUNT} className="bg-gray-50 p-0">
+                                <SourceDetailPanel
+                                  domainId={domainId}
+                                  sourceIp={source.sourceIp}
+                                  days={days}
+                                />
                               </TableCell>
                             </TableRow>
-                            {expanded && (
-                              <TableRow className="hover:bg-transparent">
-                                <TableCell
-                                  colSpan={SOURCE_COLUMN_COUNT}
-                                  className="bg-muted/40 p-0"
-                                >
-                                  <SourceDetailPanel
-                                    domainId={domainId}
-                                    sourceIp={source.sourceIp}
-                                    days={days}
-                                    windowBeginUtc={drilldown.window.beginUtc}
-                                    windowEndUtc={drilldown.window.endUtc}
-                                  />
-                                </TableCell>
-                              </TableRow>
-                            )}
-                          </Fragment>
-                        )
-                      })}
-                    </TableBody>
-                  </Table>
-                </div>
-              )}
-            </CardContent>
+                          ) : null}
+                        </Fragment>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </Card>
         </div>
-      )}
+      ) : null}
     </>
   )
 }
