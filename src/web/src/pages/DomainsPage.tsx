@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { Link, useSearchParams } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
+import { ComplianceBar } from '@/components/data/ComplianceBar'
+import { PolicyBadge } from '@/components/data/PolicyBadge'
+import { SortHeader, type SortDir } from '@/components/data/SortHeader'
 import { DaysSelector } from '@/components/DaysSelector'
-import { SortButton, type SortDir } from '@/components/SortButton'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -14,22 +16,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
-  DOMAIN_STATUS_META,
+  ENFORCEMENT_STATUS_META,
   parseAnalyticsDays,
   type AnalyticsDays,
+  type DmarcPublishedPolicy,
   type DomainAnalytics,
-  type DomainStatus,
+  type EnforcementStatus,
 } from '@/lib/analytics'
 import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin } from '@/lib/authz'
 import type { Client, Domain } from '@/lib/entities'
-import { formatCompact, formatPercent, formatRelativeOrDate } from '@/lib/format'
-import { useSystemStatus } from '@/lib/use-system-status'
+import { formatCompact } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 const initialDomainForm = {
@@ -38,14 +41,12 @@ const initialDomainForm = {
   isActive: true,
 }
 
-const statusMeta = DOMAIN_STATUS_META
-
-const statusRank: Record<DomainStatus, number> = {
-  critical: 0,
-  issues: 1,
-  aligned: 2,
-  no_data: 3,
-}
+const POLICY_FILTER_OPTIONS: { value: string; label: string }[] = [
+  { value: '', label: 'Any policy' },
+  { value: 'reject', label: 'p=reject' },
+  { value: 'quarantine', label: 'p=quarantine' },
+  { value: 'none', label: 'p=none' },
+]
 
 type DomainRow = Omit<DomainAnalytics, 'clientName' | 'clientSlug'> & {
   clientName: string | null
@@ -53,38 +54,40 @@ type DomainRow = Omit<DomainAnalytics, 'clientName' | 'clientSlug'> & {
   crud: Domain | null
 }
 
-type SortKey =
-  | 'name'
-  | 'status'
-  | 'compliance'
-  | 'messages'
-  | 'dkim'
-  | 'spf'
-  | 'sources'
-  | 'lastReport'
-  | 'client'
+type SortKey = 'name' | 'client' | 'policy' | 'compliance' | 'messages' | 'status'
 
 /** Direction applied when a column first becomes the active sort. */
 const defaultSortDir: Record<SortKey, SortDir> = {
   name: 'asc',
-  status: 'asc',
+  client: 'asc',
+  policy: 'desc',
   compliance: 'asc',
   messages: 'desc',
-  dkim: 'asc',
-  spf: 'asc',
-  sources: 'desc',
-  lastReport: 'desc',
-  client: 'asc',
+  status: 'asc',
 }
 
-/** Metric columns render "—" for no_data rows, so those rows always sort last. */
-const metricSortKeys: ReadonlySet<SortKey> = new Set(['compliance', 'messages', 'dkim', 'spf', 'sources'])
+/** Metric columns render "—" for no-data rows, so those rows always sort last. */
+const metricSortKeys: ReadonlySet<SortKey> = new Set(['compliance', 'messages'])
+
+/** Published-policy ordering (strength). Unknown policy sorts as `none`. */
+const policyRank: Record<DmarcPublishedPolicy, number> = { none: 0, quarantine: 1, reject: 2 }
+
+/** Enforcement posture ordering, worst first; no-data last. */
+const statusRank: Record<EnforcementStatus, number> = {
+  spoofing: 0,
+  ramping: 1,
+  monitoring: 2,
+  enforced: 3,
+  no_data: 4,
+}
 
 function compareRows(a: DomainRow, b: DomainRow, key: SortKey, dir: SortDir): number {
   const flip = dir === 'asc' ? 1 : -1
 
-  if (metricSortKeys.has(key) && (a.status === 'no_data') !== (b.status === 'no_data')) {
-    return a.status === 'no_data' ? 1 : -1
+  const aNoData = a.enforcementStatus === 'no_data'
+  const bNoData = b.enforcementStatus === 'no_data'
+  if (metricSortKeys.has(key) && aNoData !== bNoData) {
+    return aNoData ? 1 : -1
   }
 
   let cmp = 0
@@ -92,31 +95,6 @@ function compareRows(a: DomainRow, b: DomainRow, key: SortKey, dir: SortDir): nu
     case 'name':
       cmp = a.name.localeCompare(b.name)
       break
-    case 'status':
-      cmp = statusRank[a.status] - statusRank[b.status]
-      break
-    case 'compliance':
-      cmp = a.complianceRate - b.complianceRate
-      break
-    case 'messages':
-      cmp = a.messages - b.messages
-      break
-    case 'dkim':
-      cmp = a.dkimPassRate - b.dkimPassRate
-      break
-    case 'spf':
-      cmp = a.spfPassRate - b.spfPassRate
-      break
-    case 'sources':
-      cmp = a.sources - b.sources
-      break
-    case 'lastReport': {
-      const aTime = a.lastReportEndUtc ? Date.parse(a.lastReportEndUtc) : null
-      const bTime = b.lastReportEndUtc ? Date.parse(b.lastReportEndUtc) : null
-      if ((aTime === null) !== (bTime === null)) return aTime === null ? 1 : -1
-      cmp = (aTime ?? 0) - (bTime ?? 0)
-      break
-    }
     case 'client': {
       const aName = a.clientName ?? ''
       const bName = b.clientName ?? ''
@@ -124,6 +102,18 @@ function compareRows(a: DomainRow, b: DomainRow, key: SortKey, dir: SortDir): nu
       cmp = aName.localeCompare(bName)
       break
     }
+    case 'policy':
+      cmp = policyRank[a.publishedPolicy ?? 'none'] - policyRank[b.publishedPolicy ?? 'none']
+      break
+    case 'compliance':
+      cmp = a.complianceRate - b.complianceRate
+      break
+    case 'messages':
+      cmp = a.messages - b.messages
+      break
+    case 'status':
+      cmp = statusRank[a.enforcementStatus] - statusRank[b.enforcementStatus]
+      break
   }
   if (cmp !== 0) return cmp * flip
 
@@ -132,28 +122,10 @@ function compareRows(a: DomainRow, b: DomainRow, key: SortKey, dir: SortDir): nu
   return a.name.localeCompare(b.name)
 }
 
-function ComplianceMeter({ row }: { row: DomainRow }) {
-  if (row.status === 'no_data') return <span className="text-muted-foreground">—</span>
-  const meta = statusMeta[row.status]
-  const pct = Math.max(0, Math.min(1, row.complianceRate)) * 100
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-12 text-right tabular-nums">{formatPercent(row.complianceRate)}</span>
-      <div
-        className="h-1.5 w-16 shrink-0 overflow-hidden rounded-full"
-        style={{ background: meta.track }}
-        role="presentation"
-      >
-        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: meta.fill }} />
-      </div>
-    </div>
-  )
-}
-
 export function DomainsPage() {
-  const status = useSystemStatus()
   const { user } = useAuth()
   const canManage = isAdmin(user)
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const days = parseAnalyticsDays(searchParams.get('days'))
   const clientFilter = searchParams.get('client') ?? ''
@@ -162,6 +134,7 @@ export function DomainsPage() {
   const [domains, setDomains] = useState<Domain[]>([])
   const [analytics, setAnalytics] = useState<DomainAnalytics[]>([])
   const [search, setSearch] = useState('')
+  const [policyFilter, setPolicyFilter] = useState('')
   const [sortKey, setSortKey] = useState<SortKey>('compliance')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [busy, setBusy] = useState(false)
@@ -266,6 +239,12 @@ export function DomainsPage() {
         rejected: 0,
         lastReportEndUtc: null,
         status: 'no_data',
+        publishedPolicy: null,
+        subdomainPolicy: null,
+        publishedPct: null,
+        dkimAlignment: null,
+        spfAlignment: null,
+        enforcementStatus: 'no_data',
         crud: domain,
       })
     }
@@ -273,14 +252,20 @@ export function DomainsPage() {
     return merged
   }, [analytics, domains, clients])
 
+  const clientCount = useMemo(
+    () => new Set(rows.map((row) => row.clientId)).size,
+    [rows],
+  )
+
   const filteredRows = useMemo(() => {
     const q = search.toLowerCase().trim()
     return rows.filter((row) => {
       if (clientFilter && row.clientId !== clientFilter) return false
+      if (policyFilter && (row.publishedPolicy ?? 'none') !== policyFilter) return false
       if (!q) return true
       return row.name.toLowerCase().includes(q) || (row.clientName ?? '').toLowerCase().includes(q)
     })
-  }, [search, clientFilter, rows])
+  }, [search, clientFilter, policyFilter, rows])
 
   // Default: worst compliance first, no_data last; ties broken by volume, then name.
   const sortedRows = useMemo(
@@ -348,188 +333,198 @@ export function DomainsPage() {
     }
   }
 
+  const subtitle = `${rows.length} ${rows.length === 1 ? 'domain' : 'domains'} across ${clientCount} ${
+    clientCount === 1 ? 'client' : 'clients'
+  }`
+
   return (
     <>
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-xl font-bold tracking-tight text-body">Domains</h1>
+          <p className="mt-1 text-sm text-secondary">{subtitle}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2.5">
+          <DaysSelector value={days} onChange={setDays} disabled={busy} />
+          {canManage ? (
+            <Button icon="plus" onClick={() => openDomainDialog()}>
+              Add domain
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      {error ? (
+        <div className="mb-3.5 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="mb-3.5 grid grid-cols-1 gap-2.5 sm:grid-cols-[minmax(0,1fr)_12rem_11rem]">
+        <Input
+          icon="search"
+          placeholder="Filter by domain or client…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <Select
+          aria-label="Filter by client"
+          value={clientFilter}
+          onChange={(e) => setClientFilter(e.target.value)}
+        >
+          <option value="">All clients</option>
+          {sortedClients.map((client) => (
+            <option key={client.id} value={client.id}>
+              {client.name}
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label="Filter by policy"
+          options={POLICY_FILTER_OPTIONS}
+          value={policyFilter}
+          onChange={(e) => setPolicyFilter(e.target.value)}
+        />
+      </div>
+
       <Card>
-        <CardHeader>
-          <div>
-            <CardTitle>Operations Console</CardTitle>
-            <CardDescription className="mt-1">{status}</CardDescription>
-          </div>
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            <DaysSelector value={days} onChange={setDays} disabled={busy} />
+        <div className={cn('overflow-x-auto transition-opacity', busy && 'opacity-60')}>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead aria-sort={sortKey === 'name' ? ariaSort : undefined}>
+                  <SortHeader label="Domain" column="name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                </TableHead>
+                <TableHead aria-sort={sortKey === 'client' ? ariaSort : undefined}>
+                  <SortHeader label="Client" column="client" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                </TableHead>
+                <TableHead aria-sort={sortKey === 'policy' ? ariaSort : undefined}>
+                  <SortHeader label="Policy" column="policy" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                </TableHead>
+                <TableHead aria-sort={sortKey === 'compliance' ? ariaSort : undefined}>
+                  <SortHeader label="Compliance" column="compliance" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                </TableHead>
+                <TableHead className="text-right" aria-sort={sortKey === 'messages' ? ariaSort : undefined}>
+                  <SortHeader label={`Volume ${days}d`} column="messages" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                </TableHead>
+                <TableHead className="text-right" aria-sort={sortKey === 'status' ? ariaSort : undefined}>
+                  <SortHeader label="Status" column="status" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
+                </TableHead>
+                {canManage ? <TableHead className="text-right">Actions</TableHead> : null}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sortedRows.map((row) => {
+                const meta = ENFORCEMENT_STATUS_META[row.enforcementStatus]
+                const noData = row.enforcementStatus === 'no_data'
+                return (
+                  <TableRow
+                    key={row.domainId}
+                    onClick={() => navigate(`/domains/${row.domainId}${detailSearch}`)}
+                  >
+                    <TableCell>
+                      <span className="inline-flex items-center gap-2.5">
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{ background: meta.dot }}
+                          aria-hidden
+                        />
+                        <span className="font-mono text-sm text-body">{row.name}</span>
+                      </span>
+                    </TableCell>
+                    <TableCell>
+                      {row.clientSlug === 'default' ? (
+                        <Badge variant="warning">Default — needs client</Badge>
+                      ) : (
+                        <span className="text-sm text-secondary">{row.clientName ?? '—'}</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <PolicyBadge policy={row.publishedPolicy ?? 'none'} />
+                    </TableCell>
+                    <TableCell>
+                      {noData ? (
+                        <span className="text-faint">—</span>
+                      ) : (
+                        <ComplianceBar value={+(row.complianceRate * 100).toFixed(1)} width={130} />
+                      )}
+                    </TableCell>
+                    <TableCell mono align="right">
+                      {noData ? <span className="text-faint">—</span> : formatCompact(row.messages)}
+                    </TableCell>
+                    <TableCell align="right">
+                      <Badge variant={meta.badge}>{meta.label}</Badge>
+                    </TableCell>
+                    {canManage ? (
+                      <TableCell align="right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon="pencil"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            openDomainDialog(row)
+                          }}
+                        >
+                          Edit
+                        </Button>
+                      </TableCell>
+                    ) : null}
+                  </TableRow>
+                )
+              })}
+            </TableBody>
+          </Table>
+          {sortedRows.length === 0 && !busy ? (
+            <div className="flex flex-col items-center gap-2 px-5 py-14 text-center">
+              <Icon name="globe" size={32} className="text-faint" />
+              <p className="text-sm text-secondary">
+                No domains found
+                {search || clientFilter || policyFilter ? ' for the current filters' : ''}.
+              </p>
+            </div>
+          ) : null}
+        </div>
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={(open) => (!open ? resetDialog() : setDialogOpen(true))}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingDomainId ? 'Edit domain' : 'Create domain'}</DialogTitle>
+            <DialogDescription>Assign domain ownership and active state.</DialogDescription>
+          </DialogHeader>
+          <form className="grid gap-3" onSubmit={createOrUpdateDomain}>
+            <Input
+              mono
+              placeholder="Domain"
+              value={domainForm.name}
+              onChange={(e) => setDomainForm((x) => ({ ...x, name: e.target.value }))}
+              required
+            />
             <Select
-              aria-label="Filter by client"
-              className="w-44"
-              value={clientFilter}
-              onChange={(e) => setClientFilter(e.target.value)}
+              value={domainForm.clientId}
+              onChange={(e) => setDomainForm((x) => ({ ...x, clientId: e.target.value }))}
+              required
             >
-              <option value="">All clients</option>
+              <option value="">Select client</option>
               {sortedClients.map((client) => (
                 <option key={client.id} value={client.id}>
                   {client.name}
                 </option>
               ))}
             </Select>
-            <Input
-              placeholder="Search..."
-              className="w-40"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        </CardHeader>
-        {!!error && (
-          <CardContent>
-            <p className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </p>
-          </CardContent>
-        )}
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle>Domains</CardTitle>
-            <CardDescription className="mt-1">
-              DMARC posture per domain over the last {days} days
-            </CardDescription>
-          </div>
-          <div className="flex items-center gap-3">
-            <Badge variant="muted">{filteredRows.length} records</Badge>
-            {canManage && <Button onClick={() => openDomainDialog()}>New Domain</Button>}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className={cn('overflow-x-auto transition-opacity', busy && 'opacity-60')}>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead aria-sort={sortKey === 'name' || sortKey === 'client' ? ariaSort : undefined}>
-                    <span className="inline-flex items-center gap-1.5">
-                      <SortButton label="Domain" column="name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                      <span aria-hidden className="text-muted-foreground/50">/</span>
-                      <SortButton label="Client" column="client" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                    </span>
-                  </TableHead>
-                  <TableHead aria-sort={sortKey === 'status' ? ariaSort : undefined}>
-                    <SortButton label="Status" column="status" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                  </TableHead>
-                  <TableHead aria-sort={sortKey === 'compliance' ? ariaSort : undefined}>
-                    <SortButton label="Compliance" column="compliance" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                  </TableHead>
-                  <TableHead className="text-right" aria-sort={sortKey === 'messages' ? ariaSort : undefined}>
-                    <SortButton label="Messages" column="messages" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                  </TableHead>
-                  <TableHead className="text-right" aria-sort={sortKey === 'dkim' ? ariaSort : undefined}>
-                    <SortButton label="DKIM" column="dkim" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                  </TableHead>
-                  <TableHead className="text-right" aria-sort={sortKey === 'spf' ? ariaSort : undefined}>
-                    <SortButton label="SPF" column="spf" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                  </TableHead>
-                  <TableHead className="text-right" aria-sort={sortKey === 'sources' ? ariaSort : undefined}>
-                    <SortButton label="Sources" column="sources" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                  </TableHead>
-                  <TableHead aria-sort={sortKey === 'lastReport' ? ariaSort : undefined}>
-                    <SortButton label="Last report" column="lastReport" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                  </TableHead>
-                  <TableHead>Active</TableHead>
-                  {canManage && <TableHead className="text-right">Actions</TableHead>}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedRows.map((row) => {
-                  const meta = statusMeta[row.status]
-                  const noData = row.status === 'no_data'
-                  return (
-                    <TableRow key={row.domainId}>
-                      <TableCell>
-                        <p>
-                          <Link
-                            to={`/domains/${row.domainId}${detailSearch}`}
-                            className="font-medium hover:text-primary hover:underline"
-                          >
-                            {row.name}
-                          </Link>
-                        </p>
-                        {row.clientSlug === 'default' ? (
-                          <Badge variant="warning" className="mt-0.5">
-                            Default — needs client
-                          </Badge>
-                        ) : (
-                          row.clientName && (
-                            <p className="text-xs text-muted-foreground">{row.clientName}</p>
-                          )
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={meta.badge}>{meta.label}</Badge>
-                      </TableCell>
-                      <TableCell>
-                        <ComplianceMeter row={row} />
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {noData ? '—' : formatCompact(row.messages)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {noData ? '—' : formatPercent(row.dkimPassRate)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {noData ? '—' : formatPercent(row.spfPassRate)}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {noData ? '—' : row.sources.toLocaleString('en-US')}
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {formatRelativeOrDate(row.lastReportEndUtc)}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={row.isActive ? 'success' : 'muted'}>
-                          {row.isActive ? 'Active' : 'Inactive'}
-                        </Badge>
-                      </TableCell>
-                      {canManage && (
-                        <TableCell className="text-right">
-                          <Button variant="outline" size="sm" onClick={() => openDomainDialog(row)}>
-                            Edit
-                          </Button>
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  )
-                })}
-              </TableBody>
-            </Table>
-            {sortedRows.length === 0 && !busy && (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                No domains found{search || clientFilter ? ' for the current filters' : ''}.
-              </p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      <Dialog open={dialogOpen} onOpenChange={(open) => (!open ? resetDialog() : setDialogOpen(true))}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>{editingDomainId ? 'Edit Domain' : 'Create Domain'}</DialogTitle>
-            <DialogDescription>Assign domain ownership and active state.</DialogDescription>
-          </DialogHeader>
-          <form className="grid gap-3" onSubmit={createOrUpdateDomain}>
-            <Input placeholder="Domain" value={domainForm.name} onChange={(e) => setDomainForm((x) => ({ ...x, name: e.target.value }))} required />
-            <Select value={domainForm.clientId} onChange={(e) => setDomainForm((x) => ({ ...x, clientId: e.target.value }))} required>
-              <option value="">Select client</option>
-              {sortedClients.map((client) => (
-                <option key={client.id} value={client.id}>{client.name}</option>
-              ))}
-            </Select>
-            <label className="text-sm text-muted-foreground">
-              <input className="mr-2" type="checkbox" checked={domainForm.isActive} onChange={(e) => setDomainForm((x) => ({ ...x, isActive: e.target.checked }))} />
+            <label className="flex items-center gap-2 text-sm text-secondary">
+              <input
+                type="checkbox"
+                checked={domainForm.isActive}
+                onChange={(e) => setDomainForm((x) => ({ ...x, isActive: e.target.checked }))}
+              />
               Active
             </label>
             <div className="flex justify-end gap-2 pt-1">
-              <Button type="button" variant="outline" onClick={resetDialog}>Cancel</Button>
+              <Button type="button" variant="secondary" onClick={resetDialog}>
+                Cancel
+              </Button>
               <Button type="submit">{editingDomainId ? 'Save' : 'Create'}</Button>
             </div>
           </form>

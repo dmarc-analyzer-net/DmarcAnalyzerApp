@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -18,28 +19,23 @@ import { fetchJson } from '@/lib/api'
 import { USER_ROLES, type UserRole } from '@/lib/auth-context'
 import type { Client, ManagedUser } from '@/lib/entities'
 import { formatRelativeOrDate } from '@/lib/format'
-import { useSystemStatus } from '@/lib/use-system-status'
+
+type BadgeVariant = 'brand' | 'neutral'
 
 type RoleMeta = {
   label: string
-  badgeVariant: 'default' | 'muted'
-  /** Extra badge classes; used to give the analyst badge its blue tone. */
-  badgeClassName?: string
+  badgeVariant: BadgeVariant
 }
 
 const ROLE_META: Record<UserRole, RoleMeta> = {
-  agency_admin: { label: 'Admin', badgeVariant: 'default' },
-  agency_analyst: {
-    label: 'Analyst',
-    badgeVariant: 'default',
-    badgeClassName: 'border-sky-200 bg-sky-50 text-sky-700',
-  },
-  client_viewer: { label: 'Client viewer', badgeVariant: 'muted' },
+  agency_admin: { label: 'Admin', badgeVariant: 'brand' },
+  agency_analyst: { label: 'Staff', badgeVariant: 'neutral' },
+  client_viewer: { label: 'Client viewer', badgeVariant: 'neutral' },
 }
 
-/** Unknown roles from a newer server render as-is with the muted style. */
+/** Unknown roles from a newer server render as-is with the neutral style. */
 const getRoleMeta = (role: string): RoleMeta =>
-  ROLE_META[role as UserRole] ?? { label: role, badgeVariant: 'muted' as const }
+  ROLE_META[role as UserRole] ?? { label: role, badgeVariant: 'neutral' as const }
 
 const isKnownRole = (role: string): role is UserRole => (USER_ROLES as readonly string[]).includes(role)
 
@@ -73,12 +69,10 @@ function RoleOptions({ currentRole }: { currentRole?: string }) {
 }
 
 export function UsersPage() {
-  const status = useSystemStatus()
-
   const [users, setUsers] = useState<ManagedUser[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [search, setSearch] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -232,114 +226,122 @@ export function UsersPage() {
     }
   }
 
+  const subtitle = `${users.length} ${users.length === 1 ? 'user' : 'users'} · roles gate what each account can see`
+
   return (
     <>
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle>Operations Console</CardTitle>
-            <CardDescription className="mt-1">{status}</CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="Search current list..."
-              className="w-64"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        </CardHeader>
-        {!!error && (
-          <CardContent>
-            <p className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </p>
-          </CardContent>
-        )}
-      </Card>
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-xl font-bold tracking-tight text-body">Users</h1>
+          <p className="mt-1 text-sm text-secondary">{subtitle}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2.5">
+          <Input
+            icon="search"
+            placeholder="Search users"
+            className="w-56"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          <Button icon="plus" onClick={openCreateDialog}>
+            Add user
+          </Button>
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Users</CardTitle>
-          <div className="flex items-center gap-3">
-            <Badge variant="muted">{filteredUsers.length} records</Badge>
-            <Button onClick={openCreateDialog} disabled={busy}>
-              New User
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Email</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Client access</TableHead>
-                <TableHead>Active</TableHead>
-                <TableHead>Last login</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredUsers.map((account) => {
-                const roleMeta = getRoleMeta(account.role)
-                return (
-                  <TableRow key={account.id}>
-                    <TableCell className="font-medium">{account.email}</TableCell>
-                    <TableCell>{account.displayName}</TableCell>
-                    <TableCell>
-                      <Badge variant={roleMeta.badgeVariant} className={roleMeta.badgeClassName}>
-                        {roleMeta.label}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {account.role === 'client_viewer' ? (
-                        account.grantedClientIds.length === 0 ? (
-                          <Badge variant="warning">No clients granted</Badge>
+      {error ? (
+        <div className="mb-3.5 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+          {error}
+        </div>
+      ) : null}
+
+      {busy && users.length === 0 ? (
+        <div className="flex justify-center py-20">
+          <Icon name="loader-circle" size={24} className="animate-spin text-secondary" />
+        </div>
+      ) : (
+        <Card pad={false} className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>User</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Client access</TableHead>
+                  <TableHead>Last login</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredUsers.map((account, index) => {
+                  const roleMeta = getRoleMeta(account.role)
+                  return (
+                    <TableRow key={account.id} last={index === filteredUsers.length - 1}>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="text-sm font-semibold text-body">
+                            {account.displayName}
+                          </span>
+                          <span className="font-mono text-xs text-secondary">{account.email}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={roleMeta.badgeVariant}>{roleMeta.label}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        {account.role === 'client_viewer' ? (
+                          account.grantedClientIds.length === 0 ? (
+                            <Badge variant="warning">No clients granted</Badge>
+                          ) : (
+                            <span className="text-sm text-secondary">
+                              {account.grantedClientIds
+                                .map((clientId) => clientNameById.get(clientId) ?? clientId)
+                                .join(' · ')}
+                            </span>
+                          )
                         ) : (
-                          <div className="flex max-w-[280px] flex-wrap gap-1">
-                            {account.grantedClientIds.map((clientId) => (
-                              <Badge key={clientId} variant="muted" className="px-2 text-[11px]">
-                                {clientNameById.get(clientId) ?? clientId}
-                              </Badge>
-                            ))}
-                          </div>
-                        )
-                      ) : (
-                        <span className="text-muted-foreground">All clients</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={account.isActive ? 'success' : 'muted'}>
-                        {account.isActive ? 'Active' : 'Inactive'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-muted-foreground">
-                      {formatRelativeOrDate(account.lastLoginAtUtc)}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm" onClick={() => openEditDialog(account)}>
-                        Edit
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                )
-              })}
-            </TableBody>
-          </Table>
-          {filteredUsers.length === 0 && !busy && (
-            <p className="py-6 text-center text-sm text-muted-foreground">
+                          <span className="text-sm text-secondary">All clients</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        <span className="text-sm text-secondary">
+                          {formatRelativeOrDate(account.lastLoginAtUtc)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={account.isActive ? 'success' : 'neutral'}>
+                          {account.isActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          icon="pencil"
+                          onClick={() => openEditDialog(account)}
+                        >
+                          Edit
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+          {filteredUsers.length === 0 ? (
+            <p className="px-5 py-10 text-center text-sm text-secondary">
               No users found{search ? ' for the current search' : ''}.
             </p>
-          )}
-        </CardContent>
-      </Card>
+          ) : null}
+        </Card>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={(open) => (!open ? resetDialog() : setDialogOpen(true))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingUserId ? 'Edit User' : 'Create User'}</DialogTitle>
+            <DialogTitle>{editingUserId ? 'Edit user' : 'Add user'}</DialogTitle>
             <DialogDescription>
               {editingUserId
                 ? 'Update profile, role, status, and client access.'
@@ -347,35 +349,41 @@ export function UsersPage() {
             </DialogDescription>
           </DialogHeader>
           {editingUserId ? (
-            <form className="grid gap-3" onSubmit={updateUser}>
-              {!!dialogError && (
-                <p className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <form className="grid gap-4" onSubmit={updateUser}>
+              {dialogError ? (
+                <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
                   {dialogError}
                 </p>
-              )}
-              <Input
-                placeholder="Display name"
-                value={editForm.displayName}
-                onChange={(e) => setEditForm((x) => ({ ...x, displayName: e.target.value }))}
-                required
-              />
-              <Select
-                aria-label="Role"
-                value={editForm.role}
-                onChange={(e) => setEditForm((x) => ({ ...x, role: e.target.value }))}
-              >
-                <RoleOptions currentRole={editForm.role} />
-              </Select>
-              <Input
-                type="password"
-                autoComplete="new-password"
-                placeholder="New password (optional)"
-                value={editForm.password}
-                onChange={(e) => setEditForm((x) => ({ ...x, password: e.target.value }))}
-              />
-              <label className="text-sm text-muted-foreground">
+              ) : null}
+              <label className="grid gap-1.5 text-sm font-medium text-body">
+                Display name
+                <Input
+                  value={editForm.displayName}
+                  onChange={(e) => setEditForm((x) => ({ ...x, displayName: e.target.value }))}
+                  required
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium text-body">
+                Role
+                <Select
+                  aria-label="Role"
+                  value={editForm.role}
+                  onChange={(e) => setEditForm((x) => ({ ...x, role: e.target.value }))}
+                >
+                  <RoleOptions currentRole={editForm.role} />
+                </Select>
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium text-body">
+                New password (optional)
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  value={editForm.password}
+                  onChange={(e) => setEditForm((x) => ({ ...x, password: e.target.value }))}
+                />
+              </label>
+              <label className="flex items-center gap-2 text-sm text-secondary">
                 <input
-                  className="mr-2"
                   type="checkbox"
                   checked={editForm.isActive}
                   onChange={(e) => setEditForm((x) => ({ ...x, isActive: e.target.checked }))}
@@ -384,13 +392,16 @@ export function UsersPage() {
               </label>
               {editForm.role === 'client_viewer' && (
                 <div className="grid gap-1.5">
-                  <p className="text-sm font-medium">Client access</p>
-                  <div className="max-h-48 overflow-y-auto rounded-md border border-input p-2">
+                  <p className="text-sm font-medium text-body">Client access</p>
+                  <div className="max-h-48 overflow-y-auto rounded-md border border-border p-2">
                     {sortedClients.length === 0 ? (
-                      <p className="px-1 py-1 text-xs text-muted-foreground">No clients available.</p>
+                      <p className="px-1 py-1 text-xs text-secondary">No clients available.</p>
                     ) : (
                       sortedClients.map((client) => (
-                        <label key={client.id} className="flex items-center gap-2 px-1 py-1 text-sm">
+                        <label
+                          key={client.id}
+                          className="flex items-center gap-2 px-1 py-1 text-sm text-body"
+                        >
                           <input
                             type="checkbox"
                             checked={editForm.clientIds.includes(client.id)}
@@ -401,13 +412,13 @@ export function UsersPage() {
                       ))
                     )}
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-secondary">
                     This user only sees data for the checked clients.
                   </p>
                 </div>
               )}
               <div className="flex justify-end gap-2 pt-1">
-                <Button type="button" variant="outline" onClick={resetDialog}>
+                <Button type="button" variant="secondary" onClick={resetDialog}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={saving}>
@@ -416,49 +427,58 @@ export function UsersPage() {
               </div>
             </form>
           ) : (
-            <form className="grid gap-3" onSubmit={createUser}>
-              {!!dialogError && (
-                <p className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <form className="grid gap-4" onSubmit={createUser}>
+              {dialogError ? (
+                <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
                   {dialogError}
                 </p>
-              )}
-              <Input
-                type="email"
-                autoComplete="off"
-                placeholder="Email"
-                value={createForm.email}
-                onChange={(e) => setCreateForm((x) => ({ ...x, email: e.target.value }))}
-                required
-              />
-              <Input
-                placeholder="Display name"
-                value={createForm.displayName}
-                onChange={(e) => setCreateForm((x) => ({ ...x, displayName: e.target.value }))}
-                required
-              />
-              <Input
-                type="password"
-                autoComplete="new-password"
-                placeholder="Password"
-                value={createForm.password}
-                onChange={(e) => setCreateForm((x) => ({ ...x, password: e.target.value }))}
-                required
-              />
-              <Select
-                aria-label="Role"
-                value={createForm.role}
-                onChange={(e) => setCreateForm((x) => ({ ...x, role: e.target.value as UserRole }))}
-              >
-                <RoleOptions />
-              </Select>
+              ) : null}
+              <label className="grid gap-1.5 text-sm font-medium text-body">
+                Email
+                <Input
+                  type="email"
+                  autoComplete="off"
+                  value={createForm.email}
+                  onChange={(e) => setCreateForm((x) => ({ ...x, email: e.target.value }))}
+                  required
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium text-body">
+                Display name
+                <Input
+                  value={createForm.displayName}
+                  onChange={(e) => setCreateForm((x) => ({ ...x, displayName: e.target.value }))}
+                  required
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium text-body">
+                Password
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  value={createForm.password}
+                  onChange={(e) => setCreateForm((x) => ({ ...x, password: e.target.value }))}
+                  required
+                />
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium text-body">
+                Role
+                <Select
+                  aria-label="Role"
+                  value={createForm.role}
+                  onChange={(e) => setCreateForm((x) => ({ ...x, role: e.target.value as UserRole }))}
+                >
+                  <RoleOptions />
+                </Select>
+              </label>
               {createForm.role === 'client_viewer' && (
-                <p className="text-xs text-muted-foreground">
-                  Client viewers start with no client access — grant clients from the Edit dialog
+                <p className="text-xs text-secondary">
+                  Client viewers start with no client access — grant clients from the edit dialog
                   after creating the user.
                 </p>
               )}
               <div className="flex justify-end gap-2 pt-1">
-                <Button type="button" variant="outline" onClick={resetDialog}>
+                <Button type="button" variant="secondary" onClick={resetDialog}>
                   Cancel
                 </Button>
                 <Button type="submit" disabled={saving}>

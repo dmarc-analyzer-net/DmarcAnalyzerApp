@@ -3,7 +3,7 @@ import type { FormEvent } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
@@ -24,7 +25,7 @@ import type {
   MailboxSyncRun,
   SyncRunStatus,
 } from '@/lib/entities'
-import { useSystemStatus } from '@/lib/use-system-status'
+import { formatRelativeOrDate } from '@/lib/format'
 
 type MailboxOpsFilter = 'all' | 'failed' | 'parse-failures' | 'stale-success'
 
@@ -40,12 +41,26 @@ const initialMailboxForm = {
   isActive: true,
 }
 
+/** Status pill in the sources table: healthy/running/failing (health-driven). */
+const getHealthBadge = (
+  status: SyncRunStatus | null | undefined,
+): { label: string; variant: 'success' | 'warning' | 'danger' | 'neutral' } => {
+  if (status === 'success') return { label: 'Healthy', variant: 'success' }
+  if (status === 'running') return { label: 'Running', variant: 'warning' }
+  if (status === 'failed') return { label: 'Failing', variant: 'danger' }
+  return { label: 'No data', variant: 'neutral' }
+}
+
+/** Raw status pill used in the health + sync-run detail tables. */
 const getStatusBadgeVariant = (status: SyncRunStatus | null) => {
   if (status === 'success') return 'success' as const
   if (status === 'failed') return 'danger' as const
   if (status === 'running') return 'warning' as const
-  return 'muted' as const
+  return 'neutral' as const
 }
+
+const numOrDash = (value: number | null | undefined) =>
+  value == null ? '—' : value.toLocaleString('en-US')
 
 const formatWhen = (value: string | null) => {
   if (!value) return 'n/a'
@@ -55,7 +70,6 @@ const formatWhen = (value: string | null) => {
 }
 
 export function MailboxSourcesPage() {
-  const status = useSystemStatus()
   const { user } = useAuth()
   const canManage = isAdmin(user)
 
@@ -66,8 +80,9 @@ export function MailboxSourcesPage() {
 
   const [search, setSearch] = useState('')
   const [mailboxOpsFilter, setMailboxOpsFilter] = useState<MailboxOpsFilter>('all')
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [syncingId, setSyncingId] = useState<string | null>(null)
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingMailboxId, setEditingMailboxId] = useState<string | null>(null)
@@ -107,6 +122,16 @@ export function MailboxSourcesPage() {
     [clients],
   )
 
+  const healthBySourceId = useMemo(
+    () => new Map(mailboxHealth.map((health) => [health.mailboxSourceId, health])),
+    [mailboxHealth],
+  )
+
+  const sourceById = useMemo(
+    () => new Map(mailboxSources.map((source) => [source.id, source])),
+    [mailboxSources],
+  )
+
   const filteredMailboxSources = useMemo(() => {
     const q = search.toLowerCase().trim()
     if (!q) return mailboxSources
@@ -117,6 +142,16 @@ export function MailboxSourcesPage() {
         x.username.toLowerCase().includes(q),
     )
   }, [search, mailboxSources])
+
+  const failingMailboxes = useMemo(
+    () => mailboxHealth.filter((health) => health.lastRunStatus === 'failed'),
+    [mailboxHealth],
+  )
+
+  const healthyCount = useMemo(
+    () => mailboxHealth.filter((health) => health.lastRunStatus === 'success').length,
+    [mailboxHealth],
+  )
 
   const filteredMailboxHealth = useMemo(() => {
     const now = Date.now()
@@ -222,235 +257,415 @@ export function MailboxSourcesPage() {
     }
   }
 
+  const syncNow = async (id: string) => {
+    setSyncingId(id)
+    setError(null)
+    try {
+      await fetchJson(`/api/v1/mailbox-sources/${id}/sync`, { method: 'POST' })
+      await loadData()
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : 'Failed to sync mailbox')
+    } finally {
+      setSyncingId(null)
+    }
+  }
+
+  const lastSyncLabel = (health: MailboxHealth | undefined) => {
+    if (health?.lastRunStatus === 'running') return 'Running now'
+    return formatRelativeOrDate(health?.lastSuccessSyncAtUtc ?? null)
+  }
+
+  const count = mailboxSources.length
+  const subtitle = `${count} ${count === 1 ? 'mailbox' : 'mailboxes'} · ${healthyCount}/${count} healthy`
+
   return (
     <>
-      <Card>
-        <CardHeader>
-          <div>
-            <CardTitle>Operations Console</CardTitle>
-            <CardDescription className="mt-1">{status}</CardDescription>
-          </div>
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="Search current list..."
-              className="w-64"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-        </CardHeader>
-        {!!error && (
-          <CardContent>
-            <p className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error}
-            </p>
-          </CardContent>
-        )}
-      </Card>
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-xl font-bold tracking-tight text-body">Mailbox sources</h1>
+          <p className="mt-1 text-sm text-secondary">{subtitle}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-2.5">
+          <Input
+            icon="search"
+            placeholder="Search mailboxes"
+            className="w-56"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+          {canManage && (
+            <Button icon="plus" onClick={() => openMailboxDialog()}>
+              Add mailbox
+            </Button>
+          )}
+        </div>
+      </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Mailbox Sources</CardTitle>
-          <div className="flex items-center gap-3">
-            <Badge variant="muted">{filteredMailboxSources.length} records</Badge>
-            {canManage && (
-              <Button onClick={() => openMailboxDialog()} disabled={busy}>
-                New Mailbox
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Protocol</TableHead>
-                <TableHead>Host</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Status</TableHead>
-                {canManage && <TableHead className="text-right">Actions</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredMailboxSources.map((source) => (
-                <TableRow key={source.id}>
-                  <TableCell className="font-medium">{source.name}</TableCell>
-                  <TableCell>{source.protocol.toUpperCase()}</TableCell>
-                  <TableCell>
-                    {source.host}:{source.port}
-                  </TableCell>
-                  <TableCell>{source.defaultClientName ?? source.defaultClientId}</TableCell>
-                  <TableCell>
-                    <Badge variant={source.isActive ? 'success' : 'muted'}>
-                      {source.isActive ? 'Active' : 'Inactive'}
-                    </Badge>
-                  </TableCell>
-                  {canManage && (
-                    <TableCell className="text-right">
-                      <Button variant="outline" size="sm" onClick={() => openMailboxDialog(source)}>
-                        Edit
-                      </Button>
-                    </TableCell>
-                  )}
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      {error ? (
+        <div className="mb-3.5 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+          {error}
+        </div>
+      ) : null}
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Mailbox Health</CardTitle>
-              <CardDescription>Operational view of sync outcomes, checkpoints, and latest issues.</CardDescription>
-            </div>
-            <Select
-              className="w-56"
-              value={mailboxOpsFilter}
-              onChange={(e) => setMailboxOpsFilter(e.target.value as MailboxOpsFilter)}
-            >
-              <option value="all">All Mailboxes</option>
-              <option value="failed">Failed Mailboxes</option>
-              <option value="parse-failures">Parse Failures &gt; 0</option>
-              <option value="stale-success">Stale Last Success (&gt;24h)</option>
-            </Select>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Mailbox</TableHead>
-                <TableHead>Last Status</TableHead>
-                <TableHead>Last Success</TableHead>
-                <TableHead>Checkpoint UID</TableHead>
-                <TableHead>Last Run Metrics</TableHead>
-                <TableHead>Last Error</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredMailboxHealth.map((health) => (
-                <TableRow key={health.mailboxSourceId}>
-                  <TableCell className="font-medium">{health.name}</TableCell>
-                  <TableCell>
-                    <Badge variant={getStatusBadgeVariant(health.lastRunStatus)}>
-                      {health.lastRunStatus ?? 'unknown'}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{formatWhen(health.lastSuccessSyncAtUtc)}</TableCell>
-                  <TableCell>{health.lastProcessedUid ?? 'n/a'}</TableCell>
-                  <TableCell>
-                    <div className="text-xs leading-5 text-muted-foreground">
-                      <div>Scanned: {health.lastRunMessagesScanned ?? 0}</div>
-                      <div>Attachments: {health.lastRunAttachmentsProcessed ?? 0}</div>
-                      <div>Inserted: {health.lastRunReportsInserted ?? 0}</div>
-                      <div>Dupes: {health.lastRunReportsSkippedAsDuplicate ?? 0}</div>
-                      <div>Parse Failures: {health.lastRunParseFailures ?? 0}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="max-w-[420px]">
-                    <p className="truncate text-xs text-muted-foreground" title={health.lastRunError ?? ''}>
-                      {health.lastRunError ?? 'none'}
-                    </p>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent Sync Runs</CardTitle>
-          <CardDescription>Last three runs per mailbox source.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {filteredMailboxSourcesForOps.map((source) => {
-            const runs = recentSyncRunsByMailbox.get(source.id) ?? []
-            return (
-              <div key={source.id} className="rounded-lg border border-border p-3">
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-sm font-medium">{source.name}</p>
-                  <p className="text-xs text-muted-foreground">{source.host}:{source.port}</p>
-                </div>
-                {runs.length === 0 ? (
-                  <p className="text-xs text-muted-foreground">No sync runs yet.</p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Status</TableHead>
-                        <TableHead>Started</TableHead>
-                        <TableHead>Finished</TableHead>
-                        <TableHead>Counts</TableHead>
-                        <TableHead>Error</TableHead>
+      {busy && mailboxSources.length === 0 ? (
+        <div className="flex justify-center py-20">
+          <Icon name="loader-circle" size={24} className="animate-spin text-secondary" />
+        </div>
+      ) : (
+        <>
+          <Card pad={false} className="overflow-hidden">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Mailbox</TableHead>
+                    <TableHead>Protocol</TableHead>
+                    <TableHead>Host</TableHead>
+                    <TableHead>Last sync</TableHead>
+                    <TableHead className="text-right">Scanned</TableHead>
+                    <TableHead className="text-right">Inserted</TableHead>
+                    <TableHead className="text-right">Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredMailboxSources.map((source, index) => {
+                    const health = healthBySourceId.get(source.id)
+                    const badge = source.isActive
+                      ? getHealthBadge(health?.lastRunStatus)
+                      : { label: 'Inactive', variant: 'neutral' as const }
+                    const isSyncing = syncingId === source.id
+                    return (
+                      <TableRow key={source.id} last={index === filteredMailboxSources.length - 1}>
+                        <TableCell mono>{source.name}</TableCell>
+                        <TableCell mono>
+                          {source.protocol}:{source.port}
+                        </TableCell>
+                        <TableCell mono>{source.host}</TableCell>
+                        <TableCell>
+                          <span className="text-sm text-secondary">{lastSyncLabel(health)}</span>
+                        </TableCell>
+                        <TableCell mono align="right">
+                          {numOrDash(health?.lastRunMessagesScanned)}
+                        </TableCell>
+                        <TableCell mono align="right">
+                          {numOrDash(health?.lastRunReportsInserted)}
+                        </TableCell>
+                        <TableCell align="right">
+                          <Badge variant={badge.variant} dot>
+                            {badge.label}
+                          </Badge>
+                        </TableCell>
+                        <TableCell align="right">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            disabled={isSyncing}
+                            onClick={() => void syncNow(source.id)}
+                          >
+                            <Icon
+                              name="refresh-cw"
+                              size={14}
+                              className={isSyncing ? 'animate-spin' : undefined}
+                            />
+                            {isSyncing ? 'Syncing' : 'Sync now'}
+                          </Button>
+                        </TableCell>
                       </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {runs.map((run) => (
-                        <TableRow key={run.id}>
-                          <TableCell>
-                            <Badge variant={getStatusBadgeVariant(run.status)}>{run.status}</Badge>
-                          </TableCell>
-                          <TableCell>{formatWhen(run.startedAtUtc)}</TableCell>
-                          <TableCell>{formatWhen(run.finishedAtUtc)}</TableCell>
-                          <TableCell>
-                            <span className="text-xs text-muted-foreground">
-                              {run.messagesScanned}/{run.attachmentsProcessed}/{run.reportsInserted}/{run.reportsSkippedAsDuplicate}/{run.parseFailures}
-                            </span>
-                          </TableCell>
-                          <TableCell className="max-w-[260px]">
-                            <p className="truncate text-xs text-muted-foreground" title={run.error ?? ''}>
-                              {run.error ?? 'none'}
-                            </p>
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                )}
-              </div>
-            )
-          })}
-        </CardContent>
-      </Card>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            {filteredMailboxSources.length === 0 ? (
+              <p className="px-5 py-10 text-center text-sm text-secondary">
+                No mailbox sources found{search ? ' for the current search' : ''}.
+              </p>
+            ) : null}
+          </Card>
+
+          {failingMailboxes.length > 0 ? (
+            <div className="mt-3 space-y-1.5">
+              {failingMailboxes.map((health) => {
+                const source = sourceById.get(health.mailboxSourceId)
+                return (
+                  <div
+                    key={health.mailboxSourceId}
+                    className="flex items-center gap-2 text-sm text-secondary"
+                  >
+                    <span className="inline-flex shrink-0 text-[var(--status-danger-dot)]">
+                      <Icon name="circle-alert" size={15} />
+                    </span>
+                    <span className="font-mono text-xs">{source?.host ?? health.name}</span>
+                    <span>failed —</span>
+                    <span className="min-w-0 truncate font-mono text-xs" title={health.lastRunError ?? ''}>
+                      {health.lastRunError ?? 'unknown error'}
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          ) : null}
+
+          <Card pad={false} className="mt-3.5 overflow-hidden">
+            <div className="px-5 pt-4 pb-2">
+              <CardHeader
+                title="Mailbox health"
+                description="Operational view of sync outcomes, checkpoints, and latest issues."
+                actions={
+                  <Select
+                    className="w-56"
+                    value={mailboxOpsFilter}
+                    onChange={(e) => setMailboxOpsFilter(e.target.value as MailboxOpsFilter)}
+                  >
+                    <option value="all">All mailboxes</option>
+                    <option value="failed">Failed mailboxes</option>
+                    <option value="parse-failures">Parse failures &gt; 0</option>
+                    <option value="stale-success">Stale last success (&gt;24h)</option>
+                  </Select>
+                }
+              />
+            </div>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Mailbox</TableHead>
+                    <TableHead>Last status</TableHead>
+                    <TableHead>Last success</TableHead>
+                    <TableHead>Checkpoint UID</TableHead>
+                    <TableHead>Last run metrics</TableHead>
+                    <TableHead>Last error</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filteredMailboxHealth.map((health, index) => (
+                    <TableRow
+                      key={health.mailboxSourceId}
+                      last={index === filteredMailboxHealth.length - 1}
+                    >
+                      <TableCell className="font-semibold">{health.name}</TableCell>
+                      <TableCell>
+                        <Badge variant={getStatusBadgeVariant(health.lastRunStatus)}>
+                          {health.lastRunStatus ?? 'unknown'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <span className="text-sm text-secondary">
+                          {formatWhen(health.lastSuccessSyncAtUtc)}
+                        </span>
+                      </TableCell>
+                      <TableCell mono>{health.lastProcessedUid ?? 'n/a'}</TableCell>
+                      <TableCell>
+                        <div className="text-xs leading-5 text-secondary">
+                          <div>Scanned: {health.lastRunMessagesScanned ?? 0}</div>
+                          <div>Attachments: {health.lastRunAttachmentsProcessed ?? 0}</div>
+                          <div>Inserted: {health.lastRunReportsInserted ?? 0}</div>
+                          <div>Dupes: {health.lastRunReportsSkippedAsDuplicate ?? 0}</div>
+                          <div>Parse failures: {health.lastRunParseFailures ?? 0}</div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-[420px]">
+                        <p
+                          className="truncate text-xs text-secondary"
+                          title={health.lastRunError ?? ''}
+                        >
+                          {health.lastRunError ?? 'none'}
+                        </p>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+            {filteredMailboxHealth.length === 0 ? (
+              <p className="px-5 py-10 text-center text-sm text-secondary">
+                No mailboxes match the selected filter.
+              </p>
+            ) : null}
+          </Card>
+
+          <Card pad={false} className="mt-3.5">
+            <div className="px-5 pt-4 pb-2">
+              <CardHeader title="Recent sync runs" description="Last three runs per mailbox source." />
+            </div>
+            <CardContent className="space-y-4 pt-2">
+              {filteredMailboxSourcesForOps.length === 0 ? (
+                <p className="text-sm text-secondary">No sync runs to show for the selected filter.</p>
+              ) : (
+                filteredMailboxSourcesForOps.map((source) => {
+                  const runs = recentSyncRunsByMailbox.get(source.id) ?? []
+                  return (
+                    <div key={source.id} className="rounded-md border border-border p-3">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-body">{source.name}</p>
+                        <p className="font-mono text-xs text-secondary">
+                          {source.host}:{source.port}
+                        </p>
+                      </div>
+                      {runs.length === 0 ? (
+                        <p className="text-xs text-secondary">No sync runs yet.</p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead>Status</TableHead>
+                                <TableHead>Started</TableHead>
+                                <TableHead>Finished</TableHead>
+                                <TableHead>Counts</TableHead>
+                                <TableHead>Error</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {runs.map((run, index) => (
+                                <TableRow key={run.id} last={index === runs.length - 1}>
+                                  <TableCell>
+                                    <Badge variant={getStatusBadgeVariant(run.status)}>
+                                      {run.status}
+                                    </Badge>
+                                  </TableCell>
+                                  <TableCell>
+                                    <span className="text-sm text-secondary">
+                                      {formatWhen(run.startedAtUtc)}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell>
+                                    <span className="text-sm text-secondary">
+                                      {formatWhen(run.finishedAtUtc)}
+                                    </span>
+                                  </TableCell>
+                                  <TableCell mono>
+                                    {run.messagesScanned}/{run.attachmentsProcessed}/
+                                    {run.reportsInserted}/{run.reportsSkippedAsDuplicate}/
+                                    {run.parseFailures}
+                                  </TableCell>
+                                  <TableCell className="max-w-[260px]">
+                                    <p
+                                      className="truncate text-xs text-secondary"
+                                      title={run.error ?? ''}
+                                    >
+                                      {run.error ?? 'none'}
+                                    </p>
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })
+              )}
+            </CardContent>
+          </Card>
+        </>
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={(open) => (!open ? resetDialog() : setDialogOpen(true))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingMailboxId ? 'Edit Mailbox Source' : 'Create Mailbox Source'}</DialogTitle>
+            <DialogTitle>{editingMailboxId ? 'Edit mailbox source' : 'Add mailbox source'}</DialogTitle>
             <DialogDescription>Configure mailbox transport and default routing client.</DialogDescription>
           </DialogHeader>
-          <form className="grid gap-3" onSubmit={createOrUpdateMailboxSource}>
-            <Input placeholder="Source name" value={mailboxForm.name} onChange={(e) => setMailboxForm((x) => ({ ...x, name: e.target.value }))} required />
-            <Select value={mailboxForm.protocol} onChange={(e) => setMailboxForm((x) => ({ ...x, protocol: e.target.value as 'imap' | 'pop3' }))}>
-              <option value="imap">IMAP</option>
-              <option value="pop3">POP3</option>
-            </Select>
-            <Input placeholder="Host" value={mailboxForm.host} onChange={(e) => setMailboxForm((x) => ({ ...x, host: e.target.value }))} required />
-            <Input type="number" min={1} value={mailboxForm.port} onChange={(e) => setMailboxForm((x) => ({ ...x, port: Number(e.target.value || 993) }))} required />
-            <Input placeholder="Username" value={mailboxForm.username} onChange={(e) => setMailboxForm((x) => ({ ...x, username: e.target.value }))} required />
-            <Input type="password" placeholder={editingMailboxId ? 'New password (optional)' : 'Password'} value={mailboxForm.password} onChange={(e) => setMailboxForm((x) => ({ ...x, password: e.target.value }))} required={!editingMailboxId} />
-            <Select value={mailboxForm.defaultClientId} onChange={(e) => setMailboxForm((x) => ({ ...x, defaultClientId: e.target.value }))} required>
-              <option value="">Select default client</option>
-              {sortedClients.map((client) => (
-                <option key={client.id} value={client.id}>{client.name}</option>
-              ))}
-            </Select>
-            <label className="text-sm text-muted-foreground">
-              <input className="mr-2" type="checkbox" checked={mailboxForm.useTls} onChange={(e) => setMailboxForm((x) => ({ ...x, useTls: e.target.checked }))} />
+          <form className="grid gap-4" onSubmit={createOrUpdateMailboxSource}>
+            <label className="grid gap-1.5 text-sm font-medium text-body">
+              Source name
+              <Input
+                value={mailboxForm.name}
+                onChange={(e) => setMailboxForm((x) => ({ ...x, name: e.target.value }))}
+                required
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-4">
+              <label className="grid gap-1.5 text-sm font-medium text-body">
+                Protocol
+                <Select
+                  value={mailboxForm.protocol}
+                  onChange={(e) =>
+                    setMailboxForm((x) => ({ ...x, protocol: e.target.value as 'imap' | 'pop3' }))
+                  }
+                >
+                  <option value="imap">IMAP</option>
+                  <option value="pop3">POP3</option>
+                </Select>
+              </label>
+              <label className="grid gap-1.5 text-sm font-medium text-body">
+                Port
+                <Input
+                  type="number"
+                  min={1}
+                  mono
+                  value={mailboxForm.port}
+                  onChange={(e) =>
+                    setMailboxForm((x) => ({ ...x, port: Number(e.target.value || 993) }))
+                  }
+                  required
+                />
+              </label>
+            </div>
+            <label className="grid gap-1.5 text-sm font-medium text-body">
+              Host
+              <Input
+                mono
+                value={mailboxForm.host}
+                onChange={(e) => setMailboxForm((x) => ({ ...x, host: e.target.value }))}
+                required
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium text-body">
+              Username
+              <Input
+                value={mailboxForm.username}
+                onChange={(e) => setMailboxForm((x) => ({ ...x, username: e.target.value }))}
+                required
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium text-body">
+              {editingMailboxId ? 'New password (optional)' : 'Password'}
+              <Input
+                type="password"
+                value={mailboxForm.password}
+                onChange={(e) => setMailboxForm((x) => ({ ...x, password: e.target.value }))}
+                required={!editingMailboxId}
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm font-medium text-body">
+              Default client
+              <Select
+                value={mailboxForm.defaultClientId}
+                onChange={(e) => setMailboxForm((x) => ({ ...x, defaultClientId: e.target.value }))}
+                required
+              >
+                <option value="">Select default client</option>
+                {sortedClients.map((client) => (
+                  <option key={client.id} value={client.id}>
+                    {client.name}
+                  </option>
+                ))}
+              </Select>
+            </label>
+            <label className="flex items-center gap-2 text-sm text-secondary">
+              <input
+                type="checkbox"
+                checked={mailboxForm.useTls}
+                onChange={(e) => setMailboxForm((x) => ({ ...x, useTls: e.target.checked }))}
+              />
               Use TLS
             </label>
-            <label className="text-sm text-muted-foreground">
-              <input className="mr-2" type="checkbox" checked={mailboxForm.isActive} onChange={(e) => setMailboxForm((x) => ({ ...x, isActive: e.target.checked }))} />
+            <label className="flex items-center gap-2 text-sm text-secondary">
+              <input
+                type="checkbox"
+                checked={mailboxForm.isActive}
+                onChange={(e) => setMailboxForm((x) => ({ ...x, isActive: e.target.checked }))}
+              />
               Active
             </label>
             <div className="flex justify-end gap-2 pt-1">
-              <Button type="button" variant="outline" onClick={resetDialog}>Cancel</Button>
+              <Button type="button" variant="secondary" onClick={resetDialog}>
+                Cancel
+              </Button>
               <Button type="submit">{editingMailboxId ? 'Save' : 'Create'}</Button>
             </div>
           </form>

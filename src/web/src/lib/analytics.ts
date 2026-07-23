@@ -78,6 +78,44 @@ export const DOMAIN_STATUS_META: Record<DomainStatus, DomainStatusMeta> = {
   no_data: { label: 'No data', badge: 'muted', fill: '#94a3b8', track: '#e2e8f0' },
 }
 
+/** DMARC policy published in DNS (`p=` tag). */
+export type DmarcPublishedPolicy = 'none' | 'quarantine' | 'reject'
+
+/** Policy-aware enforcement posture derived from published policy + compliance. */
+export type EnforcementStatus = 'no_data' | 'enforced' | 'ramping' | 'spoofing' | 'monitoring'
+
+export type EnforcementStatusMeta = {
+  label: string
+  badge: 'success' | 'warning' | 'danger' | 'neutral'
+  /** Status-dot color (CSS var) matching the badge variant. */
+  dot: string
+}
+
+/** Status Badge label/variant + dot color for each enforcement posture. */
+export const ENFORCEMENT_STATUS_META: Record<EnforcementStatus, EnforcementStatusMeta> = {
+  enforced: { label: 'Enforced', badge: 'success', dot: 'var(--status-ok-dot)' },
+  ramping: { label: 'Ramping', badge: 'warning', dot: 'var(--status-warn-dot)' },
+  spoofing: { label: 'Spoofing', badge: 'danger', dot: 'var(--status-danger-dot)' },
+  monitoring: { label: 'Monitoring', badge: 'neutral', dot: 'var(--status-neutral-dot)' },
+  no_data: { label: 'No data', badge: 'neutral', dot: 'var(--status-neutral-dot)' },
+}
+
+/**
+ * Mirrors the server's enforcement resolution (see AnalyticsDtos EnforcementStatus).
+ * The drilldown endpoint returns the raw published policy but not the derived
+ * status, so the detail page recomputes it from totals + policy.
+ */
+export function resolveEnforcementStatus(
+  messages: number,
+  complianceRate: number,
+  publishedPolicy: DmarcPublishedPolicy | null | undefined,
+): EnforcementStatus {
+  if (messages === 0) return 'no_data'
+  if (publishedPolicy === 'reject') return 'enforced'
+  if (publishedPolicy === 'quarantine') return 'ramping'
+  return complianceRate < 0.98 ? 'spoofing' : 'monitoring'
+}
+
 export type DomainAnalytics = {
   domainId: string
   name: string
@@ -97,6 +135,15 @@ export type DomainAnalytics = {
   rejected: number
   lastReportEndUtc: string | null
   status: DomainStatus
+  /** DMARC policy published in DNS; null when unknown. */
+  publishedPolicy: DmarcPublishedPolicy | null
+  subdomainPolicy: string | null
+  /** Rollout percentage (`pct=`); null when unknown. */
+  publishedPct: number | null
+  dkimAlignment: string | null
+  spfAlignment: string | null
+  /** Policy-aware posture used by the Status column. */
+  enforcementStatus: EnforcementStatus
 }
 
 // --- Per-domain drill-down (GET /api/v1/analytics/domains/{domainId}/drilldown) ---
@@ -108,6 +155,13 @@ export type DrilldownDomain = {
   clientId: string
   clientName: string
   clientSlug: string
+  /** DMARC policy published in DNS; null when unknown. */
+  publishedPolicy: DmarcPublishedPolicy | null
+  subdomainPolicy: string | null
+  /** Rollout percentage (`pct=`); null when unknown. */
+  publishedPct: number | null
+  dkimAlignment: string | null
+  spfAlignment: string | null
 }
 
 export type DrilldownTotals = {

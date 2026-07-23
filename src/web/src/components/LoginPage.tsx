@@ -117,7 +117,7 @@ export function LoginPage() {
   if (requiresBootstrap === null) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-label="Loading" />
+        <Loader2 className="h-6 w-6 animate-spin text-secondary" aria-label="Loading" />
       </div>
     )
   }
@@ -137,7 +137,7 @@ export function LoginPage() {
         <CardContent>
           <form className="grid gap-3" onSubmit={requiresBootstrap ? handleBootstrap : handleLogin}>
             {!!error && (
-              <p className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              <p className="rounded-md border border-red-600/25 bg-red-100 px-3 py-2 text-sm text-red-800">
                 {error}
               </p>
             )}
@@ -195,7 +195,7 @@ export function LoginPage() {
             <>
               <div className="my-4 flex items-center gap-3">
                 <div className="h-px flex-1 bg-border" />
-                <span className="text-xs uppercase tracking-wide text-muted-foreground">or</span>
+                <span className="text-xs uppercase tracking-wide text-secondary">or</span>
                 <div className="h-px flex-1 bg-border" />
               </div>
               <Button
