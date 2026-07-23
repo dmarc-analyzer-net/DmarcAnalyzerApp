@@ -1,3 +1,4 @@
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Contracts.Domains;
 using DmarcAnalyzer.Api.Data;
@@ -6,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Domains;
 
-public sealed class DomainService(DmarcAnalyzerDbContext db) : IDomainService
+public sealed class DomainService(DmarcAnalyzerDbContext db, ICurrentUserContext currentUser) : IDomainService
 {
     public async Task<IReadOnlyList<DomainDto>> ListAsync(Guid? clientId, CancellationToken ct)
     {
@@ -14,6 +15,12 @@ public sealed class DomainService(DmarcAnalyzerDbContext db) : IDomainService
             .AsNoTracking()
             .Include(x => x.Client)
             .AsQueryable();
+
+        if (!currentUser.IsAgencyStaff)
+        {
+            var allowed = currentUser.AllowedClientIds;
+            query = query.Where(x => allowed.Contains(x.ClientId));
+        }
 
         if (clientId.HasValue)
         {
@@ -28,10 +35,18 @@ public sealed class DomainService(DmarcAnalyzerDbContext db) : IDomainService
 
     public async Task<DomainDto?> GetAsync(Guid id, CancellationToken ct)
     {
-        return await db.Domains
+        var query = db.Domains
             .AsNoTracking()
             .Include(x => x.Client)
-            .Where(x => x.Id == id)
+            .Where(x => x.Id == id);
+
+        if (!currentUser.IsAgencyStaff)
+        {
+            var allowed = currentUser.AllowedClientIds;
+            query = query.Where(x => allowed.Contains(x.ClientId));
+        }
+
+        return await query
             .Select(x => ToDto(x, x.Client != null ? x.Client.Name : null))
             .SingleOrDefaultAsync(ct);
     }

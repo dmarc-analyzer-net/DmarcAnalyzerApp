@@ -54,6 +54,12 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - per-IP DMARC results with evaluated DKIM×SPF combos, raw auth breakdowns, identifiers, reporters, and per-source trend
   - linkable expanded state via `?source=` query parameter
 
+- Tenant isolation and RBAC:
+  - roles: `agency_admin`, `agency_analyst`, `client_viewer` with deny-by-default endpoint enforcement (`RoleAuthorizationMiddleware` + route metadata)
+  - per-request `ICurrentUserContext` with client grants (`user_client_grant`) scoping all reads for viewers; cross-tenant ids read as 404
+  - admin user management endpoints + Users page; registration locked to first-run bootstrap (`GET /auth/setup`)
+  - authN/authZ split designed for pluggable OIDC login (Zitadel et al.) in a follow-up
+
 - Authentication baseline:
   - `agency_user` and `user_session` entities with EF Core configuration
   - local username/password auth with PBKDF2-SHA256 password hashing

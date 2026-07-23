@@ -1,4 +1,5 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Contracts.Clients;
 using Microsoft.AspNetCore.Routing;
@@ -14,14 +15,14 @@ public sealed class ClientsModule : ICarterModule
             var client = await service.GetAsync(id, ct);
 
             return client is null ? Results.NotFound() : Results.Ok(client);
-        });
+        }).AllowClientViewer();
 
         app.MapGet("/api/v1/clients", async (IClientService service, CancellationToken ct) =>
         {
             var clients = await service.ListAsync(ct);
 
             return Results.Ok(clients);
-        });
+        }).AllowClientViewer();
 
         app.MapPost("/api/v1/clients", async (CreateClientRequest request, IClientService service, CancellationToken ct) =>
         {
@@ -33,7 +34,7 @@ public sealed class ClientsModule : ICarterModule
 
             var client = result.Value!;
             return Results.Created($"/api/v1/clients/{client.Id}", client);
-        });
+        }).RequireAgencyAdmin();
 
         app.MapPatch("/api/v1/clients/{id:guid}", async (Guid id, UpdateClientRequest request, IClientService service, CancellationToken ct) =>
         {
@@ -49,6 +50,6 @@ public sealed class ClientsModule : ICarterModule
             }
 
             return Results.Ok(result.Value);
-        });
+        }).RequireAgencyAdmin();
     }
 }

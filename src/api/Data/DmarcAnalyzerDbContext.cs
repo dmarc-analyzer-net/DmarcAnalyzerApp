@@ -16,6 +16,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<MailboxSyncRun> MailboxSyncRuns => Set<MailboxSyncRun>();
     public DbSet<AgencyUser> AgencyUsers => Set<AgencyUser>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
+    public DbSet<UserClientGrant> UserClientGrants => Set<UserClientGrant>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -45,6 +46,29 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .WithMany()
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserClientGrant>(entity =>
+        {
+            entity.ToTable("user_client_grant");
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => new { x.UserId, x.ClientId }).IsUnique();
+            entity.HasIndex(x => x.ClientId);
+
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.Client)
+                .WithMany()
+                .HasForeignKey(x => x.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.CreatedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.CreatedByUserId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<Client>(entity =>

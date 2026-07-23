@@ -1,3 +1,4 @@
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Contracts.Clients;
 using DmarcAnalyzer.Api.Data;
@@ -6,12 +7,19 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Clients;
 
-public sealed class ClientService(DmarcAnalyzerDbContext db) : IClientService
+public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext currentUser) : IClientService
 {
     public async Task<IReadOnlyList<ClientDto>> ListAsync(CancellationToken ct)
     {
-        var clients = await db.Clients
-            .AsNoTracking()
+        var query = db.Clients.AsNoTracking();
+
+        if (!currentUser.IsAgencyStaff)
+        {
+            var allowed = currentUser.AllowedClientIds;
+            query = query.Where(x => allowed.Contains(x.Id));
+        }
+
+        var clients = await query
             .OrderBy(x => x.Name)
             .ToListAsync(ct);
 
@@ -20,6 +28,11 @@ public sealed class ClientService(DmarcAnalyzerDbContext db) : IClientService
 
     public async Task<ClientDto?> GetAsync(Guid id, CancellationToken ct)
     {
+        if (!currentUser.CanAccessClient(id))
+        {
+            return null;
+        }
+
         var client = await db.Clients
             .AsNoTracking()
             .Where(x => x.Id == id)

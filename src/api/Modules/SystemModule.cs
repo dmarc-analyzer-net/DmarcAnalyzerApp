@@ -1,4 +1,5 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Auth;
 using Microsoft.AspNetCore.Routing;
 
 namespace DmarcAnalyzer.Api.Modules;
@@ -15,6 +16,6 @@ public sealed class SystemModule : ICarterModule
                 mode = "api",
                 timestampUtc = DateTime.UtcNow,
             });
-        });
+        }).AllowClientViewer();
     }
 }

@@ -1,15 +1,48 @@
 @baseUrl = http://localhost:5076
 @mailboxSourceId = 00000000-0000-0000-0000-000000000000
 
-### Register agency user
+### Check whether first-run bootstrap is needed
+GET {{baseUrl}}/api/v1/auth/setup
+
+### Bootstrap the first administrator (only works when no users exist)
 POST {{baseUrl}}/api/v1/auth/register
 Content-Type: application/json
 
 {
   "email": "admin@agency.tld",
   "password": "changeme1234",
-  "displayName": "Agency Admin",
-  "role": "agency_admin"
+  "displayName": "Agency Admin"
+}
+
+### List users (admin only)
+GET {{baseUrl}}/api/v1/users
+
+### Create user (admin only; roles: agency_admin | agency_analyst | client_viewer)
+POST {{baseUrl}}/api/v1/users
+Content-Type: application/json
+
+{
+  "email": "viewer@client.tld",
+  "password": "changeme1234",
+  "displayName": "Client Viewer",
+  "role": "client_viewer"
+}
+
+### Update user (admin only)
+PATCH {{baseUrl}}/api/v1/users/00000000-0000-0000-0000-000000000000
+Content-Type: application/json
+
+{
+  "role": "agency_analyst",
+  "isActive": true
+}
+
+### Replace a client_viewer's client grants (admin only, set semantics)
+PUT {{baseUrl}}/api/v1/users/00000000-0000-0000-0000-000000000000/grants
+Content-Type: application/json
+
+{
+  "clientIds": ["00000000-0000-0000-0000-000000000000"]
 }
 
 ### Login

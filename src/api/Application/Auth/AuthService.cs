@@ -12,10 +12,18 @@ public sealed class AuthService(DmarcAnalyzerDbContext db) : IAuthService
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromHours(12);
     private static readonly TimeSpan AbsoluteMax = TimeSpan.FromDays(7);
 
-    private static readonly HashSet<string> ValidRoles = ["agency_admin", "agency_analyst"];
+    public async Task<bool> RequiresBootstrapAsync(CancellationToken ct)
+        => !await db.AgencyUsers.AnyAsync(ct);
 
     public async Task<ServiceResult<UserDto>> RegisterAsync(RegisterRequest request, CancellationToken ct)
     {
+        // Registration only bootstraps the very first account (forced admin);
+        // afterwards users are created by admins via the users endpoints.
+        if (!await RequiresBootstrapAsync(ct))
+        {
+            return ServiceResult<UserDto>.Failure("registration is disabled; ask an administrator to create your account", 403);
+        }
+
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
         {
             return ServiceResult<UserDto>.Failure("email and password are required", 400);
@@ -31,26 +39,15 @@ public sealed class AuthService(DmarcAnalyzerDbContext db) : IAuthService
             return ServiceResult<UserDto>.Failure("displayName is required", 400);
         }
 
-        var role = string.IsNullOrWhiteSpace(request.Role) ? "agency_admin" : request.Role.Trim().ToLowerInvariant();
-        if (!ValidRoles.Contains(role))
-        {
-            return ServiceResult<UserDto>.Failure("role must be agency_admin or agency_analyst", 400);
-        }
-
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
-        var emailInUse = await db.AgencyUsers.AnyAsync(x => x.Email == normalizedEmail, ct);
-        if (emailInUse)
-        {
-            return ServiceResult<UserDto>.Failure("email already registered", 409);
-        }
 
         var now = DateTime.UtcNow;
         var user = new AgencyUser
         {
             Email = normalizedEmail,
-            PasswordHash = HashPassword(request.Password),
+            PasswordHash = PasswordHasher.Hash(request.Password),
             DisplayName = request.DisplayName.Trim(),
-            Role = role,
+            Role = Roles.AgencyAdmin,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
@@ -71,7 +68,7 @@ public sealed class AuthService(DmarcAnalyzerDbContext db) : IAuthService
         var normalizedEmail = request.Email.Trim().ToLowerInvariant();
         var user = await db.AgencyUsers.SingleOrDefaultAsync(x => x.Email == normalizedEmail, ct);
 
-        if (user is null || !VerifyPassword(request.Password, user.PasswordHash))
+        if (user is null || !PasswordHasher.Verify(request.Password, user.PasswordHash))
         {
             return ServiceResult<LoginResultDto>.Failure("invalid credentials", 401);
         }
@@ -113,6 +110,9 @@ public sealed class AuthService(DmarcAnalyzerDbContext db) : IAuthService
     }
 
     public async Task<UserDto?> GetCurrentUserAsync(string cookieId, CancellationToken ct)
+        => (await GetSessionUserAsync(cookieId, ct))?.User;
+
+    public async Task<SessionUserDto?> GetSessionUserAsync(string cookieId, CancellationToken ct)
     {
         var session = await db.UserSessions
             .Include(x => x.User)
@@ -124,7 +124,18 @@ public sealed class AuthService(DmarcAnalyzerDbContext db) : IAuthService
         session.LastSeenAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
-        return ToDto(session.User);
+        // Grants only constrain client_viewer; staff are unrestricted.
+        IReadOnlyList<Guid> grantedClientIds = [];
+        if (!Roles.IsAgencyStaff(session.User.Role))
+        {
+            grantedClientIds = await db.UserClientGrants
+                .AsNoTracking()
+                .Where(x => x.UserId == session.UserId)
+                .Select(x => x.ClientId)
+                .ToListAsync(ct);
+        }
+
+        return new SessionUserDto(ToDto(session.User), grantedClientIds);
     }
 
     private static bool IsSessionValid(UserSession session)
@@ -135,26 +146,6 @@ public sealed class AuthService(DmarcAnalyzerDbContext db) : IAuthService
         if (now - session.LastSeenAtUtc > IdleTimeout) return false;
         if (!session.User.IsActive) return false;
         return true;
-    }
-
-    private static string HashPassword(string password)
-    {
-        var salt = RandomNumberGenerator.GetBytes(16);
-        var hash = Rfc2898DeriveBytes.Pbkdf2(password, salt, 100_000, HashAlgorithmName.SHA256, 32);
-        var combined = new byte[16 + 32];
-        salt.CopyTo(combined, 0);
-        hash.CopyTo(combined, 16);
-        return Convert.ToBase64String(combined);
-    }
-
-    private static bool VerifyPassword(string password, string storedHash)
-    {
-        var combined = Convert.FromBase64String(storedHash);
-        if (combined.Length != 48) return false;
-        var salt = combined[..16];
-        var expectedHash = combined[16..];
-        var actualHash = Rfc2898DeriveBytes.Pbkdf2(password, salt, 100_000, HashAlgorithmName.SHA256, 32);
-        return CryptographicOperations.FixedTimeEquals(actualHash, expectedHash);
     }
 
     private static string GenerateCookieId()

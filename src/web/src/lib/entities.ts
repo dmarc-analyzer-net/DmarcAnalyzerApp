@@ -1,4 +1,20 @@
+import type { AuthUser } from '@/lib/auth-context'
+
 export type SyncRunStatus = 'success' | 'failed' | 'running' | 'unknown'
+
+/** Row shape of the admin-only GET /api/v1/users endpoint. */
+export type ManagedUser = {
+  id: string
+  email: string
+  displayName: string
+  role: AuthUser['role']
+  isActive: boolean
+  lastLoginAtUtc: string | null
+  createdAtUtc: string
+  updatedAtUtc: string
+  /** Client grants; only meaningful for client_viewer users. */
+  grantedClientIds: string[]
+}
 
 export type Client = {
   id: string

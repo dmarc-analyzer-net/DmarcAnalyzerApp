@@ -13,3 +13,7 @@ public sealed record UserDto(
 public sealed record LoginResultDto(
     UserDto User,
     string CookieId);
+
+public sealed record SessionUserDto(
+    UserDto User,
+    IReadOnlyList<Guid> GrantedClientIds);

@@ -14,6 +14,8 @@ import {
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { fetchJson } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
+import { isAdmin } from '@/lib/authz'
 import type { Client } from '@/lib/entities'
 import { useSystemStatus } from '@/lib/use-system-status'
 
@@ -27,6 +29,8 @@ const initialClientForm = {
 
 export function ClientsPage() {
   const status = useSystemStatus()
+  const { user } = useAuth()
+  const canManage = isAdmin(user)
 
   const [clients, setClients] = useState<Client[]>([])
   const [search, setSearch] = useState('')
@@ -150,9 +154,11 @@ export function ClientsPage() {
           <CardTitle>Clients</CardTitle>
           <div className="flex items-center gap-3">
             <Badge variant="muted">{filteredClients.length} records</Badge>
-            <Button onClick={() => openClientDialog()} disabled={busy}>
-              New Client
-            </Button>
+            {canManage && (
+              <Button onClick={() => openClientDialog()} disabled={busy}>
+                New Client
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -164,7 +170,7 @@ export function ClientsPage() {
                 <TableHead>Timezone</TableHead>
                 <TableHead>Retention</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                {canManage && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -179,11 +185,13 @@ export function ClientsPage() {
                       {client.isActive ? 'Active' : 'Inactive'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="outline" size="sm" onClick={() => openClientDialog(client)}>
-                      Edit
-                    </Button>
-                  </TableCell>
+                  {canManage && (
+                    <TableCell className="text-right">
+                      <Button variant="outline" size="sm" onClick={() => openClientDialog(client)}>
+                        Edit
+                      </Button>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

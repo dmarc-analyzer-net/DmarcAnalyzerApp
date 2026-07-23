@@ -55,7 +55,8 @@ export type AnalyticsSummary = {
   topFailingDomains: TopFailingDomain[]
   topReporters: TopReporter[]
   dispositions: { none: number; quarantine: number; reject: number }
-  mailboxes: { total: number; healthy: number; failing: number }
+  /** Mailbox ops rollup; null for client_viewer users, who have no mailbox visibility. */
+  mailboxes: { total: number; healthy: number; failing: number } | null
 }
 
 export type DomainStatus = 'aligned' | 'issues' | 'critical' | 'no_data'

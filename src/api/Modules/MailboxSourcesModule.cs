@@ -1,4 +1,5 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Application.MailboxSources;
 using DmarcAnalyzer.Api.Contracts.MailboxSources;
@@ -28,7 +29,7 @@ public sealed class MailboxSourcesModule : ICarterModule
             var source = result.Value!;
 
             return Results.Created($"/api/v1/mailbox-sources/{source.Id}", source);
-        });
+        }).RequireAgencyAdmin();
 
         app.MapPatch("/api/v1/mailbox-sources/{id:guid}", async (Guid id, UpdateMailboxSourceRequest request, IMailboxSourceService service, CancellationToken ct) =>
         {
@@ -44,7 +45,7 @@ public sealed class MailboxSourcesModule : ICarterModule
             }
 
             return Results.Ok(result.Value);
-        });
+        }).RequireAgencyAdmin();
 
         app.MapPost("/api/v1/mailbox-sources/{id:guid}/sync", async (Guid id, IMailboxSyncService service, CancellationToken ct) =>
         {

@@ -1,9 +1,10 @@
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Analytics;
 
-public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalyticsQueryService
+public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUserContext currentUser) : IAnalyticsQueryService
 {
     private const double AlignedThreshold = 0.98;
     private const double IssuesThreshold = 0.90;
@@ -32,9 +33,9 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
             .Distinct()
             .CountAsync(ct);
 
-        var domainCount = await db.Domains.CountAsync(ct);
-        var activeDomainCount = await db.Domains.CountAsync(x => x.IsActive, ct);
-        var reportCount = await db.DmarcReports
+        var domainCount = await ScopedDomains().CountAsync(ct);
+        var activeDomainCount = await ScopedDomains().CountAsync(x => x.IsActive, ct);
+        var reportCount = await ScopedReports()
             .CountAsync(x => x.RangeBeginUtc >= window.BeginUtc && x.RangeBeginUtc <= window.EndUtc, ct);
 
         var trendRows = await records
@@ -101,12 +102,18 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
             dispositionRows.Where(x => x.Disposition == "quarantine").Sum(x => x.Messages),
             dispositionRows.Where(x => x.Disposition == "reject").Sum(x => x.Messages));
 
-        var mailboxTotal = await db.MailboxSources.CountAsync(ct);
-        var latestRunStatuses = await db.MailboxSyncRuns
-            .GroupBy(x => x.MailboxSourceId)
-            .Select(g => g.OrderByDescending(r => r.StartedAtUtc).First().Status)
-            .ToListAsync(ct);
-        var failingMailboxes = latestRunStatuses.Count(x => x == "failed");
+        // Mailbox operations are agency-internal; viewers get no mailbox block.
+        AnalyticsMailboxesDto? mailboxes = null;
+        if (currentUser.IsAgencyStaff)
+        {
+            var mailboxTotal = await db.MailboxSources.CountAsync(ct);
+            var latestRunStatuses = await db.MailboxSyncRuns
+                .GroupBy(x => x.MailboxSourceId)
+                .Select(g => g.OrderByDescending(r => r.StartedAtUtc).First().Status)
+                .ToListAsync(ct);
+            var failingMailboxes = latestRunStatuses.Count(x => x == "failed");
+            mailboxes = new AnalyticsMailboxesDto(mailboxTotal, mailboxTotal - failingMailboxes, failingMailboxes);
+        }
 
         var totals = new AnalyticsTotalsDto(
             domainCount,
@@ -126,7 +133,7 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
             topFailingDomains,
             topReporters.Select(x => new AnalyticsReporterDto(x.OrganizationName, x.Reports, x.Messages)).ToArray(),
             dispositions,
-            new AnalyticsMailboxesDto(mailboxTotal, mailboxTotal - failingMailboxes, failingMailboxes));
+            mailboxes);
     }
 
     public async Task<IReadOnlyList<DomainAnalyticsDto>> ListDomainAnalyticsAsync(int days, CancellationToken ct)
@@ -166,13 +173,12 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
             })
             .ToListAsync(ct);
 
-        var lastReportEnds = await db.DmarcReports
+        var lastReportEnds = await ScopedReports()
             .GroupBy(x => x.DomainId)
             .Select(g => new { DomainId = g.Key, LastEnd = g.Max(x => x.RangeEndUtc) })
             .ToListAsync(ct);
 
-        var domains = await db.Domains
-            .AsNoTracking()
+        var domains = await ScopedDomains()
             .OrderBy(x => x.Name)
             .Select(x => new
             {
@@ -230,7 +236,8 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
                 x.Id, x.Name, x.IsActive, x.ClientId, x.Client!.Name, x.Client.Slug))
             .SingleOrDefaultAsync(ct);
 
-        if (domain is null)
+        // Cross-tenant ids read as not-found to avoid an existence oracle.
+        if (domain is null || !currentUser.CanAccessClient(domain.ClientId))
         {
             return null;
         }
@@ -278,7 +285,9 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
     {
         days = ClampDays(days);
 
-        if (!await db.Domains.AnyAsync(x => x.Id == domainId, ct))
+        // This access check is the tenant gate for the raw-SQL aggregation
+        // below (the SQL itself is keyed by domainId only).
+        if (!await CanAccessDomainAsync(domainId, ct))
         {
             return null;
         }
@@ -333,7 +342,7 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
     {
         days = ClampDays(days);
 
-        if (!await db.Domains.AnyAsync(x => x.Id == domainId, ct))
+        if (!await CanAccessDomainAsync(domainId, ct))
         {
             return null;
         }
@@ -496,20 +505,68 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db) : IAnalytic
         public DateTime LastSeen { get; set; }
     }
 
+    private async Task<bool> CanAccessDomainAsync(Guid domainId, CancellationToken ct)
+    {
+        var clientId = await db.Domains
+            .AsNoTracking()
+            .Where(x => x.Id == domainId)
+            .Select(x => (Guid?)x.ClientId)
+            .SingleOrDefaultAsync(ct);
+
+        return clientId.HasValue && currentUser.CanAccessClient(clientId.Value);
+    }
+
     private IQueryable<Data.Entities.DmarcReportRecord> DomainRecordsInWindow(Guid domainId, AnalyticsWindowDto window)
         => RecordsInWindow(window).Where(r => r.DmarcReport!.DomainId == domainId);
 
     private IQueryable<Data.Entities.DmarcReportRecord> RecordsInWindow(AnalyticsWindowDto window)
-        => db.DmarcReportRecords
+    {
+        var query = db.DmarcReportRecords
             .AsNoTracking()
             .Where(r => r.DmarcReport!.RangeBeginUtc >= window.BeginUtc &&
                         r.DmarcReport.RangeBeginUtc <= window.EndUtc);
 
+        if (!currentUser.IsAgencyStaff)
+        {
+            var allowed = currentUser.AllowedClientIds;
+            query = query.Where(r => allowed.Contains(r.DmarcReport!.Domain!.ClientId));
+        }
+
+        return query;
+    }
+
+    private IQueryable<Data.Entities.Domain> ScopedDomains()
+    {
+        var query = db.Domains.AsNoTracking();
+
+        if (!currentUser.IsAgencyStaff)
+        {
+            var allowed = currentUser.AllowedClientIds;
+            query = query.Where(x => allowed.Contains(x.ClientId));
+        }
+
+        return query;
+    }
+
+    private IQueryable<Data.Entities.DmarcReport> ScopedReports()
+    {
+        var query = db.DmarcReports.AsNoTracking();
+
+        if (!currentUser.IsAgencyStaff)
+        {
+            var allowed = currentUser.AllowedClientIds;
+            query = query.Where(x => allowed.Contains(x.Domain!.ClientId));
+        }
+
+        return query;
+    }
+
     private async Task<AnalyticsWindowDto> ResolveWindowAsync(int days, CancellationToken ct)
     {
         // Report data can lag far behind the wall clock (backfilled mailboxes),
-        // so relative windows anchor to the newest report instead of now.
-        var latestEnd = await db.DmarcReports.MaxAsync(x => (DateTime?)x.RangeEndUtc, ct);
+        // so relative windows anchor to the newest report instead of now. The
+        // anchor is tenant-scoped so viewers don't learn other tenants' activity.
+        var latestEnd = await ScopedReports().MaxAsync(x => (DateTime?)x.RangeEndUtc, ct);
         var endUtc = latestEnd ?? DateTime.UtcNow;
         return new AnalyticsWindowDto(days, endUtc.AddDays(-days), endUtc, latestEnd.HasValue);
     }

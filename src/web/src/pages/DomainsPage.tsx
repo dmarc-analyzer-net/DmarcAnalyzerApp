@@ -25,6 +25,8 @@ import {
   type DomainStatus,
 } from '@/lib/analytics'
 import { fetchJson } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
+import { isAdmin } from '@/lib/authz'
 import type { Client, Domain } from '@/lib/entities'
 import { formatCompact, formatPercent, formatRelativeOrDate } from '@/lib/format'
 import { useSystemStatus } from '@/lib/use-system-status'
@@ -150,6 +152,8 @@ function ComplianceMeter({ row }: { row: DomainRow }) {
 
 export function DomainsPage() {
   const status = useSystemStatus()
+  const { user } = useAuth()
+  const canManage = isAdmin(user)
   const [searchParams, setSearchParams] = useSearchParams()
   const days = parseAnalyticsDays(searchParams.get('days'))
   const clientFilter = searchParams.get('client') ?? ''
@@ -394,7 +398,7 @@ export function DomainsPage() {
           </div>
           <div className="flex items-center gap-3">
             <Badge variant="muted">{filteredRows.length} records</Badge>
-            <Button onClick={() => openDomainDialog()}>New Domain</Button>
+            {canManage && <Button onClick={() => openDomainDialog()}>New Domain</Button>}
           </div>
         </CardHeader>
         <CardContent>
@@ -431,7 +435,7 @@ export function DomainsPage() {
                     <SortButton label="Last report" column="lastReport" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                   </TableHead>
                   <TableHead>Active</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  {canManage && <TableHead className="text-right">Actions</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -485,11 +489,13 @@ export function DomainsPage() {
                           {row.isActive ? 'Active' : 'Inactive'}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="outline" size="sm" onClick={() => openDomainDialog(row)}>
-                          Edit
-                        </Button>
-                      </TableCell>
+                      {canManage && (
+                        <TableCell className="text-right">
+                          <Button variant="outline" size="sm" onClick={() => openDomainDialog(row)}>
+                            Edit
+                          </Button>
+                        </TableCell>
+                      )}
                     </TableRow>
                   )
                 })}

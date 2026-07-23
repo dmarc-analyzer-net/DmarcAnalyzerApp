@@ -4,14 +4,16 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { ConsoleLayout } from '@/components/ConsoleLayout'
 import { LoginPage } from '@/components/LoginPage'
 import { useAuth } from '@/lib/auth-context'
+import { isAdmin, isStaff } from '@/lib/authz'
 import { ClientsPage } from '@/pages/ClientsPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { DomainDetailPage } from '@/pages/DomainDetailPage'
 import { DomainsPage } from '@/pages/DomainsPage'
 import { MailboxSourcesPage } from '@/pages/MailboxSourcesPage'
+import { UsersPage } from '@/pages/UsersPage'
 
 function App() {
-  const { status } = useAuth()
+  const { status, user } = useAuth()
 
   if (status === 'loading') {
     return (
@@ -27,15 +29,22 @@ function App() {
     return <LoginPage />
   }
 
+  // Server-side enforcement is the real guard; these route gates just keep
+  // unauthorized roles from landing on pages that would only render 403s.
+  const staff = isStaff(user)
+  const admin = isAdmin(user)
+  const fallback = <Navigate to="/dashboard" replace />
+
   return (
     <Routes>
       <Route element={<ConsoleLayout />}>
         <Route path="/" element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/clients" element={<ClientsPage />} />
+        <Route path="/clients" element={staff ? <ClientsPage /> : fallback} />
         <Route path="/domains" element={<DomainsPage />} />
         <Route path="/domains/:domainId" element={<DomainDetailPage />} />
-        <Route path="/mailbox-sources" element={<MailboxSourcesPage />} />
+        <Route path="/mailbox-sources" element={staff ? <MailboxSourcesPage /> : fallback} />
+        <Route path="/users" element={admin ? <UsersPage /> : fallback} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>
     </Routes>

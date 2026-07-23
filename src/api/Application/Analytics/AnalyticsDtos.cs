@@ -52,7 +52,7 @@ public sealed record AnalyticsSummaryDto(
     IReadOnlyList<AnalyticsFailingDomainDto> TopFailingDomains,
     IReadOnlyList<AnalyticsReporterDto> TopReporters,
     AnalyticsDispositionsDto Dispositions,
-    AnalyticsMailboxesDto Mailboxes);
+    AnalyticsMailboxesDto? Mailboxes);
 
 public sealed record DomainDrilldownDomainDto(
     Guid DomainId,

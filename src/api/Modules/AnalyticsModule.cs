@@ -1,4 +1,5 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Analytics;
 
 namespace DmarcAnalyzer.Api.Modules;
@@ -14,7 +15,7 @@ public sealed class AnalyticsModule : ICarterModule
         {
             var summary = await service.GetSummaryAsync(days ?? 30, ct);
             return Results.Ok(summary);
-        });
+        }).AllowClientViewer();
 
         app.MapGet("/api/v1/analytics/domains", async (
             int? days,
@@ -23,7 +24,7 @@ public sealed class AnalyticsModule : ICarterModule
         {
             var items = await service.ListDomainAnalyticsAsync(days ?? 30, ct);
             return Results.Ok(items);
-        });
+        }).AllowClientViewer();
 
         app.MapGet("/api/v1/analytics/domains/{domainId:guid}/drilldown", async (
             Guid domainId,
@@ -33,7 +34,7 @@ public sealed class AnalyticsModule : ICarterModule
         {
             var drilldown = await service.GetDomainDrilldownAsync(domainId, days ?? 30, ct);
             return drilldown is null ? Results.NotFound() : Results.Ok(drilldown);
-        });
+        }).AllowClientViewer();
 
         app.MapGet("/api/v1/analytics/domains/{domainId:guid}/sources", async (
             Guid domainId,
@@ -43,7 +44,7 @@ public sealed class AnalyticsModule : ICarterModule
         {
             var sources = await service.ListDomainSourcesAsync(domainId, days ?? 30, ct);
             return sources is null ? Results.NotFound() : Results.Ok(sources);
-        });
+        }).AllowClientViewer();
 
         app.MapGet("/api/v1/analytics/domains/{domainId:guid}/source-detail", async (
             Guid domainId,
@@ -59,7 +60,7 @@ public sealed class AnalyticsModule : ICarterModule
 
             var detail = await service.GetSourceDetailAsync(domainId, ip.Trim(), days ?? 30, ct);
             return detail is null ? Results.NotFound() : Results.Ok(detail);
-        });
+        }).AllowClientViewer();
 
         app.MapGet("/api/v1/analytics/hostnames", async (
             string? ips,
@@ -79,6 +80,6 @@ public sealed class AnalyticsModule : ICarterModule
 
             var resolved = await resolver.ResolveAsync(list, ct);
             return Results.Ok(resolved);
-        });
+        }).AllowClientViewer();
     }
 }
