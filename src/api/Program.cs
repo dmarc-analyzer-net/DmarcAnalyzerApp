@@ -44,6 +44,8 @@ builder.Services.AddRouting(options => options.LowercaseUrls = true);
 builder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddCredentialProtection(builder.Configuration);
+builder.Services.AddOidcAuthentication(builder.Configuration);
+builder.Services.AddScoped<IOidcSignInService, OidcSignInService>();
 builder.Services.AddScoped<CurrentUserContext>();
 builder.Services.AddScoped<ICurrentUserContext>(sp => sp.GetRequiredService<CurrentUserContext>());
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -90,6 +92,12 @@ if (app.Environment.IsDevelopment())
 
 app.UseDefaultFiles();
 app.UseStaticFiles();
+
+if (app.Configuration.GetValue<bool>("Auth:Oidc:Enabled"))
+{
+    app.UseAuthentication();
+}
+
 app.UseMiddleware<SessionAuthMiddleware>();
 app.UseMiddleware<RoleAuthorizationMiddleware>();
 

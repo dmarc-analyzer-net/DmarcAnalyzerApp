@@ -17,6 +17,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<AgencyUser> AgencyUsers => Set<AgencyUser>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<UserClientGrant> UserClientGrants => Set<UserClientGrant>();
+    public DbSet<UserIdentity> UserIdentities => Set<UserIdentity>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -41,6 +42,22 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.HasIndex(x => x.CookieId).IsUnique();
             entity.HasIndex(x => x.UserId);
             entity.HasIndex(x => x.ExpiresAtUtc);
+
+            entity.HasOne(x => x.User)
+                .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<UserIdentity>(entity =>
+        {
+            entity.ToTable("user_identity");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Issuer).HasMaxLength(512).IsRequired();
+            entity.Property(x => x.Subject).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.EmailAtLink).HasMaxLength(255);
+            entity.HasIndex(x => new { x.Issuer, x.Subject }).IsUnique();
+            entity.HasIndex(x => x.UserId);
 
             entity.HasOne(x => x.User)
                 .WithMany()

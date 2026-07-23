@@ -45,7 +45,7 @@ Prioritized list of candidate work.
 
 - [ ] (todo) Add export options for analytics (CSV and JSON).
 - [ ] (todo) Add onboarding and deployment docs for local Docker-based development.
-- [ ] (todo) Add optional OIDC support for external identity providers (Azure AD, Okta, Keycloak, Auth0).
+- [x] (done) Add optional OIDC support for external identity providers (hybrid handler + JIT provisioning; Zitadel tested, any OIDC provider via config).
 - [ ] (todo) Add read-only client portal mode for selected clients.
 - [ ] (todo) Add mailbox connectors for Microsoft 365 and Google Workspace APIs.
 

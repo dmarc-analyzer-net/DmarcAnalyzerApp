@@ -7,8 +7,6 @@ namespace DmarcAnalyzer.Api.Modules;
 
 public sealed class AuthModule : ICarterModule
 {
-    private const string CookieName = "dmarc_session";
-
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         app.MapPost("/api/v1/auth/register", async (RegisterRequest request, IAuthService service, CancellationToken ct) =>
@@ -40,26 +38,26 @@ public sealed class AuthModule : ICarterModule
             }
 
             var login = result.Value!;
-            http.Response.Cookies.Append(CookieName, login.CookieId, SessionCookieOptions());
+            http.Response.Cookies.Append(SessionCookie.Name, login.CookieId, SessionCookie.Options());
 
             return Results.Ok(new { user = login.User });
         });
 
         app.MapPost("/api/v1/auth/logout", async (IAuthService service, HttpContext http, CancellationToken ct) =>
         {
-            var cookieId = http.Request.Cookies[CookieName];
+            var cookieId = http.Request.Cookies[SessionCookie.Name];
             if (cookieId is not null)
             {
                 await service.LogoutAsync(cookieId, ct);
             }
 
-            http.Response.Cookies.Delete(CookieName);
+            http.Response.Cookies.Delete(SessionCookie.Name);
             return Results.NoContent();
         });
 
         app.MapGet("/api/v1/auth/me", async (IAuthService service, HttpContext http, CancellationToken ct) =>
         {
-            var cookieId = http.Request.Cookies[CookieName];
+            var cookieId = http.Request.Cookies[SessionCookie.Name];
             if (cookieId is null)
             {
                 return Results.Json(new { error = "not authenticated" }, statusCode: 401);
@@ -68,7 +66,7 @@ public sealed class AuthModule : ICarterModule
             var user = await service.GetCurrentUserAsync(cookieId, ct);
             if (user is null)
             {
-                http.Response.Cookies.Delete(CookieName);
+                http.Response.Cookies.Delete(SessionCookie.Name);
                 return Results.Json(new { error = "session expired or invalid" }, statusCode: 401);
             }
 
@@ -76,12 +74,4 @@ public sealed class AuthModule : ICarterModule
         }).AllowClientViewer();
     }
 
-    private static CookieOptions SessionCookieOptions() => new()
-    {
-        HttpOnly = true,
-        Secure = true,
-        SameSite = SameSiteMode.Lax,
-        MaxAge = TimeSpan.FromDays(7),
-        Path = "/",
-    };
 }

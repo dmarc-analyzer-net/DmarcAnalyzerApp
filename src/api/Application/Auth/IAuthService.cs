@@ -8,6 +8,7 @@ public interface IAuthService
     Task<bool> RequiresBootstrapAsync(CancellationToken ct);
     Task<ServiceResult<UserDto>> RegisterAsync(RegisterRequest request, CancellationToken ct);
     Task<ServiceResult<LoginResultDto>> LoginAsync(LoginRequest request, string? ipAddress, string? userAgent, CancellationToken ct);
+    Task<ServiceResult<LoginResultDto>> LoginWithExternalIdentityAsync(Guid userId, string? ipAddress, string? userAgent, CancellationToken ct);
     Task LogoutAsync(string cookieId, CancellationToken ct);
     Task<UserDto?> GetCurrentUserAsync(string cookieId, CancellationToken ct);
     Task<SessionUserDto?> GetSessionUserAsync(string cookieId, CancellationToken ct);

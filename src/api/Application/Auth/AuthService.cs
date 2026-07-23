@@ -73,6 +73,17 @@ public sealed class AuthService(DmarcAnalyzerDbContext db) : IAuthService
             return ServiceResult<LoginResultDto>.Failure("invalid credentials", 401);
         }
 
+        return await LoginWithExternalIdentityAsync(user.Id, ipAddress, userAgent, ct);
+    }
+
+    public async Task<ServiceResult<LoginResultDto>> LoginWithExternalIdentityAsync(Guid userId, string? ipAddress, string? userAgent, CancellationToken ct)
+    {
+        var user = await db.AgencyUsers.SingleOrDefaultAsync(x => x.Id == userId, ct);
+        if (user is null)
+        {
+            return ServiceResult<LoginResultDto>.Failure("user not found", 404);
+        }
+
         if (!user.IsActive)
         {
             return ServiceResult<LoginResultDto>.Failure("account is deactivated", 403);

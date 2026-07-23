@@ -12,15 +12,20 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
         "/api/v1/auth/register",
         "/api/v1/auth/logout",
         "/api/v1/auth/setup",
+        "/api/v1/auth/providers",
         "/health/live",
         "/health/ready",
     ];
+
+    // OIDC challenge/callback/completion endpoints authenticate via the
+    // external-temp scheme, not an app session.
+    private const string OidcPathPrefix = "/api/v1/auth/oidc/";
 
     public async Task InvokeAsync(HttpContext context, IAuthService authService, CurrentUserContext currentUserContext)
     {
         var path = context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
 
-        if (!path.StartsWith("/api/v1/") || PublicPaths.Contains(path))
+        if (!path.StartsWith("/api/v1/") || PublicPaths.Contains(path) || path.StartsWith(OidcPathPrefix))
         {
             await next(context);
             return;

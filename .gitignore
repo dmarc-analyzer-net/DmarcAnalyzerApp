@@ -363,3 +363,6 @@ MigrationBackup/
 FodyWeavers.xsd
 # local compose overrides (machine-specific ports etc.)
 docker-compose.override.yml
+
+# built SPA staged into the API for host-run dev (image builds its own)
+src/api/wwwroot/
