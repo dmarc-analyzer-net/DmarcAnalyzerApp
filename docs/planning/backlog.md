@@ -2,6 +2,40 @@
 
 Prioritized list of candidate work.
 
+## Next Up (recommended sequence)
+
+The MVP is functionally complete: multi-tenant RBAC, pluggable auth (local +
+OIDC), worker ingestion, analytics dashboards, and per-source drill-down are
+all shipped. The near-term sequence below turns it from "works" into
+"operable and client-facing", ordered by value and dependencies.
+
+1. **Production polling schedule + worker hardening.** The worker interval is
+   configurable but still set to a dev cadence; define the 60-minute 24/7
+   production default with a deployment override. Small, and a prerequisite
+   for any real deployment. (Closes the High-Priority polling item.)
+2. **Retention + purge jobs.** `client.retention_months` (default 27) exists
+   but nothing enforces it — `dmarc_report*` data grows unbounded. Add
+   scheduled archival/purge with legal-hold support. Compliance-relevant.
+3. **Alert engine for failure spikes / policy regression.** The drill-down
+   surfaces problems reactively; per-client thresholds + notifications make it
+   proactive. Highest client-facing value now that the data is trustworthy.
+4. **Email digest + SMTP relay.** Monthly per-client summaries; shares
+   delivery infrastructure with #3, so build them together.
+5. **Audit logging.** Login, config change, sync run, and (future) magic-link
+   events. Needed for agency trust and as a prerequisite for #6.
+6. **Client access: portal polish + magic links.** The `client_viewer` role
+   already approximates a read-only portal; add magic-link (single-client,
+   read-only, 7-day) sharing for occasional client access without accounts.
+
+Smaller, independent items to slot in opportunistically: a **published
+container image + README quick-start** (small, and the fastest win for new-user
+onboarding — it also becomes the artifact the Helm chart deploys), **POP3
+ingestion**, the **report upload/query API endpoints**, and **CSV/JSON
+export**. Larger, deferred until a deployment or refresh calls for them: a
+**new visual design** for the console, **Helm/K8s charts**, **branded PDF
+reports**, and **M365/Google Workspace connectors**. See the categorized lists
+below for the full inventory.
+
 ## High Priority
 
 - [x] (done) Define MVP feature set by benchmarking core workflows from dmarcian and EasyDMARC.
@@ -35,7 +69,9 @@ Prioritized list of candidate work.
 - [x] (done) Add per-source drill-down with daily aggregates (domain detail page with per-IP DMARC results and raw auth breakdown).
 - [x] (done) Add scheduled polling orchestration with retries and sync audit history (worker-driven, `mailbox_sync_run`).
 - [ ] (todo) Implement per-client retention rules with default 27 months plus archival/purge jobs and legal-hold support.
-- [ ] (todo) Add Kubernetes deployment assets (manifests/Helm), health checks, and stateless service patterns.
+- [ ] (todo) Publish a versioned container image (e.g. GHCR) via CI and add a README quick-start (`docker run` / minimal compose) so new users can start from a prebuilt image without a local build.
+- [ ] (todo) Redesign the console UI (refreshed visual language, layout, and componentry) building on the existing Tailwind/shadcn foundation.
+- [ ] (todo) Add Kubernetes deployment assets — Helm chart(s) with health checks and stateless service patterns, supporting both self-contained (bundled PostgreSQL, local auth) and bring-your-own deployments (external managed PostgreSQL, external OIDC), toggled via chart values.
 - [ ] (todo) Add branded PDF report generation (server-side HTML to PDF) with agency logo/colors/footer.
 - [ ] (todo) Add monthly email digest delivery and SMTP relay configuration.
 - [ ] (todo) Add alert engine for failure spikes and policy regression with per-client thresholds.
