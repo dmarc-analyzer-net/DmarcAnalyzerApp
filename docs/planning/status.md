@@ -49,6 +49,11 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - `GET /api/v1/analytics/domains` (per-domain compliance, DKIM/SPF pass rates, volume, sources, reporters, status classification)
   - relative windows anchored to newest report data (`days` query parameter)
 - Dashboard frontpage with compliance overview and URL routing for all console pages.
+- Published DMARC policy persistence:
+  - parse & store `policy_published` (p, sp, pct, adkim, aspf) per report on `dmarc_report`
+  - expose latest-per-domain policy + derived enforcement status (enforced/ramping/spoofing/monitoring/no_data) in domain analytics list and drill-down
+  - historical reports default to `p=none` until re-ingested; new ingestion captures real policy
+
 - Per-source drill-down (`/domains/{id}`):
   - domain drilldown/sources/source-detail analytics endpoints
   - per-IP DMARC results with evaluated DKIM×SPF combos, raw auth breakdowns, identifiers, reporters, and per-source trend

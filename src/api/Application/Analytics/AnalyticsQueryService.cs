@@ -193,6 +193,7 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUse
 
         var statsByDomain = perDomain.ToDictionary(x => x.DomainId);
         var lastEndByDomain = lastReportEnds.ToDictionary(x => x.DomainId, x => x.LastEnd);
+        var policyByDomain = await LatestPolicyByDomainAsync(window, ct);
 
         return domains
             .Select(d =>
@@ -220,27 +221,80 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUse
                     s?.Quarantined ?? 0,
                     s?.Rejected ?? 0,
                     lastEndByDomain.TryGetValue(d.Id, out var lastEnd) ? lastEnd : null,
-                    ResolveStatus(messages, rate));
+                    ResolveStatus(messages, rate),
+                    policyByDomain.TryGetValue(d.Id, out var p) ? p.PublishedPolicy : null,
+                    p?.SubdomainPolicy,
+                    p?.PublishedPct,
+                    p?.DkimAlignment,
+                    p?.SpfAlignment,
+                    EnforcementStatus.Resolve(messages, rate, p?.PublishedPolicy));
             })
             .ToArray();
+    }
+
+    private sealed class DomainPolicyRow
+    {
+        public Guid DomainId { get; set; }
+        public string PublishedPolicy { get; set; } = "none";
+        public string SubdomainPolicy { get; set; } = "none";
+        public int PublishedPct { get; set; } = 100;
+        public string DkimAlignment { get; set; } = "relaxed";
+        public string SpfAlignment { get; set; } = "relaxed";
+    }
+
+    // Latest published policy per (scoped) domain within the window — top-1 per
+    // group by newest report. Translatable on Postgres and executable on the
+    // InMemory provider used by tests.
+    private async Task<Dictionary<Guid, DomainPolicyRow>> LatestPolicyByDomainAsync(AnalyticsWindowDto window, CancellationToken ct)
+    {
+        var rows = await ScopedReports()
+            .Where(x => x.RangeBeginUtc >= window.BeginUtc && x.RangeBeginUtc <= window.EndUtc)
+            .GroupBy(x => x.DomainId)
+            .Select(g => g
+                .OrderByDescending(r => r.RangeEndUtc)
+                .ThenByDescending(r => r.IngestedAtUtc)
+                .Select(r => new DomainPolicyRow
+                {
+                    DomainId = r.DomainId,
+                    PublishedPolicy = r.PublishedPolicy,
+                    SubdomainPolicy = r.SubdomainPolicy,
+                    PublishedPct = r.PublishedPct,
+                    DkimAlignment = r.DkimAlignment,
+                    SpfAlignment = r.SpfAlignment,
+                })
+                .First())
+            .ToListAsync(ct);
+
+        return rows.ToDictionary(x => x.DomainId);
     }
 
     public async Task<DomainDrilldownDto?> GetDomainDrilldownAsync(Guid domainId, int days, CancellationToken ct)
     {
         days = ClampDays(days);
 
-        var domain = await db.Domains
+        var domainRow = await db.Domains
             .AsNoTracking()
             .Where(x => x.Id == domainId)
-            .Select(x => new DomainDrilldownDomainDto(
-                x.Id, x.Name, x.IsActive, x.ClientId, x.Client!.Name, x.Client.Slug))
+            .Select(x => new { x.Id, x.Name, x.IsActive, x.ClientId, ClientName = x.Client!.Name, ClientSlug = x.Client.Slug })
             .SingleOrDefaultAsync(ct);
 
         // Cross-tenant ids read as not-found to avoid an existence oracle.
-        if (domain is null || !currentUser.CanAccessClient(domain.ClientId))
+        if (domainRow is null || !currentUser.CanAccessClient(domainRow.ClientId))
         {
             return null;
         }
+
+        var policy = await db.DmarcReports
+            .AsNoTracking()
+            .Where(x => x.DomainId == domainId)
+            .OrderByDescending(x => x.RangeEndUtc)
+            .ThenByDescending(x => x.IngestedAtUtc)
+            .Select(x => new { x.PublishedPolicy, x.SubdomainPolicy, x.PublishedPct, x.DkimAlignment, x.SpfAlignment })
+            .FirstOrDefaultAsync(ct);
+
+        var domain = new DomainDrilldownDomainDto(
+            domainRow.Id, domainRow.Name, domainRow.IsActive, domainRow.ClientId, domainRow.ClientName, domainRow.ClientSlug,
+            policy?.PublishedPolicy, policy?.SubdomainPolicy, policy?.PublishedPct, policy?.DkimAlignment, policy?.SpfAlignment);
 
         var window = await ResolveWindowAsync(days, ct);
         var records = DomainRecordsInWindow(domainId, window);

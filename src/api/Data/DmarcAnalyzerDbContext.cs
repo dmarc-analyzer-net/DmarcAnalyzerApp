@@ -183,6 +183,11 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.HasKey(x => x.Id);
             entity.Property(x => x.OrganizationName).HasMaxLength(255).IsRequired();
             entity.Property(x => x.ReportId).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.PublishedPolicy).HasMaxLength(16).IsRequired().HasDefaultValue("none");
+            entity.Property(x => x.SubdomainPolicy).HasMaxLength(16).IsRequired().HasDefaultValue("none");
+            entity.Property(x => x.PublishedPct).HasDefaultValue(100);
+            entity.Property(x => x.DkimAlignment).HasMaxLength(16).IsRequired().HasDefaultValue("relaxed");
+            entity.Property(x => x.SpfAlignment).HasMaxLength(16).IsRequired().HasDefaultValue("relaxed");
             entity.HasIndex(x => x.DomainId);
             entity.HasIndex(x => x.MailboxSourceId);
             entity.HasIndex(x => new { x.DomainId, x.ReportId, x.RangeBeginUtc, x.RangeEndUtc }).IsUnique();

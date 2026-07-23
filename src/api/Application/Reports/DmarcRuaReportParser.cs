@@ -85,8 +85,29 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             records,
             aggregateReport.HasWarnings || normalizationMessages.Count > 0,
             aggregateReport.HasErrors,
-            validationMessages);
+            validationMessages,
+            MapDisposition(policyPublished.P),
+            MapDisposition(policyPublished.Sp),
+            ParsePercent(policyPublished.Percent),
+            MapAlignment(policyPublished.Adkim),
+            MapAlignment(policyPublished.Aspf));
     }
+
+    private static string MapDisposition(DispositionType disposition) => disposition switch
+    {
+        DispositionType.Reject => "reject",
+        DispositionType.Quarantine => "quarantine",
+        _ => "none",
+    };
+
+    private static string MapAlignment(AlignmentType? alignment) => alignment switch
+    {
+        AlignmentType.Strict => "strict",
+        _ => "relaxed",
+    };
+
+    private static int ParsePercent(string? percent)
+        => int.TryParse(percent, out var value) && value is >= 0 and <= 100 ? value : 100;
 
     private static MemoryStream CopyToMemory(Stream xmlStream)
     {

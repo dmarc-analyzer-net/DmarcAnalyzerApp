@@ -175,6 +175,49 @@ public sealed class DmarcRuaReportParserTests
         Assert.Contains(result.ValidationMessages, x => x.Contains("stripped XML namespace 'urn:ietf:params:xml:ns:dmarc-2.0'", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void Parse_ExtractsPublishedPolicy()
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback>
+              <report_metadata>
+                <org_name>policy-test</org_name>
+                <email>noreply@example.com</email>
+                <report_id>policy-1</report_id>
+                <date_range><begin>1737446400</begin><end>1737532800</end></date_range>
+              </report_metadata>
+              <policy_published>
+                <domain>example.com</domain>
+                <adkim>s</adkim>
+                <aspf>r</aspf>
+                <p>reject</p>
+                <sp>quarantine</sp>
+                <pct>100</pct>
+              </policy_published>
+              <record>
+                <row>
+                  <source_ip>127.0.0.1</source_ip>
+                  <count>1</count>
+                  <policy_evaluated><disposition>reject</disposition><dkim>pass</dkim><spf>pass</spf></policy_evaluated>
+                </row>
+                <identifiers><header_from>example.com</header_from></identifiers>
+                <auth_results><spf><domain>example.com</domain><result>pass</result></spf></auth_results>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal("reject", result.PublishedPolicy);
+        Assert.Equal("quarantine", result.SubdomainPolicy);
+        Assert.Equal(100, result.PublishedPct);
+        Assert.Equal("strict", result.DkimAlignment);
+        Assert.Equal("relaxed", result.SpfAlignment);
+    }
+
     private static Stream OpenFixture(string fixtureName)
     {
         var basePath = AppContext.BaseDirectory;
