@@ -27,11 +27,14 @@ all shipped. The near-term sequence below turns it from "works" into
    already approximates a read-only portal; add magic-link (single-client,
    read-only, 7-day) sharing for occasional client access without accounts.
 
-Smaller, independent items to slot in opportunistically: **POP3 ingestion**,
-the **report upload/query API endpoints**, and **CSV/JSON export**. Deferred
-until a deployment needs them: **Kubernetes assets**, **branded PDF reports**,
-**M365/Google Workspace connectors**. See the categorized lists below for the
-full inventory.
+Smaller, independent items to slot in opportunistically: a **published
+container image + README quick-start** (small, and the fastest win for new-user
+onboarding — it also becomes the artifact the Helm chart deploys), **POP3
+ingestion**, the **report upload/query API endpoints**, and **CSV/JSON
+export**. Larger, deferred until a deployment or refresh calls for them: a
+**new visual design** for the console, **Helm/K8s charts**, **branded PDF
+reports**, and **M365/Google Workspace connectors**. See the categorized lists
+below for the full inventory.
 
 ## High Priority
 
@@ -66,7 +69,9 @@ full inventory.
 - [x] (done) Add per-source drill-down with daily aggregates (domain detail page with per-IP DMARC results and raw auth breakdown).
 - [x] (done) Add scheduled polling orchestration with retries and sync audit history (worker-driven, `mailbox_sync_run`).
 - [ ] (todo) Implement per-client retention rules with default 27 months plus archival/purge jobs and legal-hold support.
-- [ ] (todo) Add Kubernetes deployment assets (manifests/Helm), health checks, and stateless service patterns.
+- [ ] (todo) Publish a versioned container image (e.g. GHCR) via CI and add a README quick-start (`docker run` / minimal compose) so new users can start from a prebuilt image without a local build.
+- [ ] (todo) Redesign the console UI (refreshed visual language, layout, and componentry) building on the existing Tailwind/shadcn foundation.
+- [ ] (todo) Add Kubernetes deployment assets — Helm chart(s) with health checks and stateless service patterns, supporting both self-contained (bundled PostgreSQL, local auth) and bring-your-own deployments (external managed PostgreSQL, external OIDC), toggled via chart values.
 - [ ] (todo) Add branded PDF report generation (server-side HTML to PDF) with agency logo/colors/footer.
 - [ ] (todo) Add monthly email digest delivery and SMTP relay configuration.
 - [ ] (todo) Add alert engine for failure spikes and policy regression with per-client thresholds.
