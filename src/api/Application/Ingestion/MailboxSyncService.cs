@@ -167,6 +167,7 @@ public sealed class MailboxSyncService(
                                     result.RangeBeginUtc,
                                     result.RangeEndUtc,
                                     result.RecordCount,
+                                    result,
                                     operationToken);
 
                                 if (!reportId.HasValue)
@@ -349,14 +350,15 @@ public sealed class MailboxSyncService(
         DateTime rangeBeginUtc,
         DateTime rangeEndUtc,
         int recordCount,
+        DmarcReportParseResult parsed,
         CancellationToken ct)
     {
         var id = Guid.NewGuid();
         var rows = await db.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dmarc_report
-                (""Id"", ""DomainId"", ""MailboxSourceId"", ""OrganizationName"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"", ""RecordCount"", ""IngestedAtUtc"")
+                (""Id"", ""DomainId"", ""MailboxSourceId"", ""OrganizationName"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"", ""RecordCount"", ""IngestedAtUtc"", ""PublishedPolicy"", ""SubdomainPolicy"", ""PublishedPct"", ""DkimAlignment"", ""SpfAlignment"")
             VALUES
-                ({id}, {domainId}, {mailboxSourceId}, {organizationName}, {reportId}, {rangeBeginUtc}, {rangeEndUtc}, {recordCount}, {DateTime.UtcNow})
+                ({id}, {domainId}, {mailboxSourceId}, {organizationName}, {reportId}, {rangeBeginUtc}, {rangeEndUtc}, {recordCount}, {DateTime.UtcNow}, {parsed.PublishedPolicy}, {parsed.SubdomainPolicy}, {parsed.PublishedPct}, {parsed.DkimAlignment}, {parsed.SpfAlignment})
             ON CONFLICT (""DomainId"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"") DO NOTHING;
             ", ct);
 

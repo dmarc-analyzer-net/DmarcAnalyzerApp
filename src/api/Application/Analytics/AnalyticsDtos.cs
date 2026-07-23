@@ -60,7 +60,38 @@ public sealed record DomainDrilldownDomainDto(
     bool IsActive,
     Guid ClientId,
     string ClientName,
-    string ClientSlug);
+    string ClientSlug,
+    string? PublishedPolicy,
+    string? SubdomainPolicy,
+    int? PublishedPct,
+    string? DkimAlignment,
+    string? SpfAlignment);
+
+/// <summary>Policy-aware enforcement status derived from published policy + compliance.</summary>
+public static class EnforcementStatus
+{
+    public const string NoData = "no_data";
+    public const string Enforced = "enforced";   // p=reject
+    public const string Ramping = "ramping";     // p=quarantine
+    public const string Spoofing = "spoofing";   // unprotected (p=none) with failing volume
+    public const string Monitoring = "monitoring"; // p=none but compliant / low volume
+
+    public static string Resolve(long messages, double complianceRate, string? publishedPolicy)
+    {
+        if (messages == 0)
+        {
+            return NoData;
+        }
+
+        return publishedPolicy switch
+        {
+            "reject" => Enforced,
+            "quarantine" => Ramping,
+            // p=none (or unknown): failing mail is not being blocked.
+            _ => complianceRate < 0.98 ? Spoofing : Monitoring,
+        };
+    }
+}
 
 public sealed record DomainDrilldownTotalsDto(
     long Messages,
@@ -138,4 +169,10 @@ public sealed record DomainAnalyticsDto(
     long Quarantined,
     long Rejected,
     DateTime? LastReportEndUtc,
-    string Status);
+    string Status,
+    string? PublishedPolicy,
+    string? SubdomainPolicy,
+    int? PublishedPct,
+    string? DkimAlignment,
+    string? SpfAlignment,
+    string EnforcementStatus);

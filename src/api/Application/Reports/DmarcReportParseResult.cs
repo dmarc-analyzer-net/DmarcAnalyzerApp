@@ -10,4 +10,9 @@ public sealed record DmarcReportParseResult(
     IReadOnlyList<DmarcReportRecordParseResult> Records,
     bool HasValidationWarnings,
     bool HasValidationErrors,
-    IReadOnlyList<string> ValidationMessages);
+    IReadOnlyList<string> ValidationMessages,
+    string PublishedPolicy,
+    string SubdomainPolicy,
+    int PublishedPct,
+    string DkimAlignment,
+    string SpfAlignment);
