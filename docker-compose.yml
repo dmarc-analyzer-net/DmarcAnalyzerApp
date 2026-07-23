@@ -11,6 +11,10 @@ services:
       Database__MigrateOnStartup: "true"
       # dev-only key; generate your own for real deployments: openssl rand -base64 32
       Security__CredentialEncryptionKey: lSqzPZf0negcljwLKSzvZhIZlvd5hya25OYp1ogntKk=
+      # OIDC login is off by default so `docker compose up` is self-contained.
+      # The dev Zitadel service below plus the host-run dev loop in
+      # docs/ops/oidc-zitadel.md enable and exercise it.
+      Auth__Oidc__Enabled: "false"
     ports:
       - "8080:8080"
     depends_on:
@@ -29,6 +33,30 @@ services:
       Worker__RetryBaseDelaySeconds: 2
       Worker__StaleRunTimeoutMinutes: 20
       Worker__SyncRunTimeoutMinutes: 10
+    depends_on:
+      - postgres
+
+  # Dev-only identity provider for testing the OIDC login front door.
+  # Console: http://localhost:8082/ui/console (zitadel-admin@zitadel.localhost / Password1!)
+  # Setup guide: docs/ops/oidc-zitadel.md
+  zitadel:
+    image: ghcr.io/zitadel/zitadel:v2.65.1
+    command: start-from-init --masterkey "84f3926e521bf337d69f76c0fd2769b8" --tlsMode disabled
+    environment:
+      ZITADEL_DATABASE_POSTGRES_HOST: postgres
+      ZITADEL_DATABASE_POSTGRES_PORT: 5432
+      ZITADEL_DATABASE_POSTGRES_DATABASE: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_USERNAME: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_PASSWORD: zitadel
+      ZITADEL_DATABASE_POSTGRES_USER_SSL_MODE: disable
+      ZITADEL_DATABASE_POSTGRES_ADMIN_USERNAME: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_PASSWORD: postgres
+      ZITADEL_DATABASE_POSTGRES_ADMIN_SSL_MODE: disable
+      ZITADEL_EXTERNALSECURE: "false"
+      ZITADEL_EXTERNALDOMAIN: localhost
+      ZITADEL_EXTERNALPORT: "8082"
+    ports:
+      - "8082:8080"
     depends_on:
       - postgres
 

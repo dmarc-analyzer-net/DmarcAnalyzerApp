@@ -58,7 +58,13 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - roles: `agency_admin`, `agency_analyst`, `client_viewer` with deny-by-default endpoint enforcement (`RoleAuthorizationMiddleware` + route metadata)
   - per-request `ICurrentUserContext` with client grants (`user_client_grant`) scoping all reads for viewers; cross-tenant ids read as 404
   - admin user management endpoints + Users page; registration locked to first-run bootstrap (`GET /auth/setup`)
-  - authN/authZ split designed for pluggable OIDC login (Zitadel et al.) in a follow-up
+  - authN/authZ split: authorization is always in-app, authentication is pluggable
+
+- Optional OIDC login (pluggable authentication):
+  - hybrid flow (Microsoft OIDC handler → short-lived cookie → app-minted `dmarc_session`); local password and OIDC are interchangeable front doors
+  - `user_identity` mapping with JIT provisioning (verified-email linking; configurable auto-provision + default role)
+  - `Auth:Oidc` config, off by default; dev Zitadel in compose + `docs/ops/oidc-zitadel.md`
+  - see ADR 0007
 
 - Authentication baseline:
   - `agency_user` and `user_session` entities with EF Core configuration

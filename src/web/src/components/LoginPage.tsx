@@ -9,16 +9,35 @@ import { Input } from '@/components/ui/input'
 import { ApiError, fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 
+type OidcProvider = {
+  enabled: boolean
+  displayName: string
+  loginUrl: string
+}
+
+const OIDC_ERROR_MESSAGES: Record<string, string> = {
+  oidc_failed: 'Single sign-on failed. Try again or use your password.',
+  email_not_verified:
+    'Your email address is not verified with the identity provider, so it cannot be linked to an existing account.',
+  no_account: 'No account exists for your identity. Ask an administrator to create one.',
+  account_disabled: 'Your account is deactivated. Ask an administrator to re-enable it.',
+}
+
 export function LoginPage() {
   const { login } = useAuth()
 
   // null = setup check in flight; falls back to the login form if it fails.
   const [requiresBootstrap, setRequiresBootstrap] = useState<boolean | null>(null)
+  const [oidcProvider, setOidcProvider] = useState<OidcProvider | null>(null)
 
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(() => {
+    const code = new URLSearchParams(window.location.search).get('loginError')
+    if (!code) return null
+    return OIDC_ERROR_MESSAGES[code] ?? 'Single sign-on failed. Try again or use your password.'
+  })
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
@@ -26,8 +45,16 @@ export function LoginPage() {
 
     const checkSetup = async () => {
       try {
-        const payload = await fetchJson<{ requiresBootstrap: boolean }>('/api/v1/auth/setup')
-        if (!cancelled) setRequiresBootstrap(payload.requiresBootstrap)
+        const [setup, providers] = await Promise.all([
+          fetchJson<{ requiresBootstrap: boolean }>('/api/v1/auth/setup'),
+          fetchJson<{ local: boolean; oidc: OidcProvider | null }>('/api/v1/auth/providers').catch(
+            () => ({ local: true, oidc: null }),
+          ),
+        ])
+        if (!cancelled) {
+          setRequiresBootstrap(setup.requiresBootstrap)
+          setOidcProvider(providers.oidc)
+        }
       } catch {
         if (!cancelled) setRequiresBootstrap(false)
       }
@@ -38,6 +65,13 @@ export function LoginPage() {
       cancelled = true
     }
   }, [])
+
+  const startSso = () => {
+    const returnUrl = window.location.pathname + window.location.search
+    window.location.assign(
+      `${oidcProvider!.loginUrl}?returnUrl=${encodeURIComponent(returnUrl === '/' ? '/dashboard' : returnUrl)}`,
+    )
+  }
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -157,6 +191,24 @@ export function LoginPage() {
               {requiresBootstrap ? 'Create administrator account' : 'Sign in'}
             </Button>
           </form>
+          {!requiresBootstrap && oidcProvider?.enabled && (
+            <>
+              <div className="my-4 flex items-center gap-3">
+                <div className="h-px flex-1 bg-border" />
+                <span className="text-xs uppercase tracking-wide text-muted-foreground">or</span>
+                <div className="h-px flex-1 bg-border" />
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={startSso}
+                disabled={submitting}
+              >
+                Sign in with {oidcProvider.displayName}
+              </Button>
+            </>
+          )}
         </CardContent>
       </Card>
     </div>
