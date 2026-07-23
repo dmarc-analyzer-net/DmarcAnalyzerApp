@@ -62,6 +62,35 @@ public sealed class AnalyticsModule : ICarterModule
             return detail is null ? Results.NotFound() : Results.Ok(detail);
         }).AllowClientViewer();
 
+        app.MapGet("/api/v1/analytics/domains/{domainId:guid}/enforcement", async (
+            Guid domainId,
+            int? days,
+            IAnalyticsQueryService service,
+            CancellationToken ct) =>
+        {
+            var guidance = await service.GetEnforcementGuidanceAsync(domainId, days ?? 30, ct);
+            return guidance is null ? Results.NotFound() : Results.Ok(guidance);
+        }).AllowClientViewer();
+
+        app.MapGet("/api/v1/analytics/domains/{domainId:guid}/records", async (
+            Guid domainId,
+            IRecordInspectionService service,
+            CancellationToken ct) =>
+        {
+            var inspection = await service.InspectAsync(domainId, ct);
+            return inspection is null ? Results.NotFound() : Results.Ok(inspection);
+        }).AllowClientViewer();
+
+        app.MapGet("/api/v1/analytics/threats", async (
+            int? days,
+            int? limit,
+            IAnalyticsQueryService service,
+            CancellationToken ct) =>
+        {
+            var feed = await service.GetThreatFeedAsync(days ?? 30, limit ?? 100, ct);
+            return Results.Ok(feed);
+        }).AllowClientViewer();
+
         app.MapGet("/api/v1/analytics/hostnames", async (
             string? ips,
             IHostnameResolver resolver,

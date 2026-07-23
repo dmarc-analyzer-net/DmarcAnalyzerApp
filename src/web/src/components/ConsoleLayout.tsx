@@ -19,6 +19,7 @@ type NavItem = {
 const primaryNav: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: 'layout-dashboard' },
   { to: '/domains', label: 'Domains', icon: 'globe' },
+  { to: '/threats', label: 'Threats', icon: 'triangle-alert' },
 ]
 
 const manageNav: NavItem[] = [

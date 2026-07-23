@@ -76,9 +76,9 @@ design system.) See the categorized lists below for the full inventory.
 - [ ] (todo) Add monthly email digest delivery and SMTP relay configuration.
 - [ ] (todo) Add alert engine for failure spikes and policy regression with per-client thresholds.
 - [ ] (todo) Add core audit logging for login events, config changes, sync runs, and magic-link usage.
-- [ ] (todo) Add guided path to enforcement: per-domain policy recommendation engine surfacing the next safe policy step (none -> quarantine -> reject) and the sources still blocking full enforcement (marketing site headline feature; not yet built).
-- [ ] (todo) Persist published DMARC policy (`policy_published` from reports) and add a record-inspection view comparing published DMARC/SPF/DKIM records against observed report data (site "Record inspection"; noted as Planned Next in status.md).
-- [ ] (todo) Add a threat feed view: dedicated list of unauthenticated/failing sending sources with IP, volume, and first/last-seen for spoofing investigation (site "Threats" / spoofing detection; distinct from the alert engine above).
+- [x] (done) Add guided path to enforcement: per-domain policy recommendation engine surfacing the next safe policy step (none -> quarantine -> reject) and the sources still blocking full enforcement (`/enforcement` endpoint + Domain Detail panel).
+- [x] (done) Persist published DMARC policy (`policy_published` from reports) and add a record-inspection view comparing published DMARC/SPF records (live DNS via host resolver) against observed report data (`/records` endpoint + Domain Detail card).
+- [x] (done) Add a threat feed view: dedicated list of unauthenticated/failing sending sources with IP, volume, and first/last-seen for spoofing investigation (`/threats` endpoint + Threats page in sidebar).
 
 ## Low Priority
 

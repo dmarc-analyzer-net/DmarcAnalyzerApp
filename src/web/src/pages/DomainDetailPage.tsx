@@ -22,7 +22,9 @@ import {
   type DomainSourceAnalytics,
   type DrilldownDomain,
   type DrilldownTotals,
+  type EnforcementGuidance,
   type EvaluatedCombo,
+  type RecordInspection,
   type SourceDetail,
   type ValueCount,
 } from '@/lib/analytics'
@@ -247,6 +249,174 @@ function alignmentSummary(domain: DrilldownDomain): string | null {
   return parts.length ? parts.join(' · ') : null
 }
 
+// --- Record inspection (live DNS vs observed policy) ---
+
+const LOOKUP_STATUS_META: Record<
+  'found' | 'missing' | 'lookup_failed',
+  { label: string; badge: 'success' | 'danger' | 'warning' }
+> = {
+  found: { label: 'Published', badge: 'success' },
+  missing: { label: 'Missing', badge: 'danger' },
+  lookup_failed: { label: 'Lookup failed', badge: 'warning' },
+}
+
+function RecordBlock({
+  title,
+  status,
+  raw,
+  meta,
+  issues,
+}: {
+  title: string
+  status: RecordInspection['dmarc']['status']
+  raw: string | null
+  meta?: string | null
+  issues: string[]
+}) {
+  const statusMeta = LOOKUP_STATUS_META[status]
+  return (
+    <div>
+      <div className="flex items-center gap-2">
+        <PanelSectionTitle>{title}</PanelSectionTitle>
+        <Badge variant={statusMeta.badge}>{statusMeta.label}</Badge>
+        {meta ? <span className="font-mono text-xs text-secondary">{meta}</span> : null}
+      </div>
+      {raw ? (
+        <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-xs leading-relaxed text-body">
+          {raw}
+        </pre>
+      ) : null}
+      {issues.length > 0 ? (
+        <ul className="mt-2 space-y-1">
+          {issues.map((issue) => (
+            <li key={issue} className="flex items-start gap-1.5 text-xs text-[var(--status-warn-fg)]">
+              <Icon name="triangle-alert" size={13} className="mt-px shrink-0" />
+              {issue}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * Live DNS DMARC/SPF records vs the policy reporters observed. Fetched
+ * separately from the analytics payload because the server does real DNS
+ * lookups — a slow resolver must never block the drill-down render.
+ */
+function RecordInspectionCard({ domainId }: { domainId: string }) {
+  const [inspection, setInspection] = useState<RecordInspection | null>(null)
+  const [busy, setBusy] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    setBusy(true)
+    setError(null)
+    void fetchJson<RecordInspection>(`/api/v1/analytics/domains/${domainId}/records`)
+      .then((payload) => {
+        if (!cancelled) setInspection(payload)
+      })
+      .catch((loadError: unknown) => {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : 'Failed to inspect records')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setBusy(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [domainId])
+
+  const mismatches = inspection?.comparison.filter((c) => !c.match) ?? []
+
+  return (
+    <Card pad>
+      <CardHeader
+        title="Record inspection"
+        description="The DMARC and SPF records published in DNS right now, checked against what reporters observed"
+      />
+      {busy ? (
+        <div className="flex items-center gap-2 py-4 text-sm text-secondary">
+          <Icon name="loader-circle" size={16} className="animate-spin" />
+          Looking up live DNS records…
+        </div>
+      ) : error ? (
+        <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+          {error}
+        </p>
+      ) : inspection ? (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+          <RecordBlock
+            title="DMARC (live DNS)"
+            status={inspection.dmarc.status}
+            raw={inspection.dmarc.raw}
+            issues={inspection.dmarc.issues}
+          />
+          <RecordBlock
+            title="SPF (live DNS)"
+            status={inspection.spf.status}
+            raw={inspection.spf.raw}
+            meta={
+              inspection.spf.status === 'found'
+                ? `${inspection.spf.lookupMechanisms}/10 lookups${inspection.spf.allQualifier ? ` · ${inspection.spf.allQualifier}all` : ''}`
+                : null
+            }
+            issues={inspection.spf.issues}
+          />
+          {inspection.observed && inspection.comparison.length > 0 ? (
+            <div className="lg:col-span-2">
+              <div className="flex items-center gap-2">
+                <PanelSectionTitle>Published vs observed</PanelSectionTitle>
+                {mismatches.length === 0 ? (
+                  <Badge variant="success">in sync</Badge>
+                ) : (
+                  <Badge variant="warning">
+                    {mismatches.length} difference{mismatches.length === 1 ? '' : 's'}
+                  </Badge>
+                )}
+                <span className="text-xs text-secondary">
+                  observed by {inspection.observed.reportedBy} · {formatRelativeOrDate(inspection.observed.asOfUtc)}
+                </span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {inspection.comparison.map((row) => (
+                  <div
+                    key={row.field}
+                    className={cn(
+                      'flex items-center gap-2 rounded-md border px-3 py-1.5 font-mono text-xs',
+                      row.match
+                        ? 'border-border bg-surface-card text-secondary'
+                        : 'border-[var(--status-warn-bg)] bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]',
+                    )}
+                    title={
+                      row.match
+                        ? undefined
+                        : 'DNS differs from the last report — a recent change may still be propagating to reporters'
+                    }
+                  >
+                    <span className="font-semibold">{row.field}=</span>
+                    <span>{row.published ?? '—'}</span>
+                    {!row.match ? (
+                      <>
+                        <Icon name="arrow-right" size={12} aria-hidden />
+                        <span>observed {row.observed ?? '—'}</span>
+                      </>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </Card>
+  )
+}
+
 // --- Expandable per-source detail panel ---
 
 type SourceDetailPanelProps = {
@@ -453,6 +623,7 @@ export function DomainDetailPage() {
   const selectedSource = searchParams.get('source')
 
   const [drilldown, setDrilldown] = useState<DomainDrilldown | null>(null)
+  const [guidance, setGuidance] = useState<EnforcementGuidance | null>(null)
   const [sources, setSources] = useState<DomainSourceAnalytics[]>([])
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -468,15 +639,19 @@ export function DomainDetailPage() {
     setBusy(true)
     setError(null)
     try {
-      const [drilldownData, sourceData] = await Promise.all([
+      const [drilldownData, sourceData, guidanceData] = await Promise.all([
         fetchJson<DomainDrilldown>(`/api/v1/analytics/domains/${domainId}/drilldown?days=${days}`),
         fetchJson<DomainSourceAnalytics[]>(
           `/api/v1/analytics/domains/${domainId}/sources?days=${days}`,
+        ),
+        fetchJson<EnforcementGuidance>(
+          `/api/v1/analytics/domains/${domainId}/enforcement?days=${days}`,
         ),
       ])
       if (seq !== requestSeq.current) return
       setDrilldown(drilldownData)
       setSources(sourceData)
+      setGuidance(guidanceData)
       setNotFound(false)
     } catch (loadError) {
       if (seq !== requestSeq.current) return
@@ -693,6 +868,62 @@ export function DomainDetailPage() {
                 title="Path to enforcement"
                 description="What stands between p=none and p=reject"
               />
+              {guidance ? (
+                <div
+                  className={cn(
+                    'mb-3.5 rounded-md border px-3 py-2.5',
+                    guidance.readyToAdvance
+                      ? 'border-[var(--status-ok-bg)] bg-[var(--status-ok-bg)]'
+                      : 'border-[var(--status-warn-bg)] bg-[var(--status-warn-bg)]',
+                  )}
+                >
+                  <div className="flex items-start gap-2">
+                    <span
+                      className="mt-px inline-flex"
+                      style={{ color: guidance.readyToAdvance ? TONE_DOT.ok : TONE_DOT.warn }}
+                    >
+                      <Icon name={guidance.readyToAdvance ? 'circle-check' : 'triangle-alert'} size={16} />
+                    </span>
+                    <div className="min-w-0">
+                      <div
+                        className={cn(
+                          'text-sm font-semibold',
+                          guidance.readyToAdvance
+                            ? 'text-[var(--status-ok-fg)]'
+                            : 'text-[var(--status-warn-fg)]',
+                        )}
+                      >
+                        {guidance.recommendedAction}
+                      </div>
+                      <p className="mt-0.5 text-xs leading-relaxed text-secondary">{guidance.rationale}</p>
+                    </div>
+                  </div>
+                  {guidance.blockingSources.length > 0 ? (
+                    <ul className="mt-2.5 space-y-1 border-t border-[color-mix(in_srgb,currentColor_12%,transparent)] pt-2">
+                      {guidance.blockingSources.slice(0, 5).map((source) => (
+                        <li key={source.sourceIp} className="flex items-baseline justify-between gap-3">
+                          <button
+                            type="button"
+                            onClick={() => toggleSource(source.sourceIp)}
+                            className="min-w-0 break-all text-left font-mono text-xs text-body underline decoration-dotted underline-offset-2 hover:text-brand"
+                            title="Show this source in the table below"
+                          >
+                            {source.sourceIp}
+                          </button>
+                          <span className="whitespace-nowrap text-xs tabular-nums text-secondary">
+                            {formatCompact(source.failedMessages)} failed
+                          </span>
+                        </li>
+                      ))}
+                      {guidance.blockingSourceCount > 5 ? (
+                        <li className="text-xs text-secondary">
+                          +{guidance.blockingSourceCount - 5} more below
+                        </li>
+                      ) : null}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="flex flex-col gap-3">
                 {buildEnforcementChecks(domain, totals).map((check) => (
                   <div key={check.title} className="flex items-start gap-2.5">
@@ -708,6 +939,8 @@ export function DomainDetailPage() {
               </div>
             </Card>
           </div>
+
+          <RecordInspectionCard domainId={domainId} />
 
           {/* The centerpiece: per-source breakdown */}
           <Card>

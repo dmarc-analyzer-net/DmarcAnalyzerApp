@@ -10,6 +10,7 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { DomainDetailPage } from '@/pages/DomainDetailPage'
 import { DomainsPage } from '@/pages/DomainsPage'
 import { MailboxSourcesPage } from '@/pages/MailboxSourcesPage'
+import { ThreatsPage } from '@/pages/ThreatsPage'
 import { UsersPage } from '@/pages/UsersPage'
 
 function App() {
@@ -43,6 +44,7 @@ function App() {
         <Route path="/clients" element={staff ? <ClientsPage /> : fallback} />
         <Route path="/domains" element={<DomainsPage />} />
         <Route path="/domains/:domainId" element={<DomainDetailPage />} />
+        <Route path="/threats" element={<ThreatsPage />} />
         <Route path="/mailbox-sources" element={staff ? <MailboxSourcesPage /> : fallback} />
         <Route path="/users" element={admin ? <UsersPage /> : fallback} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

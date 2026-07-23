@@ -504,6 +504,230 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUse
             await TrendAsync(records, ct));
     }
 
+    public async Task<EnforcementGuidanceDto?> GetEnforcementGuidanceAsync(Guid domainId, int days, CancellationToken ct)
+    {
+        days = ClampDays(days);
+
+        var domainRow = await db.Domains
+            .AsNoTracking()
+            .Where(x => x.Id == domainId)
+            .Select(x => new { x.Id, x.Name, x.ClientId })
+            .SingleOrDefaultAsync(ct);
+
+        // Cross-tenant ids read as not-found to avoid an existence oracle.
+        if (domainRow is null || !currentUser.CanAccessClient(domainRow.ClientId))
+        {
+            return null;
+        }
+
+        var policy = await db.DmarcReports
+            .AsNoTracking()
+            .Where(x => x.DomainId == domainId)
+            .OrderByDescending(x => x.RangeEndUtc)
+            .ThenByDescending(x => x.IngestedAtUtc)
+            .Select(x => new { x.PublishedPolicy, x.PublishedPct })
+            .FirstOrDefaultAsync(ct);
+
+        var window = await ResolveWindowAsync(days, ct);
+        var records = DomainRecordsInWindow(domainId, window);
+
+        // Flatten navigations before grouping (see ListDomainAnalyticsAsync) so
+        // the per-source Min/Max don't become correlated subqueries on Postgres;
+        // also keeps this translatable on the InMemory provider used by tests.
+        var sourceRows = await records
+            .Select(r => new
+            {
+                r.SourceIp,
+                r.MessageCount,
+                r.DkimResult,
+                r.SpfResult,
+                Begin = r.DmarcReport!.RangeBeginUtc,
+                End = r.DmarcReport.RangeEndUtc,
+            })
+            .GroupBy(r => r.SourceIp)
+            .Select(g => new
+            {
+                SourceIp = g.Key,
+                Messages = g.Sum(r => (long)r.MessageCount),
+                Compliant = g.Sum(r => r.DkimResult == "pass" || r.SpfResult == "pass" ? (long)r.MessageCount : 0L),
+                FirstSeen = g.Min(r => r.Begin),
+                LastSeen = g.Max(r => r.End),
+            })
+            .ToListAsync(ct);
+
+        var messages = sourceRows.Sum(x => x.Messages);
+        var compliant = sourceRows.Sum(x => x.Compliant);
+        var rate = Rate(compliant, messages);
+
+        var blocking = sourceRows
+            .Where(x => x.Messages - x.Compliant > 0)
+            .Select(x => new EnforcementBlockingSourceDto(
+                x.SourceIp,
+                x.Messages,
+                x.Messages - x.Compliant,
+                Rate(x.Compliant, x.Messages),
+                x.FirstSeen,
+                x.LastSeen))
+            .OrderByDescending(x => x.FailedMessages)
+            .ThenByDescending(x => x.Messages)
+            .ToList();
+
+        var currentPolicy = policy?.PublishedPolicy;
+        var status = EnforcementStatus.Resolve(messages, rate, currentPolicy);
+        var (recommendedPolicy, action, rationale, ready) = RecommendEnforcement(messages, rate, currentPolicy, blocking.Count);
+
+        return new EnforcementGuidanceDto(
+            domainRow.Id,
+            domainRow.Name,
+            window,
+            currentPolicy,
+            policy?.PublishedPct,
+            status,
+            messages,
+            compliant,
+            rate,
+            messages - compliant,
+            blocking.Count,
+            recommendedPolicy,
+            action,
+            rationale,
+            ready,
+            blocking.Take(20).ToArray());
+    }
+
+    public async Task<ThreatFeedDto> GetThreatFeedAsync(int days, int limit, CancellationToken ct)
+    {
+        days = ClampDays(days);
+        limit = limit switch { <= 0 => 100, > 500 => 500, _ => limit };
+
+        var window = await ResolveWindowAsync(days, ct);
+        var records = RecordsInWindow(window);
+
+        // Spoofing candidates: (source, domain) pairs with fully unauthenticated
+        // volume (both DKIM and SPF failed). Flattened before grouping — see
+        // ListDomainAnalyticsAsync for why navigations inside grouped aggregates
+        // are avoided.
+        var grouped = records
+            .Select(r => new
+            {
+                r.SourceIp,
+                r.DmarcReport!.DomainId,
+                r.MessageCount,
+                r.DkimResult,
+                r.SpfResult,
+                r.Disposition,
+                Begin = r.DmarcReport.RangeBeginUtc,
+                End = r.DmarcReport.RangeEndUtc,
+            })
+            .GroupBy(r => new { r.SourceIp, r.DomainId })
+            .Select(g => new
+            {
+                g.Key.SourceIp,
+                g.Key.DomainId,
+                Messages = g.Sum(r => (long)r.MessageCount),
+                Failed = g.Sum(r => r.DkimResult != "pass" && r.SpfResult != "pass" ? (long)r.MessageCount : 0L),
+                Quarantined = g.Sum(r => r.Disposition == "quarantine" ? (long)r.MessageCount : 0L),
+                Rejected = g.Sum(r => r.Disposition == "reject" ? (long)r.MessageCount : 0L),
+                FirstSeen = g.Min(r => r.Begin),
+                LastSeen = g.Max(r => r.End),
+            })
+            .Where(x => x.Failed > 0);
+
+        var totalsRow = await grouped
+            .GroupBy(_ => 1)
+            .Select(g => new { Failed = g.Sum(x => x.Failed), Sources = g.Count() })
+            .FirstOrDefaultAsync(ct);
+
+        var rows = await grouped
+            .OrderByDescending(x => x.Failed)
+            .ThenByDescending(x => x.Messages)
+            .Take(limit)
+            .ToListAsync(ct);
+
+        var domainIds = rows.Select(x => x.DomainId).Distinct().ToList();
+        var domains = await ScopedDomains()
+            .Where(x => domainIds.Contains(x.Id))
+            .Select(x => new { x.Id, x.Name, x.ClientId, ClientName = x.Client!.Name })
+            .ToListAsync(ct);
+        var domainById = domains.ToDictionary(x => x.Id);
+        var policyByDomain = await LatestPolicyByDomainAsync(window, ct);
+
+        var sources = rows
+            .Where(x => domainById.ContainsKey(x.DomainId))
+            .Select(x =>
+            {
+                var d = domainById[x.DomainId];
+                return new ThreatSourceDto(
+                    x.SourceIp,
+                    x.DomainId,
+                    d.Name,
+                    d.ClientId,
+                    d.ClientName,
+                    x.Messages,
+                    x.Failed,
+                    Rate(x.Messages - x.Failed, x.Messages),
+                    policyByDomain.TryGetValue(x.DomainId, out var p) ? p.PublishedPolicy : null,
+                    x.Quarantined,
+                    x.Rejected,
+                    x.FirstSeen,
+                    x.LastSeen);
+            })
+            .ToArray();
+
+        return new ThreatFeedDto(
+            window,
+            totalsRow?.Failed ?? 0,
+            totalsRow?.Sources ?? 0,
+            sources);
+    }
+
+    // The safe next step toward p=reject, driven by how much mail is already
+    // aligned. Conservative on purpose: never advise tightening while a
+    // meaningful share of mail would be caught by the stricter policy.
+    private const double AdvanceThreshold = 0.99;
+
+    private static (string Policy, string Action, string Rationale, bool Ready) RecommendEnforcement(
+        long messages, double rate, string? currentPolicy, int blockingSources)
+    {
+        if (messages == 0)
+        {
+            return ("none", "Collect more data",
+                "No DMARC report data in this window yet — publish a p=none record and let reports accumulate before advancing.",
+                false);
+        }
+
+        var policy = string.IsNullOrEmpty(currentPolicy) ? "none" : currentPolicy;
+        var pct = Math.Round(rate * 100, 1);
+
+        if (policy == "reject")
+        {
+            return ("reject", "Maintain enforcement",
+                $"You're at p=reject — full protection. {pct}% of mail is aligned; keep watching for new sending sources.",
+                true);
+        }
+
+        var next = policy == "quarantine" ? "reject" : "quarantine";
+        var ready = rate >= AdvanceThreshold;
+
+        if (!ready)
+        {
+            return (policy, "Fix blocking sources before advancing",
+                $"{pct}% of mail is aligned. {blockingSources} sending source{(blockingSources == 1 ? "" : "s")} still send unaligned mail — authenticate or retire them before moving to p={next}.",
+                false);
+        }
+
+        if (next == "quarantine")
+        {
+            return ("quarantine", "Move to p=quarantine (start at pct=25)",
+                $"{pct}% of mail is aligned and nothing significant is failing. Begin enforcing: move to p=quarantine and ramp pct from 25 toward 100.",
+                true);
+        }
+
+        return ("reject", "Move to p=reject",
+            $"{pct}% of mail is aligned at p=quarantine with nothing significant failing — you're ready for full enforcement at p=reject.",
+            true);
+    }
+
     private async Task<IReadOnlyList<AnalyticsTrendPointDto>> TrendAsync(
         IQueryable<Data.Entities.DmarcReportRecord> records,
         CancellationToken ct)
