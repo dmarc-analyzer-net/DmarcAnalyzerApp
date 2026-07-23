@@ -247,3 +247,116 @@ export type SourceDetail = {
   reporters: TopReporter[]
   trend: TrendPoint[]
 }
+
+// --- Enforcement guidance (GET /api/v1/analytics/domains/{domainId}/enforcement) ---
+
+/** A sending source still emitting unaligned mail — what blocks tightening the policy. */
+export type EnforcementBlockingSource = {
+  sourceIp: string
+  messages: number
+  failedMessages: number
+  complianceRate: number
+  firstSeenUtc: string
+  lastSeenUtc: string
+}
+
+/** Server-computed guided next step toward p=reject. */
+export type EnforcementGuidance = {
+  domainId: string
+  name: string
+  window: AnalyticsWindow
+  currentPolicy: DmarcPublishedPolicy | null
+  currentPct: number | null
+  enforcementStatus: EnforcementStatus
+  messages: number
+  compliantMessages: number
+  complianceRate: number
+  failedMessages: number
+  blockingSourceCount: number
+  recommendedPolicy: DmarcPublishedPolicy
+  recommendedAction: string
+  rationale: string
+  readyToAdvance: boolean
+  blockingSources: EnforcementBlockingSource[]
+}
+
+// --- Threat feed (GET /api/v1/analytics/threats) ---
+
+/** One unauthenticated/failing sending source for a domain — a spoofing candidate. */
+export type ThreatSource = {
+  sourceIp: string
+  domainId: string
+  domain: string
+  clientId: string
+  clientName: string
+  messages: number
+  failedMessages: number
+  complianceRate: number
+  publishedPolicy: DmarcPublishedPolicy | null
+  quarantined: number
+  rejected: number
+  firstSeenUtc: string
+  lastSeenUtc: string
+}
+
+export type ThreatFeed = {
+  window: AnalyticsWindow
+  totalFailedMessages: number
+  totalSources: number
+  sources: ThreatSource[]
+}
+
+// --- Record inspection (GET /api/v1/analytics/domains/{domainId}/records) ---
+
+/** Outcome of a live DNS check: found, missing, or the lookup itself failed. */
+export type RecordLookupStatus = 'found' | 'missing' | 'lookup_failed'
+
+export type DnsDmarcRecord = {
+  status: RecordLookupStatus
+  raw: string | null
+  policy: string | null
+  subdomainPolicy: string | null
+  pct: number | null
+  rua: string | null
+  ruf: string | null
+  dkimAlignment: string | null
+  spfAlignment: string | null
+  issues: string[]
+}
+
+export type DnsSpfRecord = {
+  status: RecordLookupStatus
+  raw: string | null
+  recordCount: number
+  /** Top-level DNS-lookup mechanisms — RFC 7208 caps the resolved total at 10. */
+  lookupMechanisms: number
+  allQualifier: string | null
+  issues: string[]
+}
+
+/** The DMARC policy reporters most recently observed (policy_published). */
+export type ObservedPolicy = {
+  policy: string
+  subdomainPolicy: string
+  pct: number
+  dkimAlignment: string
+  spfAlignment: string
+  asOfUtc: string
+  reportedBy: string
+}
+
+export type RecordComparison = {
+  field: string
+  published: string | null
+  observed: string | null
+  match: boolean
+}
+
+export type RecordInspection = {
+  domainId: string
+  name: string
+  dmarc: DnsDmarcRecord
+  spf: DnsSpfRecord
+  observed: ObservedPolicy | null
+  comparison: RecordComparison[]
+}

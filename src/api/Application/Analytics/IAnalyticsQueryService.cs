@@ -7,4 +7,6 @@ public interface IAnalyticsQueryService
     Task<DomainDrilldownDto?> GetDomainDrilldownAsync(Guid domainId, int days, CancellationToken ct);
     Task<IReadOnlyList<DomainSourceDto>?> ListDomainSourcesAsync(Guid domainId, int days, CancellationToken ct);
     Task<SourceDetailDto?> GetSourceDetailAsync(Guid domainId, string sourceIp, int days, CancellationToken ct);
+    Task<EnforcementGuidanceDto?> GetEnforcementGuidanceAsync(Guid domainId, int days, CancellationToken ct);
+    Task<ThreatFeedDto> GetThreatFeedAsync(int days, int limit, CancellationToken ct);
 }

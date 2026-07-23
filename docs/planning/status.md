@@ -85,11 +85,22 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - legacy plaintext rows re-protected lazily on first sync
   - plaintext passthrough with startup warning when no key is configured
 
+- Guided path to enforcement:
+  - `GET /api/v1/analytics/domains/{id}/enforcement` — server-computed recommendation for the next safe policy step (none → quarantine → reject), rationale, `readyToAdvance`, and the blocking sources still sending unaligned mail
+  - Domain Detail "Path to enforcement" panel upgraded with the server guidance banner + blocking-source quick links (expand via `?source=`)
+
+- Threat feed (spoofing investigation):
+  - `GET /api/v1/analytics/threats` — tenant-scoped list of (source IP, domain) pairs with fully unauthenticated volume (DKIM and SPF both failed), worst first, with first/last-seen
+  - Threats page in the sidebar: reverse-DNS enrichment, policy badges, rows deep-link into the domain drill-down with the source pre-expanded
+
+- Record inspection (published vs observed):
+  - `IDnsTxtResolver` (DnsClient against the host's configured resolver — no third-party DoH) with short-lived caching
+  - `GET /api/v1/analytics/domains/{id}/records` — live `_dmarc`/SPF TXT records parsed tag-by-tag (multiple-record permerror, missing rua, +all, 10-lookup count) and compared field-by-field against the latest `policy_published` reporters observed
+  - Domain Detail "Record inspection" card, fetched separately so slow DNS never blocks the analytics render
+
 ## Planned Next
 
 - Repository/service pattern hardening and broader indexing strategy.
-- Per-domain drill-down analytics (sources, auth-result detail over time).
-- Persist `policy_published` fields from reports to show published DMARC policy per domain.
 - Alerting, digest delivery, and export workflows.
 
 ## Notes

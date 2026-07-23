@@ -176,3 +176,53 @@ public sealed record DomainAnalyticsDto(
     string? DkimAlignment,
     string? SpfAlignment,
     string EnforcementStatus);
+
+/// <summary>A sending source still emitting unaligned mail — what blocks tightening the policy.</summary>
+public sealed record EnforcementBlockingSourceDto(
+    string SourceIp,
+    long Messages,
+    long FailedMessages,
+    double ComplianceRate,
+    DateTime FirstSeenUtc,
+    DateTime LastSeenUtc);
+
+/// <summary>Guided path-to-enforcement recommendation for a single domain.</summary>
+public sealed record EnforcementGuidanceDto(
+    Guid DomainId,
+    string Name,
+    AnalyticsWindowDto Window,
+    string? CurrentPolicy,
+    int? CurrentPct,
+    string EnforcementStatus,
+    long Messages,
+    long CompliantMessages,
+    double ComplianceRate,
+    long FailedMessages,
+    int BlockingSourceCount,
+    string RecommendedPolicy,
+    string RecommendedAction,
+    string Rationale,
+    bool ReadyToAdvance,
+    IReadOnlyList<EnforcementBlockingSourceDto> BlockingSources);
+
+/// <summary>One unauthenticated/failing sending source for a domain — a spoofing candidate.</summary>
+public sealed record ThreatSourceDto(
+    string SourceIp,
+    Guid DomainId,
+    string Domain,
+    Guid ClientId,
+    string ClientName,
+    long Messages,
+    long FailedMessages,
+    double ComplianceRate,
+    string? PublishedPolicy,
+    long Quarantined,
+    long Rejected,
+    DateTime FirstSeenUtc,
+    DateTime LastSeenUtc);
+
+public sealed record ThreatFeedDto(
+    AnalyticsWindowDto Window,
+    long TotalFailedMessages,
+    int TotalSources,
+    IReadOnlyList<ThreatSourceDto> Sources);
