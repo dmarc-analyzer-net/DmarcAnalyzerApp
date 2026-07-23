@@ -16,6 +16,10 @@ COPY src/api/ ./api/
 RUN dotnet publish ./api/DmarcAnalyzer.Api.csproj -c Release -o /out --no-restore
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
+# Links the GHCR package to this repository (and powers "view source" on ghcr.io).
+LABEL org.opencontainers.image.source="https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp" \
+      org.opencontainers.image.description="Open-source, self-hosted, agency-first DMARC analyzer" \
+      org.opencontainers.image.licenses="Apache-2.0"
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libgssapi-krb5-2 \

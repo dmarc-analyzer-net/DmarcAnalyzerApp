@@ -1,0 +1,55 @@
+# Quick-start stack for DMARC Analyzer using the prebuilt image.
+#
+#   curl -fsSL -o compose.yml https://raw.githubusercontent.com/dmarc-analyzer-net/DmarcAnalyzerApp/main/deploy/compose.yml
+#   echo "DMARC_ENCRYPTION_KEY=$(openssl rand -base64 32)" > .env
+#   docker compose up -d
+#
+# Open http://localhost:8080 and create the first admin account.
+#
+# This file is for getting started on a single host. For development (local
+# build, dev Zitadel for OIDC), use docker-compose.yml in the repo root.
+
+services:
+  api:
+    image: ghcr.io/dmarc-analyzer-net/dmarc-analyzer:latest
+    restart: unless-stopped
+    environment:
+      APP_MODE: api
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}
+      Database__MigrateOnStartup: "true"
+      # Encrypts mailbox credentials at rest (AES-256-GCM). Set in .env:
+      #   echo "DMARC_ENCRYPTION_KEY=$(openssl rand -base64 32)" > .env
+      Security__CredentialEncryptionKey: "${DMARC_ENCRYPTION_KEY:?DMARC_ENCRYPTION_KEY missing - generate one into .env (see header)}"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    image: ghcr.io/dmarc-analyzer-net/dmarc-analyzer:latest
+    restart: unless-stopped
+    environment:
+      APP_MODE: worker
+      ConnectionStrings__Default: Host=postgres;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}
+      Security__CredentialEncryptionKey: "${DMARC_ENCRYPTION_KEY:?DMARC_ENCRYPTION_KEY missing - generate one into .env (see header)}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: dmarc_analyzer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dmarc_analyzer"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - dmarc-pgdata:/var/lib/postgresql/data
+
+volumes:
+  dmarc-pgdata:

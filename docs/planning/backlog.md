@@ -69,7 +69,7 @@ design system.) See the categorized lists below for the full inventory.
 - [x] (done) Add per-source drill-down with daily aggregates (domain detail page with per-IP DMARC results and raw auth breakdown).
 - [x] (done) Add scheduled polling orchestration with retries and sync audit history (worker-driven, `mailbox_sync_run`).
 - [ ] (todo) Implement per-client retention rules with default 27 months plus archival/purge jobs and legal-hold support.
-- [ ] (todo) Publish a versioned container image (e.g. GHCR) via CI and add a README quick-start (`docker run` / minimal compose) so new users can start from a prebuilt image without a local build.
+- [x] (done) Publish a versioned container image (GHCR) via CI and add a README quick-start (`.github/workflows/ci.yml` builds/tests then pushes `ghcr.io/dmarc-analyzer-net/dmarc-analyzer` for amd64+arm64; `deploy/compose.yml` + README "Quick Start" run it without a local build).
 - [x] (done) Redesign the console UI — new "ink-green/teal" design system (tokens + self-hosted fonts), ported primitives, new sidebar shell, all six screens + login rebuilt; Domains/Detail surface published policy + enforcement status.
 - [ ] (todo) Add Kubernetes deployment assets — Helm chart(s) with health checks and stateless service patterns, supporting both self-contained (bundled PostgreSQL, local auth) and bring-your-own deployments (external managed PostgreSQL, external OIDC), toggled via chart values.
 - [ ] (todo) Add branded PDF report generation (server-side HTML to PDF) with agency logo/colors/footer.
