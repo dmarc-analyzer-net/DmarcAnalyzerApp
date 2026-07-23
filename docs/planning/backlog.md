@@ -31,10 +31,10 @@ Smaller, independent items to slot in opportunistically: a **published
 container image + README quick-start** (small, and the fastest win for new-user
 onboarding — it also becomes the artifact the Helm chart deploys), **POP3
 ingestion**, the **report upload/query API endpoints**, and **CSV/JSON
-export**. Larger, deferred until a deployment or refresh calls for them: a
-**new visual design** for the console, **Helm/K8s charts**, **branded PDF
-reports**, and **M365/Google Workspace connectors**. See the categorized lists
-below for the full inventory.
+export**. Larger, deferred until a deployment calls for them: **Helm/K8s
+charts**, **branded PDF reports**, and **M365/Google Workspace connectors**.
+(The console **visual redesign** is done — shipped as the new ink-green/teal
+design system.) See the categorized lists below for the full inventory.
 
 ## High Priority
 
@@ -70,7 +70,7 @@ below for the full inventory.
 - [x] (done) Add scheduled polling orchestration with retries and sync audit history (worker-driven, `mailbox_sync_run`).
 - [ ] (todo) Implement per-client retention rules with default 27 months plus archival/purge jobs and legal-hold support.
 - [ ] (todo) Publish a versioned container image (e.g. GHCR) via CI and add a README quick-start (`docker run` / minimal compose) so new users can start from a prebuilt image without a local build.
-- [ ] (todo) Redesign the console UI (refreshed visual language, layout, and componentry) building on the existing Tailwind/shadcn foundation.
+- [x] (done) Redesign the console UI — new "ink-green/teal" design system (tokens + self-hosted fonts), ported primitives, new sidebar shell, all six screens + login rebuilt; Domains/Detail surface published policy + enforcement status.
 - [ ] (todo) Add Kubernetes deployment assets — Helm chart(s) with health checks and stateless service patterns, supporting both self-contained (bundled PostgreSQL, local auth) and bring-your-own deployments (external managed PostgreSQL, external OIDC), toggled via chart values.
 - [ ] (todo) Add branded PDF report generation (server-side HTML to PDF) with agency logo/colors/footer.
 - [ ] (todo) Add monthly email digest delivery and SMTP relay configuration.
