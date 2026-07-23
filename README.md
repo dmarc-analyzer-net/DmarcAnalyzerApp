@@ -6,6 +6,32 @@ Agency-first DMARC analyzer platform (inspired by tools like dmarcian/EasyDMARC)
 - React + Vite (`src/web`)
 - PostgreSQL (for local/dev and container deployments)
 
+## Quick Start (prebuilt image)
+
+Run the analyzer from the published image — no build, no account, your data
+stays on your machine. Requires Docker.
+
+```bash
+mkdir dmarc-analyzer && cd dmarc-analyzer
+curl -fsSL -o compose.yml https://raw.githubusercontent.com/dmarc-analyzer-net/DmarcAnalyzerApp/main/deploy/compose.yml
+# generate the key that encrypts mailbox credentials at rest
+echo "DMARC_ENCRYPTION_KEY=$(openssl rand -base64 32)" > .env
+docker compose up -d
+```
+
+Then open **http://localhost:8080** and create the first admin account
+(registration is locked after this first-run bootstrap).
+
+What you get: the API + console on port 8080, a background worker polling your
+mailboxes for DMARC reports, and PostgreSQL — three containers, one image.
+
+- Image: `ghcr.io/dmarc-analyzer-net/dmarc-analyzer` (`latest`, `sha-…`, or a
+  version tag; `linux/amd64` + `linux/arm64`)
+- Next steps: add a client, a domain, and a mailbox source (the inbox your
+  `rua=` reports arrive in) — see `docs/ops/mailbox-sync.md`.
+- Upgrading: `docker compose pull && docker compose up -d` (schema migrations
+  run automatically on startup via `Database__MigrateOnStartup`).
+
 ## Repository Layout
 
 - `src/api` - backend app (API mode + worker mode via `APP_MODE`)
