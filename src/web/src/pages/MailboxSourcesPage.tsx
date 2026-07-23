@@ -15,6 +15,8 @@ import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { fetchJson } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
+import { isAdmin } from '@/lib/authz'
 import type {
   Client,
   MailboxHealth,
@@ -54,6 +56,8 @@ const formatWhen = (value: string | null) => {
 
 export function MailboxSourcesPage() {
   const status = useSystemStatus()
+  const { user } = useAuth()
+  const canManage = isAdmin(user)
 
   const [clients, setClients] = useState<Client[]>([])
   const [mailboxSources, setMailboxSources] = useState<MailboxSource[]>([])
@@ -249,9 +253,11 @@ export function MailboxSourcesPage() {
           <CardTitle>Mailbox Sources</CardTitle>
           <div className="flex items-center gap-3">
             <Badge variant="muted">{filteredMailboxSources.length} records</Badge>
-            <Button onClick={() => openMailboxDialog()} disabled={busy}>
-              New Mailbox
-            </Button>
+            {canManage && (
+              <Button onClick={() => openMailboxDialog()} disabled={busy}>
+                New Mailbox
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -263,7 +269,7 @@ export function MailboxSourcesPage() {
                 <TableHead>Host</TableHead>
                 <TableHead>Client</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+                {canManage && <TableHead className="text-right">Actions</TableHead>}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -280,11 +286,13 @@ export function MailboxSourcesPage() {
                       {source.isActive ? 'Active' : 'Inactive'}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="outline" size="sm" onClick={() => openMailboxDialog(source)}>
-                      Edit
-                    </Button>
-                  </TableCell>
+                  {canManage && (
+                    <TableCell className="text-right">
+                      <Button variant="outline" size="sm" onClick={() => openMailboxDialog(source)}>
+                        Edit
+                      </Button>
+                    </TableCell>
+                  )}
                 </TableRow>
               ))}
             </TableBody>

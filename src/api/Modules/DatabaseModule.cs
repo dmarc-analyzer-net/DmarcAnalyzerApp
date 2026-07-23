@@ -1,4 +1,5 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Data;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
@@ -13,6 +14,6 @@ public sealed class DatabaseModule : ICarterModule
         {
             await db.Database.MigrateAsync(ct);
             return Results.Ok(new { status = "ok" });
-        });
+        }).RequireAgencyAdmin();
     }
 }

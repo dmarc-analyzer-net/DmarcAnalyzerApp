@@ -22,6 +22,12 @@ public sealed class AuthModule : ICarterModule
             return Results.Created($"/api/v1/auth/me", result.Value);
         });
 
+        app.MapGet("/api/v1/auth/setup", async (IAuthService service, CancellationToken ct) =>
+        {
+            var requiresBootstrap = await service.RequiresBootstrapAsync(ct);
+            return Results.Ok(new { requiresBootstrap });
+        });
+
         app.MapPost("/api/v1/auth/login", async (LoginRequest request, IAuthService service, HttpContext http, CancellationToken ct) =>
         {
             var ipAddress = http.Connection.RemoteIpAddress?.ToString();
@@ -67,7 +73,7 @@ public sealed class AuthModule : ICarterModule
             }
 
             return Results.Ok(new { user });
-        });
+        }).AllowClientViewer();
     }
 
     private static CookieOptions SessionCookieOptions() => new()

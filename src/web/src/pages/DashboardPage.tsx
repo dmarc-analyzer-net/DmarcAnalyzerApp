@@ -10,6 +10,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { parseAnalyticsDays, type AnalyticsDays, type AnalyticsSummary } from '@/lib/analytics'
 import { fetchJson } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
+import { isStaff } from '@/lib/authz'
 import { formatCompact, formatFullDate, formatPercent } from '@/lib/format'
 import { useSystemStatus } from '@/lib/use-system-status'
 import { cn } from '@/lib/utils'
@@ -35,6 +37,8 @@ function StatTile({ label, value, sub, subClassName }: StatTileProps) {
 
 export function DashboardPage() {
   const status = useSystemStatus()
+  const { user } = useAuth()
+  const staff = isStaff(user)
   const [searchParams, setSearchParams] = useSearchParams()
   const days = parseAnalyticsDays(searchParams.get('days'))
 
@@ -115,13 +119,16 @@ export function DashboardPage() {
             <div>
               <p className="text-base font-semibold">No DMARC reports yet</p>
               <p className="mt-1 max-w-md text-sm text-muted-foreground">
-                Analytics will appear once aggregate reports have been ingested. Mailboxes
-                connected: {summary.mailboxes.healthy}/{summary.mailboxes.total} healthy.
+                Analytics will appear once aggregate reports have been ingested.
+                {summary.mailboxes &&
+                  ` Mailboxes connected: ${summary.mailboxes.healthy}/${summary.mailboxes.total} healthy.`}
               </p>
             </div>
-            <Button asChild variant="outline" size="sm">
-              <Link to="/mailbox-sources">Review mailbox sources</Link>
-            </Button>
+            {staff && (
+              <Button asChild variant="outline" size="sm">
+                <Link to="/mailbox-sources">Review mailbox sources</Link>
+              </Button>
+            )}
           </CardContent>
         </Card>
       )}
@@ -163,18 +170,20 @@ export function DashboardPage() {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <StatTile label="DKIM pass rate" value={formatPercent(totals.dkimPassRate)} />
             <StatTile label="SPF pass rate" value={formatPercent(totals.spfPassRate)} />
-            <StatTile
-              label="Mailboxes"
-              value={`${summary.mailboxes.healthy}/${summary.mailboxes.total}`}
-              sub={
-                summary.mailboxes.failing > 0
-                  ? `${summary.mailboxes.failing} failing`
-                  : 'All healthy'
-              }
-              subClassName={
-                summary.mailboxes.failing > 0 ? 'font-medium text-destructive' : undefined
-              }
-            />
+            {summary.mailboxes && (
+              <StatTile
+                label="Mailboxes"
+                value={`${summary.mailboxes.healthy}/${summary.mailboxes.total}`}
+                sub={
+                  summary.mailboxes.failing > 0
+                    ? `${summary.mailboxes.failing} failing`
+                    : 'All healthy'
+                }
+                subClassName={
+                  summary.mailboxes.failing > 0 ? 'font-medium text-destructive' : undefined
+                }
+              />
+            )}
           </div>
 
           {/* Main chart */}

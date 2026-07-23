@@ -1,4 +1,5 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Contracts.Domains;
 using Microsoft.AspNetCore.Routing;
@@ -14,14 +15,14 @@ public sealed class DomainsModule : ICarterModule
             var domain = await service.GetAsync(id, ct);
 
             return domain is null ? Results.NotFound() : Results.Ok(domain);
-        });
+        }).AllowClientViewer();
 
         app.MapGet("/api/v1/domains", async (Guid? clientId, IDomainService service, CancellationToken ct) =>
         {
             var domains = await service.ListAsync(clientId, ct);
 
             return Results.Ok(domains);
-        });
+        }).AllowClientViewer();
 
         app.MapPost("/api/v1/domains", async (CreateDomainRequest request, IDomainService service, CancellationToken ct) =>
         {
@@ -34,7 +35,7 @@ public sealed class DomainsModule : ICarterModule
             var domain = result.Value!;
 
             return Results.Created($"/api/v1/domains/{domain.Id}", domain);
-        });
+        }).RequireAgencyAdmin();
 
         app.MapPatch("/api/v1/domains/{id:guid}", async (Guid id, UpdateDomainRequest request, IDomainService service, CancellationToken ct) =>
         {
@@ -50,6 +51,6 @@ public sealed class DomainsModule : ICarterModule
             }
 
             return Results.Ok(result.Value);
-        });
+        }).RequireAgencyAdmin();
     }
 }

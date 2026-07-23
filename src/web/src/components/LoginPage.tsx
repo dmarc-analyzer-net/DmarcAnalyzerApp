@@ -1,23 +1,45 @@
 import { Loader2 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import { BrandLogo } from '@/components/BrandLogo'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { ApiError } from '@/lib/api'
+import { ApiError, fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 
 export function LoginPage() {
   const { login } = useAuth()
 
+  // null = setup check in flight; falls back to the login form if it fails.
+  const [requiresBootstrap, setRequiresBootstrap] = useState<boolean | null>(null)
+
+  const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  useEffect(() => {
+    let cancelled = false
+
+    const checkSetup = async () => {
+      try {
+        const payload = await fetchJson<{ requiresBootstrap: boolean }>('/api/v1/auth/setup')
+        if (!cancelled) setRequiresBootstrap(payload.requiresBootstrap)
+      } catch {
+        if (!cancelled) setRequiresBootstrap(false)
+      }
+    }
+
+    void checkSetup()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
     setSubmitting(true)
@@ -33,22 +55,73 @@ export function LoginPage() {
     }
   }
 
+  const handleBootstrap = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setError(null)
+    setSubmitting(true)
+    try {
+      await fetchJson('/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, displayName }),
+      })
+      await login(email, password)
+    } catch (bootstrapError) {
+      if (bootstrapError instanceof ApiError && bootstrapError.status === 403) {
+        // Someone else completed setup first; drop back to the login form.
+        setRequiresBootstrap(false)
+        setError('Setup has already been completed. Sign in with your credentials.')
+      } else if (bootstrapError instanceof ApiError) {
+        setError(bootstrapError.message)
+      } else {
+        setError('Unable to create the account. Check your connection and try again.')
+      }
+      setSubmitting(false)
+    }
+  }
+
+  if (requiresBootstrap === null) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" aria-label="Loading" />
+      </div>
+    )
+  }
+
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-6">
       <Card className="w-full max-w-md">
         <CardHeader className="flex-col items-stretch">
           <BrandLogo className="mb-5 h-auto w-full max-w-[205px]" />
-          <CardTitle>Sign in</CardTitle>
+          <CardTitle>{requiresBootstrap ? 'Welcome' : 'Sign in'}</CardTitle>
           <CardDescription className="mt-1">
-            Enter your credentials to access the Operations Console.
+            {requiresBootstrap
+              ? 'Create the first administrator account to set up the Operations Console.'
+              : 'Enter your credentials to access the Operations Console.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form className="grid gap-3" onSubmit={handleSubmit}>
+          <form className="grid gap-3" onSubmit={requiresBootstrap ? handleBootstrap : handleLogin}>
             {!!error && (
               <p className="rounded-md border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
                 {error}
               </p>
+            )}
+            {requiresBootstrap && (
+              <div className="grid gap-1.5">
+                <label htmlFor="login-display-name" className="text-sm font-medium">
+                  Display name
+                </label>
+                <Input
+                  id="login-display-name"
+                  autoComplete="name"
+                  placeholder="Your name"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  autoFocus
+                  required
+                />
+              </div>
             )}
             <div className="grid gap-1.5">
               <label htmlFor="login-email" className="text-sm font-medium">
@@ -61,7 +134,7 @@ export function LoginPage() {
                 placeholder="you@agency.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                autoFocus
+                autoFocus={!requiresBootstrap}
                 required
               />
             </div>
@@ -72,8 +145,8 @@ export function LoginPage() {
               <Input
                 id="login-password"
                 type="password"
-                autoComplete="current-password"
-                placeholder="Your password"
+                autoComplete={requiresBootstrap ? 'new-password' : 'current-password'}
+                placeholder={requiresBootstrap ? 'Choose a password' : 'Your password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -81,7 +154,7 @@ export function LoginPage() {
             </div>
             <Button type="submit" className="mt-1 w-full" disabled={submitting}>
               {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
-              Sign in
+              {requiresBootstrap ? 'Create administrator account' : 'Sign in'}
             </Button>
           </form>
         </CardContent>

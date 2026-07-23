@@ -7,6 +7,7 @@ using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Application.MailboxSources;
 using DmarcAnalyzer.Api.Application.Reports;
 using DmarcAnalyzer.Api.Application.Security;
+using DmarcAnalyzer.Api.Application.Users;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Middleware;
 using DmarcAnalyzer.Api.Modules;
@@ -43,7 +44,10 @@ builder.Services.AddRouting(options => options.LowercaseUrls = true);
 builder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
     options.UseNpgsql(connectionString));
 builder.Services.AddCredentialProtection(builder.Configuration);
+builder.Services.AddScoped<CurrentUserContext>();
+builder.Services.AddScoped<ICurrentUserContext>(sp => sp.GetRequiredService<CurrentUserContext>());
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IUserAdminService, UserAdminService>();
 builder.Services.AddScoped<IClientService, ClientService>();
 builder.Services.AddScoped<IDomainService, DomainService>();
 builder.Services.AddScoped<IMailboxSourceService, MailboxSourceService>();
@@ -87,6 +91,7 @@ if (app.Environment.IsDevelopment())
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.UseMiddleware<SessionAuthMiddleware>();
+app.UseMiddleware<RoleAuthorizationMiddleware>();
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
 app.MapGet("/health/ready", async (DmarcAnalyzerDbContext db, CancellationToken ct) =>
