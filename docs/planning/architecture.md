@@ -35,40 +35,74 @@ Technical architecture for `DmarcAnalyzerApp` MVP and near-term post-MVP evoluti
 
 ## 3) High-Level Components
 
+### Runtime modes (one image, `APP_MODE`)
+
+A single container image runs either half of the system, selected by the
+`APP_MODE` environment variable (default `api`):
+
+- `APP_MODE=api` — the ASP.NET web host: HTTP API plus the built React app served
+  from `wwwroot`.
+- `APP_MODE=worker` — a plain `Host` with no HTTP listener, running
+  `QueueWorkerService` only.
+
+`Program.cs` branches on this before building anything, so worker mode never
+constructs the web pipeline. Consequence worth knowing: **only API mode applies
+EF migrations** (`Database:MigrateOnStartup`), so the worker must not be started
+against an un-migrated database — the shipped compose files gate it on the API
+reporting healthy.
+
 ### API Service (C# ASP.NET + Carter)
 
-- Domain feature Carter modules:
-  - `AuthModule`
-  - `ClientsModule`
-  - `DomainsModule`
-  - `MailboxSourcesModule`
-  - `IngestionModule`
-  - `ReportsModule`
-  - `DashboardsModule`
-  - `AlertsModule`
-  - `ExportsModule`
-  - `MagicLinksModule`
-  - `AdminModule`
+Carter modules as implemented (`src/api/Modules`):
+
+| Module | Surface |
+|---|---|
+| `AuthModule` | login/logout/register/me/setup/providers |
+| `OidcAuthModule` | OIDC challenge + callback (see ADR 0007) |
+| `ClientsModule`, `DomainsModule`, `UsersModule` | tenant CRUD + viewer grants |
+| `MailboxSourcesModule` | mailbox CRUD + manual sync trigger |
+| `MailboxHealthModule`, `MailboxSyncRunsModule` | ingestion operations views |
+| `AnalyticsModule` | all report analytics + enforcement, threats, record inspection |
+| `SystemModule` | status |
+| `DatabaseModule` | admin migrate |
+
+Planned modules, not yet present: alerts, exports, magic links, PDF reports, and
+a report-upload/query surface. See [`api-contract.md`](api-contract.md) §0 for the
+authoritative endpoint list.
+
 - Responsibilities:
-  - CRUD for clients, domains, mailbox sources, recipients, thresholds.
-  - Report and dashboard query APIs.
+  - CRUD for clients, domains, mailbox sources, and users/grants.
+  - Analytics query APIs over ingested report data.
   - Trigger and inspect ingestion/sync runs.
-  - Manage exports, alerts, and report artifacts.
-  - Serve magic-link read-only endpoints.
+
+### Analytics query layer
+
+- `AnalyticsQueryService` answers every dashboard/drill-down request **on demand**
+  from `dmarc_report_record`; there is no pre-aggregated metrics table.
+- `RecordInspectionService` + `IDnsTxtResolver` do live DNS lookups (via the
+  host's configured resolver, deliberately not a third-party DoH endpoint) and
+  compare published records against the policy observed in reports.
+- Two constraints shape the code here:
+  - **Tenancy** — every query is scoped through `ICurrentUserContext`; viewers are
+    filtered by client grants and cross-tenant ids return 404.
+  - **Query shape** — navigations are flattened before `GroupBy`, because EF turns
+    grouped navigation aggregates into per-group correlated subqueries (33s vs
+    ~75ms for a domain with 1.3k sources). One per-source aggregation is
+    hand-written SQL for the same reason.
 
 ### Worker Mode (same image, hosted service enabled)
 
 - Poll scheduler processes mailbox sources sequentially (one source at a time per worker pass).
-- Job processors:
-  - Mailbox sync
-  - Attachment extraction/parsing
-  - Dedup + persistence
-  - Aggregate refresh
-  - Alert evaluation
-  - Digest generation
-  - Retention purge
-  - Export generation
+- Implemented per-pass work:
+  - Auto-close stale `running` sync runs.
+  - Mailbox sync: fetch, extract attachments, parse, dedup, persist.
+- Planned processors (not built): alert evaluation, digest generation, retention
+  purge, export generation. Aggregate refresh is not planned — metrics are
+  computed on demand (see the analytics layer above).
 - Uses persisted sync run history and checkpoints for safe retry and operational visibility.
+- The pass loop catches and logs its own failures, backing off from 5s up to
+  `Worker:ScheduleIntervalSeconds` so a transient database outage doesn't stop
+  ingestion.
 
 ### Frontend (React + Vite + Tailwind + shadcn-style components)
 
@@ -205,7 +239,14 @@ Configured via `Worker__*` settings:
 
 ### Agency Authentication
 
-- Local credentials with strong password hashing.
+- **Authorization is always in-app; authentication is pluggable** (ADR 0007).
+  Local username/password and OIDC are interchangeable front doors that both mint
+  the same app `dmarc_session` cookie.
+- Local credentials with PBKDF2-SHA256 password hashing.
+- Optional OIDC (off by default): external handler → short-lived cookie →
+  app-minted session, with `user_identity` mapping and JIT provisioning.
+- Roles `agency_admin` / `agency_analyst` / `client_viewer`, enforced
+  deny-by-default by `RoleAuthorizationMiddleware` + route metadata.
 - Cookie auth:
   - `HttpOnly`, `Secure`, `SameSite=Lax/Strict` depending on frontend hosting pattern.
 - Session controls:
@@ -213,6 +254,9 @@ Configured via `Worker__*` settings:
   - absolute max 7d
 
 ### Client Read-Only Access
+
+> **Not implemented.** The `client_viewer` role plus `user_client_grant` already
+> provides account-based read-only access; magic links remain planned.
 
 - Magic link token:
   - signed JWT/HMAC with nonce reference.
@@ -230,7 +274,10 @@ Configured via `Worker__*` settings:
 
 ## 9) Reporting and Notifications
 
-### Dashboard Metrics (daily aggregates)
+### Dashboard Metrics
+
+Computed on demand per request (no daily aggregate table), over a relative window
+anchored to the newest report rather than wall-clock time:
 
 - DMARC pass/fail trend
 - SPF/DKIM alignment trend
@@ -239,11 +286,16 @@ Configured via `Worker__*` settings:
 
 ### PDF and Digest
 
+> **Not implemented** — planned; Playwright Chromium is already a dependency.
+
 - Branded PDF generated server-side via Playwright Chromium.
 - Monthly digest job composes summary and sends via SMTP.
 - Sender identity is deployment-level configured.
 
 ### Alerting
+
+> **Not implemented** — planned. Problems currently surface reactively through the
+> dashboards, the threat feed, and mailbox health.
 
 - Alert types:
   - failure spikes

@@ -40,9 +40,20 @@ Planning artifacts for `DmarcAnalyzerApp`, a DMARC analyzer platform in the spir
 
 ## Contents
 
-- `backlog.md` - prioritized implementation tasks.
-- `roadmap.md` - milestone delivery plan.
-- `status.md` - implemented-now snapshot and planned-next summary.
+- [`status.md`](status.md) - implemented-now snapshot and planned-next summary.
+  **Check here first** before assuming a feature exists.
+- [`backlog.md`](backlog.md) - prioritized implementation tasks. **The source of
+  truth for what to pick up next.**
+- [`roadmap.md`](roadmap.md) - milestone delivery plan with per-item status.
+- [`architecture.md`](architecture.md) - system architecture, runtime modes, and
+  component responsibilities.
+- [`data-model.md`](data-model.md) - entities, keys, tenancy paths, and retention.
+- [`api-contract.md`](api-contract.md) - HTTP surface: implemented endpoints and
+  planned target state (each section says which).
+- [`adr/`](adr/README.md) - architecture decision records (0001–0007).
+
+Note that this file and `roadmap.md` capture *intent*; `status.md` and
+`backlog.md` track *reality* and change far more often.
 
 ## Status Legend
 

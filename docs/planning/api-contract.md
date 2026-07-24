@@ -1,6 +1,91 @@
 # API Contract
 
-API contract for `DmarcAnalyzerApp` MVP.
+API contract for `DmarcAnalyzerApp`.
+
+**§0 is the authoritative list of what exists today**, generated from the Carter
+modules in `src/api/Modules`. The numbered sections after it describe request and
+response shapes and include **planned** endpoints that are not built yet — each
+such section is marked. Where the two disagree, §0 and the code win.
+
+> The dashboard section in particular was written before implementation and
+> described a `/dashboard/*` namespace; what shipped is `/analytics/*`. It has
+> been corrected, but treat unmarked detail in later sections as design intent.
+
+## 0) Implemented endpoints
+
+Auth model: all `/api/v1/*` routes require the `dmarc_session` cookie except the
+public paths noted below. Role enforcement is `RoleAuthorizationMiddleware` +
+route metadata, **deny-by-default**: an endpoint with no metadata requires agency
+staff (`agency_admin` or `agency_analyst`).
+
+- **staff** — default; admin + analyst.
+- **admin** — `agency_admin` only (`RequireAgencyAdmin`).
+- **any** — any authenticated role incl. `client_viewer` (`AllowClientViewer`);
+  the service layer scopes the data by client grants.
+- **public** — no session required.
+
+### Auth and session
+| Method | Path | Access |
+|---|---|---|
+| POST | `/auth/login` | public |
+| POST | `/auth/register` | public — **first-run bootstrap only**, locked once a user exists |
+| POST | `/auth/logout` | public |
+| GET | `/auth/setup` | public — `{ requiresBootstrap }`; queries the DB, so a 200 also proves migrations ran (used as the container health probe) |
+| GET | `/auth/providers` | public — which login front doors are enabled |
+| GET | `/auth/oidc/login` | public (external-temp scheme) |
+| GET | `/auth/oidc/complete` | public (external-temp scheme) |
+| GET | `/auth/me` | any |
+
+### Clients, domains, users
+| Method | Path | Access |
+|---|---|---|
+| GET | `/clients` | staff |
+| GET | `/clients/{id}` | staff |
+| POST | `/clients` | admin |
+| PATCH | `/clients/{id}` | admin |
+| GET | `/domains` | staff |
+| GET | `/domains/{id}` | staff |
+| POST | `/domains` | admin |
+| PATCH | `/domains/{id}` | admin |
+| GET | `/users` | admin |
+| POST | `/users` | admin |
+| PATCH | `/users/{id}` | admin |
+| PUT | `/users/{id}/grants` | admin — sets a viewer's client grants |
+
+### Mailbox sources and sync
+| Method | Path | Access |
+|---|---|---|
+| GET | `/mailbox-sources` | staff |
+| POST | `/mailbox-sources` | admin |
+| PATCH | `/mailbox-sources/{id}` | admin |
+| POST | `/mailbox-sources/{id}/sync` | staff — manual trigger |
+| GET | `/mailbox-health` | staff |
+| GET | `/mailbox-sync-runs` | staff |
+
+### Analytics
+All accept `days` (relative window, default 30, clamped to 365). Windows anchor
+to the **newest report** rather than wall-clock time, because backfilled
+mailboxes lag. All are `any` — data is client-scoped in the service, and
+cross-tenant ids return **404**, never 403.
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/analytics/summary` | Compliance totals, daily trend, top failing domains, top reporters, dispositions, mailbox rollup (staff only for the mailbox block) |
+| GET | `/analytics/domains` | Per-domain compliance, pass rates, published policy, enforcement status |
+| GET | `/analytics/domains/{domainId}/drilldown` | Totals + trend for one domain |
+| GET | `/analytics/domains/{domainId}/sources` | Per-source-IP aggregation, worst first |
+| GET | `/analytics/domains/{domainId}/source-detail` | One source: evaluated DKIM×SPF combos, raw auth results, identifiers, reporters, trend. Requires `ip` (400 if missing) |
+| GET | `/analytics/domains/{domainId}/enforcement` | Guided next policy step, rationale, `readyToAdvance`, blocking sources |
+| GET | `/analytics/domains/{domainId}/records` | Live DNS DMARC/SPF records parsed tag-by-tag, compared against the observed `policy_published` |
+| GET | `/analytics/threats` | Sources with fully unauthenticated volume across visible domains. Accepts `limit` (default 100, max 500) |
+| GET | `/analytics/hostnames` | Best-effort reverse DNS. Requires `ips` (comma-separated, max 100) |
+
+### System and admin
+| Method | Path | Access |
+|---|---|---|
+| GET | `/system/status` | staff |
+| POST | `/admin/database/migrate` | admin — applies pending EF migrations |
+| GET | `/health/live`, `/health/ready` | public |
 
 ## 1) Conventions
 
@@ -211,6 +296,10 @@ Fields include:
 
 ## 7) Reports and Records
 
+> **Partially implemented.** Report data is currently read through the
+> `/analytics/*` endpoints in §8; there are no `/reports` routes yet, and no
+> upload endpoint (see the backlog's "report upload" item).
+
 ### GET `/reports`
 
 List DMARC reports.
@@ -245,35 +334,56 @@ Filters:
 - `spfAligned` (`true|false`)
 - `dkimAligned` (`true|false`)
 
-## 8) Dashboard and Metrics
+## 8) Analytics (implemented)
 
-### GET `/dashboard/summary`
+Replaces the `/dashboard/*` design in earlier revisions of this document. See §0
+for the full list; shapes are defined by the DTOs in
+`src/api/Application/Analytics/AnalyticsDtos.cs` and
+`RecordInspectionDtos.cs`.
 
-Top-level metrics for selected window.
+### GET `/analytics/summary?days=30`
 
-Query:
+Window is described by a `window` object (`days`, `beginUtc`, `endUtc`,
+`anchoredToLatestData`). Returns:
 
-- `clientId` (required)
-- `from` / `to`
+- `totals` — `domains`, `activeDomains`, `reports`, `messages`,
+  `compliantMessages`, `complianceRate`, `dkimPassRate`, `spfPassRate`,
+  `failingSources`
+- `trend[]` — `date`, `messages`, `compliant`, `failed`
+- `topFailingDomains[]`, `topReporters[]`
+- `dispositions` — `none`, `quarantine`, `reject`
+- `mailboxes` — `total`, `healthy`, `failing`; **`null` for `client_viewer`**
 
-Response fields:
+### GET `/analytics/domains?days=30`
 
-- `totalMessages`
-- `passRate`
-- `failRate`
-- `spfAlignmentRate`
-- `dkimAlignmentRate`
-- `dispositionBreakdown`
+Per-domain rows including `publishedPolicy`, `publishedPct`, `dkimAlignment`,
+`spfAlignment`, a compliance `status` (`aligned`/`issues`/`critical`/`no_data`)
+and an `enforcementStatus`
+(`enforced`/`ramping`/`spoofing`/`monitoring`/`no_data`).
 
-### GET `/dashboard/trends/daily`
+### GET `/analytics/domains/{domainId}/enforcement?days=30`
 
-Daily aggregate trend points.
+Guided path to enforcement: `currentPolicy`, `currentPct`, message/compliance
+totals, `recommendedPolicy`, `recommendedAction`, `rationale`, `readyToAdvance`,
+`blockingSourceCount`, and `blockingSources[]` (top 20 by failed volume).
 
-### GET `/dashboard/sources/top`
+### GET `/analytics/domains/{domainId}/records`
 
-Top source IPs by volume/failures.
+Live DNS inspection. `dmarc` and `spf` each carry a `status` of `found`,
+`missing`, or `lookup_failed` (a failed lookup is deliberately distinct from a
+missing record), the raw record, parsed tags, and an `issues[]` list. When
+report data exists, `observed` plus a field-by-field `comparison[]` shows where
+DNS and the reported policy disagree.
+
+### GET `/analytics/threats?days=30&limit=100`
+
+`totalFailedMessages`, `totalSources`, and `sources[]` of `(sourceIp, domain)`
+pairs whose mail failed **both** DKIM and SPF, worst first, with dispositions
+and first/last seen.
 
 ## 9) Alerts
+
+> **Not implemented.** Target state for the *alert engine* backlog item.
 
 ### GET `/alerts/rules`
 ### POST `/alerts/rules`
@@ -303,6 +413,8 @@ Filters:
 
 ## 10) Notification Recipients and Digest
 
+> **Not implemented.** Target state for the *email digest + SMTP relay* backlog item.
+
 ### GET `/notifications/recipients`
 ### POST `/notifications/recipients`
 ### PATCH `/notifications/recipients/{recipientId}`
@@ -321,6 +433,8 @@ Default cadence: monthly.
 Queue immediate digest generation/sending.
 
 ## 11) Exports
+
+> **Not implemented.** Target state for the *CSV/JSON export* backlog item.
 
 ### POST `/exports`
 
@@ -359,6 +473,8 @@ Download generated artifact if status is `completed`.
 
 ## 12) Magic Links (Client Read-Only)
 
+> **Not implemented.** Target state for the *magic link access* backlog item.
+
 ### POST `/magic-links`
 
 Create signed link.
@@ -393,6 +509,8 @@ Revoke by invalidating nonce.
 
 ## 13) PDF Reports
 
+> **Not implemented.** Target state for the *branded PDF reports* backlog item.
+
 ### POST `/reports/pdf`
 
 Generate branded PDF summary.
@@ -416,6 +534,9 @@ Get render status and artifact link.
 ## 14) Admin and Ops
 
 ### GET `/admin/audit-events`
+
+> **Not implemented** — no audit log exists yet (see the *core audit logging*
+> backlog item). The implemented admin route is `POST /admin/database/migrate`.
 
 Query core audit log.
 
@@ -442,8 +563,11 @@ Operational status for queues, workers, and key dependencies.
   - full access to all endpoints.
 - `agency_analyst`
   - read/write operational endpoints, limited admin settings.
-- `magic_link_viewer`
-  - read-only subset for one client scope.
+- `client_viewer`
+  - any-authenticated endpoints only; reads are scoped to granted clients via
+    `user_client_grant`, and cross-tenant ids return 404.
+- `magic_link_viewer` *(planned)*
+  - read-only subset for one client scope; magic links are not implemented.
 
 ## 17) Status Codes
 
