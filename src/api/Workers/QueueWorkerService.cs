@@ -13,11 +13,17 @@ public sealed class QueueWorkerService(
 {
     private readonly WorkerOptions _options = options.Value;
 
+    private const int MinDelaySeconds = 15;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("Queue worker started.");
 
-        await CloseStaleRunningSyncsAsync(stoppingToken);
+        // Everything runs inside the loop: a pass that throws (database not
+        // reachable, schema not migrated yet) must be caught and retried, not
+        // allowed to escape. An exception out of ExecuteAsync stops the whole
+        // host, which for worker mode means ingestion silently stops.
+        var consecutiveFailures = 0;
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -25,6 +31,7 @@ public sealed class QueueWorkerService(
             {
                 await CloseStaleRunningSyncsAsync(stoppingToken);
                 await RunScheduledSyncPassAsync(stoppingToken);
+                consecutiveFailures = 0;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -32,14 +39,40 @@ public sealed class QueueWorkerService(
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Worker scheduler pass failed");
+                consecutiveFailures++;
+                logger.LogError(ex, "Worker scheduler pass failed ({Failures} consecutive)", consecutiveFailures);
             }
 
-            var delaySeconds = Math.Max(15, _options.ScheduleIntervalSeconds);
-            await Task.Delay(TimeSpan.FromSeconds(delaySeconds), stoppingToken);
+            try
+            {
+                await Task.Delay(NextDelay(consecutiveFailures, _options.ScheduleIntervalSeconds), stoppingToken);
+            }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
         }
 
         logger.LogInformation("Queue worker stopping.");
+    }
+
+    /// <summary>
+    /// Delay before the next pass. Healthy passes wait the configured interval;
+    /// after a failure it retries far sooner and backs off exponentially
+    /// (5s, 10s, 20s, …) up to that interval — so a worker that starts before
+    /// the database is ready recovers in seconds instead of idling for the full
+    /// production hour.
+    /// </summary>
+    public static TimeSpan NextDelay(int consecutiveFailures, int intervalSeconds)
+    {
+        var normalSeconds = Math.Max(MinDelaySeconds, intervalSeconds);
+        if (consecutiveFailures <= 0)
+        {
+            return TimeSpan.FromSeconds(normalSeconds);
+        }
+
+        var backoffSeconds = 5L << Math.Min(consecutiveFailures - 1, 10);
+        return TimeSpan.FromSeconds(Math.Min(backoffSeconds, normalSeconds));
     }
 
     private async Task RunScheduledSyncPassAsync(CancellationToken ct)
