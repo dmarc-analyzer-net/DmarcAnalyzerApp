@@ -17,8 +17,16 @@ services:
       Auth__Oidc__Enabled: "false"
     ports:
       - "8080:8080"
+    # Unauthenticated and DB-backed: a 200 means migrations have been applied,
+    # which is what the worker waits for below.
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/api/v1/auth/setup > /dev/null"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
 
   worker:
     image: dmarc-analyzer-net:dev
@@ -34,7 +42,8 @@ services:
       Worker__StaleRunTimeoutMinutes: 20
       Worker__SyncRunTimeoutMinutes: 10
     depends_on:
-      - postgres
+      api:
+        condition: service_healthy
 
   # Dev-only identity provider for testing the OIDC login front door.
   # Console: http://localhost:8082/ui/console (zitadel-admin@zitadel.localhost / Password1!)
@@ -66,6 +75,13 @@ services:
       POSTGRES_DB: dmarc_analyzer
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
+    # api/worker migrate on boot, so gate them on Postgres actually accepting
+    # connections — without this the first `up` races and the API exits.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d dmarc_analyzer"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
     ports:
       - "5432:5432"
     volumes:

@@ -22,7 +22,7 @@ LABEL org.opencontainers.image.source="https://github.com/dmarc-analyzer-net/Dma
       org.opencontainers.image.licenses="Apache-2.0"
 WORKDIR /app
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgssapi-krb5-2 \
+    && apt-get install -y --no-install-recommends libgssapi-krb5-2 curl \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=dotnet-build /out ./
 COPY --from=web-build /web/dist ./wwwroot
