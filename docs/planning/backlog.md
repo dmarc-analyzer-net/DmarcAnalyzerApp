@@ -9,10 +9,12 @@ OIDC), worker ingestion, analytics dashboards, and per-source drill-down are
 all shipped. The near-term sequence below turns it from "works" into
 "operable and client-facing", ordered by value and dependencies.
 
-1. **Production polling schedule + worker hardening.** The worker interval is
-   configurable but still set to a dev cadence; define the 60-minute 24/7
-   production default with a deployment override. Small, and a prerequisite
-   for any real deployment. (Closes the High-Priority polling item.)
+1. **Worker hardening.** The 60-minute 24/7 production cadence is already the
+   default (`Worker:ScheduleIntervalSeconds` = 3600 in `appsettings.json`; the
+   dev override is 15s in `appsettings.Development.json`), so what remains is
+   resilience: the worker host currently dies permanently on an unguarded
+   startup DB call — see issue #20 (one-line fix) — plus retry/backoff around
+   first DB contact.
 2. **Retention + purge jobs.** `client.retention_months` (default 27) exists
    but nothing enforces it — `dmarc_report*` data grows unbounded. Add
    scheduled archival/purge with legal-hold support. Compliance-relevant.
@@ -49,7 +51,7 @@ design system.) See the categorized lists below for the full inventory.
 - [x] (done) Implement local username/password authentication with secure password hashing and session flow.
 - [x] (done) Add secure mailbox credential storage with app-level encryption key management (AES-256-GCM, key via `Security:CredentialEncryptionKey`).
 - [x] (done) Add Dockerfiles and Docker Compose stack (api, ui, db, worker) for self-hosted deployment.
-- [ ] (todo) Define and implement global 60-minute polling schedule (24/7) with operational override at deployment level (interval is configurable; production default not yet set).
+- [x] (done) Define and implement global 60-minute polling schedule (24/7) with operational override at deployment level (`Worker:ScheduleIntervalSeconds` defaults to 3600 in `appsettings.json`, overridable per deployment via `Worker__ScheduleIntervalSeconds`; dev uses 15s).
 - [x] (done) Implement report deduplication using client + domain + report-id + begin/end date range.
 - [x] (done) Enforce globally unique domain ownership across clients.
 - [x] (done) Add support for ZIP and GZIP attachment extraction in ingestion pipeline (magic-byte detection; SharpCompress codecs incl. deflate64/bzip2/lzma/zstd).
