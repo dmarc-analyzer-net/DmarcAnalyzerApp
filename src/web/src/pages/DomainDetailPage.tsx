@@ -309,27 +309,32 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
   const [inspection, setInspection] = useState<RecordInspection | null>(null)
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const requestSeq = useRef(0)
 
-  useEffect(() => {
-    let cancelled = false
+  // Loader idiom matches the other panels in this file: state is set inside a
+  // callback (not synchronously in the effect body), and a request sequence
+  // guards against out-of-order responses when domainId changes.
+  const loadInspection = useCallback(async () => {
+    const seq = ++requestSeq.current
     setBusy(true)
     setError(null)
-    void fetchJson<RecordInspection>(`/api/v1/analytics/domains/${domainId}/records`)
-      .then((payload) => {
-        if (!cancelled) setInspection(payload)
-      })
-      .catch((loadError: unknown) => {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : 'Failed to inspect records')
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setBusy(false)
-      })
-    return () => {
-      cancelled = true
+    try {
+      const payload = await fetchJson<RecordInspection>(
+        `/api/v1/analytics/domains/${domainId}/records`,
+      )
+      if (seq === requestSeq.current) setInspection(payload)
+    } catch (loadError) {
+      if (seq === requestSeq.current) {
+        setError(loadError instanceof Error ? loadError.message : 'Failed to inspect records')
+      }
+    } finally {
+      if (seq === requestSeq.current) setBusy(false)
     }
   }, [domainId])
+
+  useEffect(() => {
+    void loadInspection()
+  }, [loadInspection])
 
   const mismatches = inspection?.comparison.filter((c) => !c.match) ?? []
 
@@ -669,6 +674,15 @@ export function DomainDetailPage() {
     void loadData()
   }, [loadData])
 
+  // When a source is selected (e.g. by clicking a blocking IP in the
+  // enforcement card), bring its row into view — the sources table can be far
+  // below the fold, so expanding it silently looked like nothing happened.
+  useEffect(() => {
+    if (!selectedSource) return
+    const row = document.getElementById(`source-row-${selectedSource}`)
+    row?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [selectedSource, sources])
+
   // Reverse-DNS enrichment: resolved lazily after the table renders so slow
   // PTR lookups never block the sources list. Merges keep earlier answers.
   useEffect(() => {
@@ -898,7 +912,7 @@ export function DomainDetailPage() {
                       <p className="mt-0.5 text-xs leading-relaxed text-secondary">{guidance.rationale}</p>
                     </div>
                   </div>
-                  {guidance.blockingSources.length > 0 ? (
+                  {!guidance.readyToAdvance && guidance.blockingSources.length > 0 ? (
                     <ul className="mt-2.5 space-y-1 border-t border-[color-mix(in_srgb,currentColor_12%,transparent)] pt-2">
                       {guidance.blockingSources.slice(0, 5).map((source) => (
                         <li key={source.sourceIp} className="flex items-baseline justify-between gap-3">
@@ -998,6 +1012,7 @@ export function DomainDetailPage() {
                       return (
                         <Fragment key={source.sourceIp}>
                           <TableRow
+                            id={`source-row-${source.sourceIp}`}
                             className={cn(expanded && 'bg-gray-50')}
                             onClick={() => toggleSource(source.sourceIp)}
                           >

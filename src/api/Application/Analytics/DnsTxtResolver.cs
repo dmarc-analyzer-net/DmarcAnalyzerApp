@@ -40,6 +40,17 @@ public sealed class DnsTxtResolver(IMemoryCache cache, ILogger<DnsTxtResolver> l
         try
         {
             var response = await Client.QueryAsync(name, QueryType.TXT, cancellationToken: ct);
+
+            // DnsClient does not throw on DNS-level errors (ThrowDnsErrors is
+            // off). A SERVFAIL/REFUSED must read as "couldn't check", not as an
+            // empty answer set — otherwise it looks identical to "no record".
+            // NXDOMAIN is a definitive answer (no record) and is NOT an error.
+            if (response.HasError && response.Header.ResponseCode != DnsHeaderResponseCode.NotExistentDomain)
+            {
+                logger.LogWarning("TXT lookup for {Name} returned {Code}", name, response.Header.ResponseCode);
+                return null;
+            }
+
             var records = response.Answers.TxtRecords()
                 .Select(r => string.Concat(r.Text))
                 .Where(t => !string.IsNullOrWhiteSpace(t))

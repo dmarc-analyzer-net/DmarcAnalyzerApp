@@ -633,16 +633,18 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUse
             })
             .Where(x => x.Failed > 0);
 
-        var totalsRow = await grouped
-            .GroupBy(_ => 1)
-            .Select(g => new { Failed = g.Sum(x => x.Failed), Sources = g.Count() })
-            .FirstOrDefaultAsync(ct);
-
-        var rows = await grouped
+        // Materialize the failing (source, domain) groups once, then derive the
+        // totals and the top-N in memory — avoids running the same full-table
+        // aggregation twice per request (previously a group-over-group totals
+        // query plus a separate ordered/limited rows query).
+        var allFailing = await grouped
             .OrderByDescending(x => x.Failed)
             .ThenByDescending(x => x.Messages)
-            .Take(limit)
             .ToListAsync(ct);
+
+        var totalFailedMessages = allFailing.Sum(x => x.Failed);
+        var totalSources = allFailing.Count;
+        var rows = allFailing.Take(limit).ToList();
 
         var domainIds = rows.Select(x => x.DomainId).Distinct().ToList();
         var domains = await ScopedDomains()
@@ -676,8 +678,8 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUse
 
         return new ThreatFeedDto(
             window,
-            totalsRow?.Failed ?? 0,
-            totalsRow?.Sources ?? 0,
+            totalFailedMessages,
+            totalSources,
             sources);
     }
 
