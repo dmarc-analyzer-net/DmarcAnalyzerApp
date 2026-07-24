@@ -1,9 +1,16 @@
-# CI: test everything on every push/PR; publish the container image to GHCR
-# on main (`latest` + `sha-…`) and on version tags (`vX.Y.Z` → semver tags).
+# CI: test everything on every push/PR; publish the container image on main
+# (`latest` + `sha-…`) and on version tags (`vX.Y.Z` → semver tags).
 #
-# The published image is the single-image runtime (APP_MODE=api|worker) that
-# the README quick-start and the marketing site's "Get started" flow point at:
-#   ghcr.io/dmarc-analyzer-net/dmarc-analyzer
+# The published image is the single-image runtime (APP_MODE=api|worker) that the
+# README quick-start and the marketing site's "Get started" flow point at.
+#
+# Two registries, one build:
+#   ghcr.io/dmarc-analyzer-net/dmarc-analyzer  — canonical (no pull rate limits,
+#                                                zero setup, what the README uses)
+#   dmarcanalyzernet/dmarc-analyzer            — Docker Hub mirror for discovery
+#
+# The Docker Hub push is skipped automatically unless DOCKERHUB_USERNAME and
+# DOCKERHUB_TOKEN are set as repository secrets, so this workflow works as-is.
 name: CI
 
 on:
@@ -15,6 +22,7 @@ on:
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/dmarc-analyzer
+  DOCKERHUB_IMAGE: dmarcanalyzernet/dmarc-analyzer
 
 jobs:
   test:
@@ -68,17 +76,43 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Docker Hub is optional: mirror there only once the secrets exist, so the
+      # workflow never fails on a repo that hasn't set them up.
+      - name: Check for Docker Hub credentials
+        id: dockerhub
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Docker Hub secrets not set — publishing to GHCR only."
+          fi
+
+      - name: Log in to Docker Hub
+        if: steps.dockerhub.outputs.enabled == 'true'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Image metadata (tags + OCI labels)
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.IMAGE }}
+          images: |
+            name=${{ env.IMAGE }}
+            name=${{ env.DOCKERHUB_IMAGE }},enable=${{ steps.dockerhub.outputs.enabled }}
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=sha,prefix=sha-
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
+      # One build, pushed to every tag metadata-action produced — which spans
+      # both registries when Docker Hub is enabled.
       - name: Build and push
         uses: docker/build-push-action@v6
         with:

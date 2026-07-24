@@ -26,7 +26,9 @@ What you get: the API + console on port 8080, a background worker polling your
 mailboxes for DMARC reports, and PostgreSQL — three containers, one image.
 
 - Image: `ghcr.io/dmarc-analyzer-net/dmarc-analyzer` (`latest`, `sha-…`, or a
-  version tag; `linux/amd64` + `linux/arm64`)
+  version tag; `linux/amd64` + `linux/arm64`). The same image is mirrored to
+  Docker Hub as `dmarcanalyzernet/dmarc-analyzer` — GHCR is recommended because
+  it has no anonymous pull rate limits.
 - Next steps: add a client, a domain, and a mailbox source (the inbox your
   `rua=` reports arrive in) — see `docs/ops/mailbox-sync.md`.
 - Upgrading: `docker compose pull && docker compose up -d` (schema migrations
