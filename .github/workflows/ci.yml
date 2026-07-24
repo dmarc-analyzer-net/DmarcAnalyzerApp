@@ -78,24 +78,26 @@ jobs:
 
       # Docker Hub is optional: mirror there only once the secrets exist, so the
       # workflow never fails on a repo that hasn't set them up.
+      # Only the token is a secret. The account name isn't, so it comes from
+      # the DOCKERHUB_USERNAME repository *variable* (falling back to the
+      # namespace owner in DOCKERHUB_IMAGE).
       - name: Check for Docker Hub credentials
         id: dockerhub
         env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         run: |
-          if [ -n "$DOCKERHUB_USERNAME" ] && [ -n "$DOCKERHUB_TOKEN" ]; then
+          if [ -n "$DOCKERHUB_TOKEN" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Docker Hub secrets not set — publishing to GHCR only."
+            echo "::notice::DOCKERHUB_TOKEN not set — publishing to GHCR only."
           fi
 
       - name: Log in to Docker Hub
         if: steps.dockerhub.outputs.enabled == 'true'
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ vars.DOCKERHUB_USERNAME || 'dmarcanalyzernet' }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Image metadata (tags + OCI labels)
