@@ -25,6 +25,11 @@ const initialClientForm = {
   timezone: 'UTC',
   retentionMonths: 27,
   isActive: true,
+  legalHold: false,
+  alertsEnabled: true,
+  // Empty string means "use the server default" — the API stores null.
+  alertComplianceDropPercent: '',
+  alertMinMessages: '',
 }
 
 export function ClientsPage() {
@@ -90,10 +95,33 @@ export function ClientsPage() {
         timezone: client.timezone,
         retentionMonths: client.retentionMonths,
         isActive: client.isActive,
+        legalHold: client.legalHold,
+        alertsEnabled: client.alertsEnabled,
+        alertComplianceDropPercent: client.alertComplianceDropPercent?.toString() ?? '',
+        alertMinMessages: client.alertMinMessages?.toString() ?? '',
       })
     } else {
       setEditingClientId(null)
       setClientForm(initialClientForm)
+    }
+  }
+
+  // The API can't distinguish an omitted threshold from "clear it", so a blank
+  // field sends the explicit clear flag instead of a bare null.
+  const clientPayload = () => {
+    const drop = clientForm.alertComplianceDropPercent.trim()
+    const min = clientForm.alertMinMessages.trim()
+    return {
+      name: clientForm.name,
+      slug: clientForm.slug,
+      timezone: clientForm.timezone,
+      retentionMonths: clientForm.retentionMonths,
+      isActive: clientForm.isActive,
+      legalHold: clientForm.legalHold,
+      alertsEnabled: clientForm.alertsEnabled,
+      alertComplianceDropPercent: drop === '' ? null : Number(drop),
+      alertMinMessages: min === '' ? null : Number(min),
+      clearAlertThresholds: drop === '' && min === '',
     }
   }
 
@@ -105,13 +133,13 @@ export function ClientsPage() {
         await fetchJson(`/api/v1/clients/${editingClientId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(clientForm),
+          body: JSON.stringify(clientPayload()),
         })
       } else {
         await fetchJson('/api/v1/clients', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(clientForm),
+          body: JSON.stringify(clientPayload()),
         })
       }
 
@@ -266,6 +294,60 @@ export function ClientsPage() {
               />
               Active
             </label>
+            <label className="flex items-start gap-2 text-sm text-secondary">
+              <input
+                type="checkbox"
+                className="mt-1"
+                checked={clientForm.legalHold}
+                onChange={(e) => setClientForm((x) => ({ ...x, legalHold: e.target.checked }))}
+              />
+              <span>
+                Legal hold
+                <span className="mt-0.5 block text-xs text-faint">
+                  Exempts this client from retention purging entirely, whatever the window above.
+                </span>
+              </span>
+            </label>
+
+            <div className="mt-1 border-t border-border pt-3">
+              <div className="text-xs font-semibold uppercase tracking-wide text-secondary">Alerting</div>
+              <label className="mt-2.5 flex items-center gap-2 text-sm text-secondary">
+                <input
+                  type="checkbox"
+                  checked={clientForm.alertsEnabled}
+                  onChange={(e) => setClientForm((x) => ({ ...x, alertsEnabled: e.target.checked }))}
+                />
+                Raise alerts for this client
+              </label>
+              <div className="mt-2.5 grid grid-cols-2 gap-3">
+                <label className="flex flex-col gap-1 text-sm text-secondary">
+                  Compliance drop (points)
+                  <Input
+                    type="number"
+                    min={1}
+                    max={100}
+                    placeholder="default"
+                    value={clientForm.alertComplianceDropPercent}
+                    onChange={(e) =>
+                      setClientForm((x) => ({ ...x, alertComplianceDropPercent: e.target.value }))
+                    }
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-sm text-secondary">
+                  Minimum messages
+                  <Input
+                    type="number"
+                    min={0}
+                    placeholder="default"
+                    value={clientForm.alertMinMessages}
+                    onChange={(e) => setClientForm((x) => ({ ...x, alertMinMessages: e.target.value }))}
+                  />
+                </label>
+              </div>
+              <p className="mt-1.5 text-xs text-faint">
+                Leave blank to use the server defaults.
+              </p>
+            </div>
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="secondary" onClick={resetDialog}>
                 Cancel

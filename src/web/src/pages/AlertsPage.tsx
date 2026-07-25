@@ -11,13 +11,15 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   ALERT_RULE_LABEL,
   ALERT_SEVERITY_META,
+  ALERT_STATUS_META,
   parseAnalyticsDays,
   type AlertEvent,
+  type AlertStatus,
   type AnalyticsDays,
 } from '@/lib/analytics'
 import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
-import { isAdmin } from '@/lib/authz'
+import { isAdmin, isStaff } from '@/lib/authz'
 import { formatRelativeOrDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
@@ -28,6 +30,7 @@ import { cn } from '@/lib/utils'
 export function AlertsPage() {
   const { user } = useAuth()
   const admin = isAdmin(user)
+  const staff = isStaff(user)
   const [searchParams, setSearchParams] = useSearchParams()
   const days = parseAnalyticsDays(searchParams.get('days'))
 
@@ -92,8 +95,25 @@ export function AlertsPage() {
     }
   }
 
+  const setStatus = async (id: string, status: AlertStatus) => {
+    setError(null)
+    // Optimistic: triage should feel instant, and a failure re-syncs below.
+    setAlerts((prev) => prev?.map((a) => (a.id === id ? { ...a, status } : a)) ?? prev)
+    try {
+      await fetchJson(`/api/v1/alerts/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+    } catch (patchError) {
+      setError(patchError instanceof Error ? patchError.message : 'Could not update that alert')
+      await loadData()
+    }
+  }
+
   const critical = alerts?.filter((a) => a.severity === 'critical').length ?? 0
   const unnotified = alerts?.filter((a) => a.notifiedAtUtc === null).length ?? 0
+  const open = alerts?.filter((a) => a.status === 'open').length ?? 0
 
   return (
     <>
@@ -138,8 +158,13 @@ export function AlertsPage() {
 
       {alerts ? (
         <div className={cn('space-y-3.5 transition-opacity', busy && 'opacity-60')}>
-          <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
             <StatCard label={`Alerts ${days}d`} value={alerts.length.toLocaleString('en-US')} />
+            <StatCard
+              label="Open"
+              value={open.toLocaleString('en-US')}
+              extra={open > 0 ? <Badge variant="warning">needs triage</Badge> : undefined}
+            />
             <StatCard
               label="Critical"
               value={critical.toLocaleString('en-US')}
@@ -176,8 +201,10 @@ export function AlertsPage() {
                       <TableHead>Type</TableHead>
                       <TableHead>What happened</TableHead>
                       <TableHead>Client</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead>Detected</TableHead>
                       <TableHead>Emailed</TableHead>
+                      {staff ? <TableHead className="text-right">Triage</TableHead> : null}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -209,6 +236,11 @@ export function AlertsPage() {
                           <TableCell className="whitespace-nowrap text-sm text-secondary">
                             {alert.clientName}
                           </TableCell>
+                          <TableCell>
+                            <Badge variant={ALERT_STATUS_META[alert.status].badge}>
+                              {ALERT_STATUS_META[alert.status].label}
+                            </Badge>
+                          </TableCell>
                           <TableCell className="whitespace-nowrap text-xs text-secondary">
                             {formatRelativeOrDate(alert.detectedAtUtc)}
                           </TableCell>
@@ -219,6 +251,25 @@ export function AlertsPage() {
                               <span className="text-[var(--status-warn-fg)]">not sent</span>
                             )}
                           </TableCell>
+                          {staff ? (
+                            <TableCell className="whitespace-nowrap text-right">
+                              {alert.status === 'open' ? (
+                                <Button variant="ghost" size="sm" onClick={() => void setStatus(alert.id, 'acknowledged')}>
+                                  <Icon name="check" size={14} />
+                                  Acknowledge
+                                </Button>
+                              ) : alert.status === 'acknowledged' ? (
+                                <Button variant="ghost" size="sm" onClick={() => void setStatus(alert.id, 'closed')}>
+                                  <Icon name="circle-check" size={14} />
+                                  Close
+                                </Button>
+                              ) : (
+                                <Button variant="ghost" size="sm" onClick={() => void setStatus(alert.id, 'open')}>
+                                  Reopen
+                                </Button>
+                              )}
+                            </TableCell>
+                          ) : null}
                         </TableRow>
                       )
                     })}

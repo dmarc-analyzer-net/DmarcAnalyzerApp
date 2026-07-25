@@ -7,6 +7,9 @@ public sealed record ClientDto(
     bool IsActive,
     int RetentionMonths,
     bool LegalHold,
+    bool AlertsEnabled,
+    int? AlertComplianceDropPercent,
+    int? AlertMinMessages,
     string Timezone,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);

@@ -22,6 +22,12 @@ export type Client = {
   slug: string
   isActive: boolean
   retentionMonths: number
+  /** Exempts the client from retention purging entirely. */
+  legalHold: boolean
+  alertsEnabled: boolean
+  /** Null means "use the server default" for these two. */
+  alertComplianceDropPercent: number | null
+  alertMinMessages: number | null
   timezone: string
 }
 

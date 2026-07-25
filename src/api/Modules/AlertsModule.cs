@@ -7,6 +7,17 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Modules;
 
+public sealed record UpdateAlertStatusRequest(string? Status);
+
+public static class AlertStatuses
+{
+    public const string Open = "open";
+    public const string Acknowledged = "acknowledged";
+    public const string Closed = "closed";
+
+    public static readonly string[] All = [Open, Acknowledged, Closed];
+}
+
 public sealed class AlertsModule : ICarterModule
 {
     public void AddRoutes(IEndpointRouteBuilder app)
@@ -41,6 +52,34 @@ public sealed class AlertsModule : ICarterModule
 
             return Results.Ok(items);
         }).AllowClientViewer();
+
+        // Triage: an alert list you can't clear down gets ignored, so the status
+        // column is writable. Analysts can triage, not just admins.
+        app.MapPatch("/api/v1/alerts/{id:guid}", async (
+            Guid id,
+            UpdateAlertStatusRequest request,
+            DmarcAnalyzerDbContext db,
+            CancellationToken ct) =>
+        {
+            var status = (request.Status ?? string.Empty).Trim().ToLowerInvariant();
+            if (!AlertStatuses.All.Contains(status))
+            {
+                return Results.Json(
+                    new { error = $"status must be one of: {string.Join(", ", AlertStatuses.All)}" },
+                    statusCode: 400);
+            }
+
+            var alert = await db.AlertEvents.FirstOrDefaultAsync(a => a.Id == id, ct);
+            if (alert is null)
+            {
+                return Results.NotFound();
+            }
+
+            alert.Status = status;
+            await db.SaveChangesAsync(ct);
+
+            return Results.Ok(new { alert.Id, alert.Status });
+        }).RequireAgencyStaff();
 
         // Run evaluation now rather than waiting for the next worker pass.
         app.MapPost("/api/v1/admin/alerts/evaluate", async (

@@ -88,6 +88,7 @@ cross-tenant ids return **404**, never 403.
 | GET | `/admin/retention/preview` | admin — what the next purge would delete, per client; deletes nothing |
 | POST | `/admin/retention/purge` | admin — runs the purge now. Optional `batchSize` |
 | GET | `/alerts` | any — alert history (`days`, default 30); client-scoped for viewers |
+| PATCH | `/alerts/{id}` | staff — triage: `status` of `open`, `acknowledged` or `closed` |
 | POST | `/admin/alerts/evaluate` | admin — evaluates alert rules now |
 | POST | `/admin/notifications/test` | admin — sends a test email. Requires `to` |
 | GET | `/admin/digest/preview` | admin — renders a client's digest without sending. Requires `clientId`; optional `monthsAgo` |

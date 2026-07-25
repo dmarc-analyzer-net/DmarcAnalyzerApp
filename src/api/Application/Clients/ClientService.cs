@@ -123,6 +123,41 @@ public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext
             client.LegalHold = request.LegalHold.Value;
         }
 
+        if (request.AlertsEnabled.HasValue)
+        {
+            client.AlertsEnabled = request.AlertsEnabled.Value;
+        }
+
+        // A bare null can't be told apart from "unchanged" on a PATCH, so clearing
+        // the overrides is an explicit flag.
+        if (request.ClearAlertThresholds == true)
+        {
+            client.AlertComplianceDropPercent = null;
+            client.AlertMinMessages = null;
+        }
+        else
+        {
+            if (request.AlertComplianceDropPercent.HasValue)
+            {
+                if (request.AlertComplianceDropPercent.Value is < 1 or > 100)
+                {
+                    return ServiceResult<ClientDto>.Failure("alertComplianceDropPercent must be between 1 and 100", 400);
+                }
+
+                client.AlertComplianceDropPercent = request.AlertComplianceDropPercent.Value;
+            }
+
+            if (request.AlertMinMessages.HasValue)
+            {
+                if (request.AlertMinMessages.Value < 0)
+                {
+                    return ServiceResult<ClientDto>.Failure("alertMinMessages cannot be negative", 400);
+                }
+
+                client.AlertMinMessages = request.AlertMinMessages.Value;
+            }
+        }
+
         if (request.Timezone is not null)
         {
             if (string.IsNullOrWhiteSpace(request.Timezone))
@@ -152,6 +187,9 @@ public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext
             x.IsActive,
             x.RetentionMonths,
             x.LegalHold,
+            x.AlertsEnabled,
+            x.AlertComplianceDropPercent,
+            x.AlertMinMessages,
             x.Timezone,
             x.CreatedAtUtc,
             x.UpdatedAtUtc);

@@ -364,6 +364,7 @@ export type RecordInspection = {
 // --- Alerts (GET /api/v1/alerts) ---
 
 export type AlertSeverity = 'info' | 'warning' | 'critical'
+export type AlertStatus = 'open' | 'acknowledged' | 'closed'
 export type AlertRuleType = 'failure_spike' | 'policy_regression'
 
 export type AlertEvent = {
@@ -374,7 +375,7 @@ export type AlertEvent = {
   domainName: string | null
   ruleType: AlertRuleType
   severity: AlertSeverity
-  status: string
+  status: AlertStatus
   title: string
   details: string
   detectedAtUtc: string
@@ -386,6 +387,12 @@ export const ALERT_SEVERITY_META: Record<AlertSeverity, { label: string; badge: 
   critical: { label: 'Critical', badge: 'danger' },
   warning: { label: 'Warning', badge: 'warning' },
   info: { label: 'Info', badge: 'neutral' },
+}
+
+export const ALERT_STATUS_META: Record<AlertStatus, { label: string; badge: 'danger' | 'warning' | 'neutral' | 'success' }> = {
+  open: { label: 'Open', badge: 'warning' },
+  acknowledged: { label: 'Acknowledged', badge: 'neutral' },
+  closed: { label: 'Closed', badge: 'success' },
 }
 
 export const ALERT_RULE_LABEL: Record<AlertRuleType, string> = {

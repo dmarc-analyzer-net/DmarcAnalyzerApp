@@ -141,10 +141,14 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     `POST /api/v1/admin/digest/send` sends anything due
 
 - Console pages for notifications:
-  - **Alerts** — history with severity, type, per-domain links, whether each was
-    emailed, and an admin "Evaluate now" action
+  - **Alerts** — history with severity, type, status, per-domain links, whether
+    each was emailed, an admin "Evaluate now" action, and triage
+    (acknowledge / close / reopen) via `PATCH /alerts/{id}`
   - **Notifications** — recipient management (per-client or agency-wide) and a
     test-send button that surfaces the API's configuration error verbatim
+  - **Clients** — retention window, legal hold, and per-client alert settings
+    (enable, compliance-drop threshold, minimum messages) are editable in the
+    console rather than API-only
 
 ## Planned Next
 
