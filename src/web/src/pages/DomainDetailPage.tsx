@@ -435,15 +435,14 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
                 <ul className="mt-2 space-y-1">
                   {annotations.map((row) => (
                     <li key={row.field} className="text-xs leading-relaxed text-secondary">
-                      <span className="font-mono font-semibold">{row.field}</span> — {row.note}
+                      <span className="font-mono font-semibold">{row.field}</span>: {row.note}
                     </li>
                   ))}
                 </ul>
               ) : null}
               {mismatches.length > 0 ? (
                 <p className="mt-2 text-xs leading-relaxed text-secondary">
-                  DNS differs from the last report — a recent change may still be propagating to
-                  reporters.
+                  DNS and the last report disagree — the record may have changed since that report.
                 </p>
               ) : null}
             </div>

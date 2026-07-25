@@ -302,6 +302,15 @@ export function AuditPage() {
   )
 }
 
+/** Shows `::ffff:172.19.0.1` as `172.19.0.1`. Kestrel reports IPv4 peers in
+ * IPv4-mapped IPv6 form behind Docker's bridge, which is the same address with
+ * six characters of noise in front of it. */
+function formatIpAddress(ip: string | null | undefined): string {
+  if (!ip) return '—'
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/i.exec(ip)
+  return mapped ? mapped[1] : ip
+}
+
 function AuditRow({
   event,
   expanded,
@@ -342,7 +351,7 @@ function AuditRow({
           {event.clientName ?? (event.clientId ? <span className="italic">deleted</span> : '—')}
         </TableCell>
         <TableCell className="whitespace-nowrap font-mono text-xs text-secondary">
-          {event.ipAddress ?? '—'}
+          {formatIpAddress(event.ipAddress)}
         </TableCell>
       </TableRow>
       {expanded ? (
