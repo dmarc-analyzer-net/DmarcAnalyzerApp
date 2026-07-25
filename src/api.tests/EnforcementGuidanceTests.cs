@@ -43,6 +43,7 @@ public sealed class EnforcementGuidanceTests
         {
             db.Add(new DmarcReportRecord
             {
+                ReportRangeBeginUtc = report.RangeBeginUtc,
                 Id = Guid.NewGuid(), DmarcReportId = report.Id, SourceIp = s.Ip, MessageCount = s.Count,
                 Disposition = "none",
                 DkimResult = s.Aligned ? "pass" : "fail",

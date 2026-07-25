@@ -13,6 +13,9 @@ public sealed class DatabaseModule : ICarterModule
     {
         app.MapPost("/api/v1/admin/database/migrate", async (DmarcAnalyzerDbContext db, IAuditLog audit, CancellationToken ct) =>
         {
+            // Same reason as the startup path in Program.cs: a pending migration may carry
+            // a multi-minute backfill, and 30s is not enough to apply one.
+            db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
             await db.Database.MigrateAsync(ct);
             await audit.RecordAsync(AuditEvents.DatabaseMigrated, "Applied pending database migrations", ct: ct);
             return Results.Ok(new { status = "ok" });

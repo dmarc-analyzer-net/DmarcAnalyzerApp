@@ -49,6 +49,7 @@ public sealed class ThreatFeedTests
         {
             db.Add(new DmarcReportRecord
             {
+                ReportRangeBeginUtc = report.RangeBeginUtc,
                 Id = Guid.NewGuid(), DmarcReportId = report.Id, SourceIp = r.Ip, MessageCount = r.Count,
                 Disposition = "none", DkimResult = r.Dkim, SpfResult = r.Spf,
             });

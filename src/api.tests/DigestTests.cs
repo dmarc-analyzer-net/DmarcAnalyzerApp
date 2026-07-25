@@ -71,6 +71,7 @@ public sealed class DigestTests
         {
             db.Add(new DmarcReportRecord
             {
+                ReportRangeBeginUtc = day,
                 Id = Guid.NewGuid(), DmarcReportId = report.Id, SourceIp = "203.0.113.10",
                 MessageCount = compliant, Disposition = "none", DkimResult = "pass", SpfResult = "pass",
                 HeaderFrom = "x", EnvelopeFrom = "x", EnvelopeTo = "x",
@@ -80,6 +81,7 @@ public sealed class DigestTests
         {
             db.Add(new DmarcReportRecord
             {
+                ReportRangeBeginUtc = day,
                 Id = Guid.NewGuid(), DmarcReportId = report.Id, SourceIp = "198.51.100.24",
                 MessageCount = messages - compliant, Disposition = "none", DkimResult = "fail", SpfResult = "fail",
                 HeaderFrom = "x", EnvelopeFrom = "x", EnvelopeTo = "x",

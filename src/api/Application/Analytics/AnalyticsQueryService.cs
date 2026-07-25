@@ -74,7 +74,7 @@ public sealed class AnalyticsQueryService(
             .CountAsync(x => x.RangeBeginUtc >= window.BeginUtc && x.RangeBeginUtc <= window.EndUtc, ct);
 
         var trendRows = await records
-            .GroupBy(r => r.DmarcReport!.RangeBeginUtc.Date)
+            .GroupBy(r => r.ReportRangeBeginUtc.Date)
             .Select(g => new
             {
                 Date = g.Key,
@@ -371,8 +371,8 @@ public sealed class AnalyticsQueryService(
                 FROM dmarc_report_record rec
                 JOIN dmarc_report r ON r.""Id"" = rec.""DmarcReportId""
                 WHERE r.""DomainId"" = {domainId}
-                  AND r.""RangeBeginUtc"" >= {window.BeginUtc}
-                  AND r.""RangeBeginUtc"" <= {window.EndUtc}
+                  AND rec.""ReportRangeBeginUtc"" >= {window.BeginUtc}
+                  AND rec.""ReportRangeBeginUtc"" <= {window.EndUtc}
                 GROUP BY rec.""SourceIp""")
             .ToListAsync(ct);
 
@@ -542,15 +542,15 @@ public sealed class AnalyticsQueryService(
                 from rec in db.DmarcReportRecords.AsNoTracking()
                 join rep in db.DmarcReports.AsNoTracking() on rec.DmarcReportId equals rep.Id
                 where rep.DomainId == domainId
-                      && rep.RangeBeginUtc >= window.BeginUtc
-                      && rep.RangeBeginUtc <= window.EndUtc
+                      && rec.ReportRangeBeginUtc >= window.BeginUtc
+                      && rec.ReportRangeBeginUtc <= window.EndUtc
                 select new
                 {
                     rec.SourceIp,
                     rec.MessageCount,
                     rec.DkimResult,
                     rec.SpfResult,
-                    Begin = rep.RangeBeginUtc,
+                    Begin = rec.ReportRangeBeginUtc,
                     End = rep.RangeEndUtc,
                 })
             .GroupBy(r => r.SourceIp)
@@ -624,7 +624,8 @@ public sealed class AnalyticsQueryService(
                 from rec in db.DmarcReportRecords.AsNoTracking()
                 join rep in db.DmarcReports.AsNoTracking() on rec.DmarcReportId equals rep.Id
                 join dom in ScopedDomains() on rep.DomainId equals dom.Id
-                where rep.RangeBeginUtc >= window.BeginUtc && rep.RangeBeginUtc <= window.EndUtc
+                where rec.ReportRangeBeginUtc >= window.BeginUtc
+                      && rec.ReportRangeBeginUtc <= window.EndUtc
                 select new
                 {
                     rec.SourceIp,
@@ -633,7 +634,7 @@ public sealed class AnalyticsQueryService(
                     rec.DkimResult,
                     rec.SpfResult,
                     rec.Disposition,
-                    Begin = rep.RangeBeginUtc,
+                    Begin = rec.ReportRangeBeginUtc,
                     End = rep.RangeEndUtc,
                 })
             .GroupBy(r => new { r.SourceIp, r.DomainId })
@@ -766,7 +767,7 @@ public sealed class AnalyticsQueryService(
         CancellationToken ct)
     {
         var rows = await records
-            .GroupBy(r => r.DmarcReport!.RangeBeginUtc.Date)
+            .GroupBy(r => r.ReportRangeBeginUtc.Date)
             .Select(g => new
             {
                 Date = g.Key,
@@ -832,10 +833,13 @@ public sealed class AnalyticsQueryService(
 
     private IQueryable<Data.Entities.DmarcReportRecord> RecordsInWindow(AnalyticsWindowDto window)
     {
+        // Filters the denormalised copy on the record itself. Going through
+        // r.DmarcReport made Postgres hash-join and scan all 5.3M records to reach the
+        // ~3% inside the window; this is an index range scan instead.
         var query = db.DmarcReportRecords
             .AsNoTracking()
-            .Where(r => r.DmarcReport!.RangeBeginUtc >= window.BeginUtc &&
-                        r.DmarcReport.RangeBeginUtc <= window.EndUtc);
+            .Where(r => r.ReportRangeBeginUtc >= window.BeginUtc &&
+                        r.ReportRangeBeginUtc <= window.EndUtc);
 
         if (!currentUser.IsAgencyStaff)
         {

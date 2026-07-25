@@ -224,6 +224,9 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.HeaderFrom).HasMaxLength(255).IsRequired();
             entity.Property(x => x.EnvelopeFrom).HasMaxLength(255).IsRequired();
             entity.Property(x => x.EnvelopeTo).HasMaxLength(255).IsRequired();
+            // Analytics windows filter on this, so it carries the index the join
+            // through dmarc_report could never give the planner.
+            entity.HasIndex(x => x.ReportRangeBeginUtc);
             entity.HasIndex(x => x.DmarcReportId);
 
             entity.HasOne(x => x.DmarcReport)

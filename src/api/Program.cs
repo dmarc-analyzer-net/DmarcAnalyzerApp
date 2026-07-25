@@ -118,6 +118,13 @@ if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
     using var migrationScope = app.Services.CreateScope();
     var db = migrationScope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>();
 
+    // Schema changes need room that request-path queries should never have. The
+    // AddDmarcReportRecordRangeBegin backfill rewrites 5.3M rows in a single statement
+    // — ~94s against Npgsql's 30s default — and a migration that times out midway is a
+    // worse outcome than a slow boot. Scoped to this context, which is disposed with
+    // the migration, so nothing serving traffic inherits the longer timeout.
+    db.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+
     // A schema change shipped by a deploy is the most audit-worthy event there
     // is, and until now only the manual endpoint recorded one. Capture the
     // pending list first: after MigrateAsync there is nothing left to report,

@@ -210,8 +210,17 @@ One row per sending source within a report — the grain analytics aggregates ov
 | `Disposition` | max 32 — `none` \| `quarantine` \| `reject` |
 | `DkimResult`, `SpfResult` | max 32 — **policy-evaluated** (i.e. authenticated *and* aligned) |
 | `HeaderFrom`, `EnvelopeFrom`, `EnvelopeTo` | max 255 |
+| `ReportRangeBeginUtc` | Denormalised copy of `dmarc_report.RangeBeginUtc`, **indexed**. Written by ingestion; never updated, since a report's range is fixed once stored. |
 
 A message is DMARC-compliant when `DkimResult = 'pass' OR SpfResult = 'pass'`.
+
+`ReportRangeBeginUtc` is the one deliberate denormalisation in the schema. Every
+analytics query is scoped to a time window that logically lives on the parent report,
+but filtering through the navigation made the planner hash-join and scan all 5.27M
+records to keep the ~3% inside the window — once per aggregate. Indexing the report
+side does not fix it (measured; the planner keeps the full record scan). Carrying the
+date on the record turns the window into a bitmap index scan. It is safe to duplicate
+precisely because it is immutable: nothing updates a report's range after ingestion.
 
 ### `dmarc_report_record_dkim_auth_result`
 Raw DKIM verdicts underlying a record (a record may have several signatures).

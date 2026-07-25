@@ -24,6 +24,11 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+      # Kestrel does not listen until migrations finish, and a migration can carry a
+      # multi-minute backfill — AddDmarcReportRecordRangeBegin rewrites 5.3M rows in
+      # ~94s. Without a start period the 20 retries expire first, the API reports
+      # unhealthy partway through a deploy, and the worker's gate below waits on it.
+      start_period: 150s
     depends_on:
       postgres:
         condition: service_healthy

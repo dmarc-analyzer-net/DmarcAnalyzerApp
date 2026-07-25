@@ -178,7 +178,8 @@ public sealed class MailboxSyncService(
 
                                 var reportEntityId = reportId.Value;
                                 await using var transaction = await db.Database.BeginTransactionAsync(operationToken);
-                                await InsertDmarcReportRecordsAsync(reportEntityId, result.Records, operationToken);
+                                await InsertDmarcReportRecordsAsync(
+                                    reportEntityId, result.RangeBeginUtc, result.Records, operationToken);
 
                                 await TryInsertReportIngestAsync(
                                     mailboxSource.DefaultClientId,
@@ -367,6 +368,7 @@ public sealed class MailboxSyncService(
 
     private async Task InsertDmarcReportRecordsAsync(
         Guid dmarcReportId,
+        DateTime reportRangeBeginUtc,
         IReadOnlyList<DmarcReportRecordParseResult> records,
         CancellationToken ct)
     {
@@ -375,9 +377,9 @@ public sealed class MailboxSyncService(
             var recordId = Guid.NewGuid();
             await db.Database.ExecuteSqlInterpolatedAsync($@"
                 INSERT INTO dmarc_report_record
-                    (""Id"", ""DmarcReportId"", ""SourceIp"", ""MessageCount"", ""Disposition"", ""DkimResult"", ""SpfResult"", ""HeaderFrom"", ""EnvelopeFrom"", ""EnvelopeTo"")
+                    (""Id"", ""DmarcReportId"", ""SourceIp"", ""MessageCount"", ""Disposition"", ""DkimResult"", ""SpfResult"", ""HeaderFrom"", ""EnvelopeFrom"", ""EnvelopeTo"", ""ReportRangeBeginUtc"")
                 VALUES
-                    ({recordId}, {dmarcReportId}, {record.SourceIp}, {record.MessageCount}, {record.Disposition}, {record.DkimResult}, {record.SpfResult}, {record.HeaderFrom}, {record.EnvelopeFrom}, {record.EnvelopeTo});
+                    ({recordId}, {dmarcReportId}, {record.SourceIp}, {record.MessageCount}, {record.Disposition}, {record.DkimResult}, {record.SpfResult}, {record.HeaderFrom}, {record.EnvelopeFrom}, {record.EnvelopeTo}, {reportRangeBeginUtc});
                 ", ct);
 
             foreach (var dkim in record.DkimAuthResults)
