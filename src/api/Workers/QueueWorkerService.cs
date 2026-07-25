@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Application.Ingestion;
+using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Application.Retention;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Data;
@@ -32,6 +33,7 @@ public sealed class QueueWorkerService(
             {
                 await CloseStaleRunningSyncsAsync(stoppingToken);
                 await RunScheduledSyncPassAsync(stoppingToken);
+                await RunAlertPassIfDueAsync(stoppingToken);
                 await RunRetentionPassIfDueAsync(stoppingToken);
                 consecutiveFailures = 0;
             }
@@ -75,6 +77,38 @@ public sealed class QueueWorkerService(
 
         var backoffSeconds = 5L << Math.Min(consecutiveFailures - 1, 10);
         return TimeSpan.FromSeconds(Math.Min(backoffSeconds, normalSeconds));
+    }
+
+    private DateTime? _lastAlertRunUtc;
+
+    /// <summary>
+    /// Evaluates alert rules on their own cadence (<c>Alerts:IntervalMinutes</c>).
+    /// Separate from the sync interval because reports arrive daily — evaluating
+    /// far more often than that only risks duplicate work, and the cooldown in the
+    /// evaluation service is what actually prevents repeat notifications.
+    /// </summary>
+    private async Task RunAlertPassIfDueAsync(CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var alertOptions = scope.ServiceProvider
+            .GetRequiredService<IOptions<AlertOptions>>().Value;
+
+        if (!alertOptions.Enabled)
+        {
+            return;
+        }
+
+        var interval = TimeSpan.FromMinutes(Math.Max(5, alertOptions.IntervalMinutes));
+        if (_lastAlertRunUtc is { } last && DateTime.UtcNow - last < interval)
+        {
+            return;
+        }
+
+        var alerts = scope.ServiceProvider.GetRequiredService<IAlertEvaluationService>();
+        await alerts.EvaluateAsync(ct);
+
+        // Only on success, so a failure retries next pass.
+        _lastAlertRunUtc = DateTime.UtcNow;
     }
 
     private DateTime? _lastRetentionRunUtc;

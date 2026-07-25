@@ -4,6 +4,7 @@ using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Application.Ingestion;
+using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Application.Retention;
 using DmarcAnalyzer.Api.Application.MailboxSources;
 using DmarcAnalyzer.Api.Application.Reports;
@@ -29,6 +30,10 @@ if (mode == "worker")
     workerBuilder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
     workerBuilder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
     workerBuilder.Services.AddScoped<IRetentionPurgeService, RetentionPurgeService>();
+    workerBuilder.Services.Configure<EmailOptions>(workerBuilder.Configuration.GetSection("Email"));
+    workerBuilder.Services.Configure<AlertOptions>(workerBuilder.Configuration.GetSection("Alerts"));
+    workerBuilder.Services.AddScoped<IEmailSender, EmailSender>();
+    workerBuilder.Services.AddScoped<IAlertEvaluationService, AlertEvaluationService>();
     workerBuilder.Services.Configure<WorkerOptions>(workerBuilder.Configuration.GetSection("Worker"));
     workerBuilder.Services.AddHostedService<QueueWorkerService>();
 
@@ -62,6 +67,10 @@ builder.Services.AddScoped<IMailboxHealthQueryService, MailboxHealthQueryService
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IRecordInspectionService, RecordInspectionService>();
 builder.Services.AddScoped<IRetentionPurgeService, RetentionPurgeService>();
+builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
+builder.Services.Configure<AlertOptions>(builder.Configuration.GetSection("Alerts"));
+builder.Services.AddScoped<IEmailSender, EmailSender>();
+builder.Services.AddScoped<IAlertEvaluationService, AlertEvaluationService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IHostnameResolver, HostnameResolver>();
 builder.Services.AddSingleton<IDnsTxtResolver, DnsTxtResolver>();

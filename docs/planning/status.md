@@ -112,6 +112,22 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - `GET /api/v1/admin/retention/preview` (non-destructive) and
     `POST /api/v1/admin/retention/purge` for operators
 
+- Alerting and email delivery:
+  - SMTP relay via MailKit (`Email:*`); delivery degrades to logging when
+    unconfigured so a self-hosted install without SMTP still works
+  - `notification_recipient` — per-client or agency-wide (null `ClientId`),
+    with `alert` / `digest` / `both` kinds
+  - `AlertEvaluationService` raises **failure spike** (newest day's compliance vs
+    the preceding baseline) and **policy regression** (published policy weakened),
+    per active domain
+  - thresholds from `Alerts:*` with per-client overrides on `client`
+    (`AlertsEnabled`, `AlertComplianceDropPercent`, `AlertMinMessages`)
+  - `alert_event` history with a cooldown so the same problem isn't emailed
+    repeatedly; alerts are recorded even when no recipient or relay exists
+  - hourly worker pass; `GET /api/v1/alerts`,
+    `POST /api/v1/admin/alerts/evaluate`,
+    `POST /api/v1/admin/notifications/test`, and recipient CRUD
+
 ## Planned Next
 
 - Repository/service pattern hardening and broader indexing strategy.

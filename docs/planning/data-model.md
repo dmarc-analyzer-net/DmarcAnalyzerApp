@@ -96,6 +96,9 @@ The tenant.
 | `IsActive` | bool |
 | `RetentionMonths` | default 27 — enforced by the daily retention pass, measured against report **window end** (`RangeEndUtc`), not ingest date |
 | `LegalHold` | default false — when true the client is skipped entirely by retention purging |
+| `AlertsEnabled` | default true — turns alerting off for this client only |
+| `AlertComplianceDropPercent` | nullable — overrides `Alerts:ComplianceDropPercent` |
+| `AlertMinMessages` | nullable — overrides `Alerts:MinMessages` |
 | `Timezone` | max 64, default `UTC` |
 | `CreatedAtUtc`, `UpdatedAtUtc` | |
 
@@ -232,7 +235,39 @@ Raw SPF verdicts underlying a record.
 | `Scope` | `mfrom` \| `helo` |
 | `Result`, `HumanResult` | |
 
-## A.5 What is deliberately *not* a table
+## A.5 Notifications and alerts
+
+### `notification_recipient`
+Who gets notified. A **null `ClientId` is the agency-wide scope** — that address
+receives notifications for every client.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK |
+| `ClientId` | FK → `client`, **cascade**, indexed; null = agency-wide |
+| `Email` | max 320 |
+| `Kind` | max 16 — `alert` \| `digest` \| `both` |
+| `IsActive` | default true |
+| — | `(ClientId, Email)` **unique** |
+
+### `alert_event`
+Raised alerts. Persisted so the same problem isn't emailed repeatedly (the
+evaluation service checks for a recent event of the same kind) and so operators
+can see history.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK |
+| `ClientId` | FK → `client`, **cascade** |
+| `DomainId` | FK → `domain`, **set null**; null for client-wide alerts |
+| `RuleType` | max 32 — `failure_spike` \| `policy_regression` |
+| `Severity` | max 16 — `info` \| `warning` \| `critical` |
+| `Status` | max 16 — `open` \| `acknowledged` \| `closed` |
+| `Title`, `Details` | max 300 / 4000 |
+| `DetectedAtUtc` | indexed; `(ClientId, RuleType, DetectedAtUtc)` indexed for the cooldown lookup |
+| `NotifiedAtUtc` | nullable — null when no recipient or no relay |
+
+## A.5.1 What is deliberately *not* a table
 
 - **No pre-aggregated metrics table.** Dashboard figures are computed on demand
   by `AnalyticsQueryService` over `dmarc_report_record`, with one hand-written
@@ -252,8 +287,8 @@ are provisional.
 
 | Planned table(s) | Purpose | Backlog item |
 |---|---|---|
-| `alert_rule`, `alert_event` | Failure-spike / policy-regression alerting with per-client thresholds | alert engine |
-| `notification_recipient`, `digest_schedule`, `digest_delivery` | Monthly per-client email digests over SMTP | email digest + SMTP relay |
+| `alert_rule` | Per-client alert *rules* as rows. Shipped instead as threshold columns on `client`, which covers per-client tuning without another CRUD surface | — |
+| `digest_schedule`, `digest_delivery` | Monthly per-client email digests. `notification_recipient` and the SMTP relay already exist | monthly email digest |
 | `export_job` | Async CSV/JSON export | analytics export |
 | `pdf_report_job` | Branded PDF summaries | branded PDF reports |
 | `magic_link_nonce` | Signed single-client read-only links (7-day default), revocable via DB nonce | magic link access |

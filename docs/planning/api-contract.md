@@ -87,6 +87,12 @@ cross-tenant ids return **404**, never 403.
 | POST | `/admin/database/migrate` | admin — applies pending EF migrations |
 | GET | `/admin/retention/preview` | admin — what the next purge would delete, per client; deletes nothing |
 | POST | `/admin/retention/purge` | admin — runs the purge now. Optional `batchSize` |
+| GET | `/alerts` | any — alert history (`days`, default 30); client-scoped for viewers |
+| POST | `/admin/alerts/evaluate` | admin — evaluates alert rules now |
+| POST | `/admin/notifications/test` | admin — sends a test email. Requires `to` |
+| GET | `/notification-recipients` | staff |
+| POST | `/notification-recipients` | admin — `clientId` null means agency-wide |
+| DELETE | `/notification-recipients/{id}` | admin |
 | GET | `/health/live`, `/health/ready` | public |
 
 ## 1) Conventions

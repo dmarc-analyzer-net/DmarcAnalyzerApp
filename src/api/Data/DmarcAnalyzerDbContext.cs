@@ -13,6 +13,8 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<DmarcReportRecordSpfAuthResult> DmarcReportRecordSpfAuthResults => Set<DmarcReportRecordSpfAuthResult>();
     public DbSet<MailboxSource> MailboxSources => Set<MailboxSource>();
     public DbSet<DmarcReportIngest> DmarcReportIngests => Set<DmarcReportIngest>();
+    public DbSet<NotificationRecipient> NotificationRecipients => Set<NotificationRecipient>();
+    public DbSet<AlertEvent> AlertEvents => Set<AlertEvent>();
     public DbSet<MailboxSyncRun> MailboxSyncRuns => Set<MailboxSyncRun>();
     public DbSet<AgencyUser> AgencyUsers => Set<AgencyUser>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
@@ -96,6 +98,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.Slug).HasMaxLength(120).IsRequired();
             entity.Property(x => x.Timezone).HasMaxLength(64).IsRequired();
             entity.Property(x => x.LegalHold).HasDefaultValue(false);
+            entity.Property(x => x.AlertsEnabled).HasDefaultValue(true);
             entity.HasIndex(x => x.Slug).IsUnique();
         });
 
@@ -237,6 +240,47 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .WithMany(x => x.DkimAuthResults)
                 .HasForeignKey(x => x.DmarcReportRecordId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<NotificationRecipient>(entity =>
+        {
+            entity.ToTable("notification_recipient");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.Kind).HasMaxLength(16).IsRequired().HasDefaultValue("both");
+            entity.Property(x => x.IsActive).HasDefaultValue(true);
+            entity.HasIndex(x => x.ClientId);
+            // One row per address per scope; a null ClientId is the agency-wide scope.
+            entity.HasIndex(x => new { x.ClientId, x.Email }).IsUnique();
+
+            entity.HasOne(x => x.Client)
+                .WithMany()
+                .HasForeignKey(x => x.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AlertEvent>(entity =>
+        {
+            entity.ToTable("alert_event");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.RuleType).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.Severity).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.Status).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.Title).HasMaxLength(300).IsRequired();
+            entity.Property(x => x.Details).HasMaxLength(4000).IsRequired();
+            // The cooldown lookup: newest event for a client/domain/rule.
+            entity.HasIndex(x => new { x.ClientId, x.RuleType, x.DetectedAtUtc });
+            entity.HasIndex(x => x.DetectedAtUtc);
+
+            entity.HasOne(x => x.Client)
+                .WithMany()
+                .HasForeignKey(x => x.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.Domain)
+                .WithMany()
+                .HasForeignKey(x => x.DomainId)
+                .OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<DmarcReportRecordSpfAuthResult>(entity =>

@@ -13,6 +13,15 @@ public sealed class Client
     /// preserved for a dispute or investigation regardless of the retention window.
     /// </summary>
     public bool LegalHold { get; set; }
+
+    /// <summary>Turns alerting off for this client without affecting others.</summary>
+    public bool AlertsEnabled { get; set; } = true;
+
+    /// <summary>Compliance-drop threshold in percentage points; null uses the configured default.</summary>
+    public int? AlertComplianceDropPercent { get; set; }
+
+    /// <summary>Ignore days quieter than this when spotting a spike; null uses the configured default.</summary>
+    public int? AlertMinMessages { get; set; }
     public string Timezone { get; set; } = "UTC";
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;
