@@ -10,10 +10,13 @@ export function formatCompact(value: number): string {
   return value.toLocaleString('en-US')
 }
 
-/** Formats a 0..1 fraction as "89.1%". */
+/** Formats a 0..1 fraction as "89.1%". Never rounds up to "100.0%" while any mail
+ * still fails, so a domain at 99.96% doesn't read as fully compliant next to a
+ * "below target" label. */
 export function formatPercent(fraction: number | null | undefined): string {
   if (fraction == null || !Number.isFinite(fraction)) return '—'
-  return `${(fraction * 100).toFixed(1)}%`
+  const percent = fraction * 100
+  return `${(percent < 100 ? Math.min(percent, 99.9) : percent).toFixed(1)}%`
 }
 
 /** Short UTC date without year, e.g. "Aug 20". Accepts "yyyy-MM-dd" or ISO timestamps. */

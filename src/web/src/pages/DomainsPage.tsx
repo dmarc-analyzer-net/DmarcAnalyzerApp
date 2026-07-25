@@ -440,7 +440,11 @@ export function DomainsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <PolicyBadge policy={row.publishedPolicy ?? 'none'} />
+                      {noData ? (
+                        <span className="text-faint">—</span>
+                      ) : (
+                        <PolicyBadge policy={row.publishedPolicy ?? 'none'} />
+                      )}
                     </TableCell>
                     <TableCell>
                       {noData ? (

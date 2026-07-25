@@ -135,7 +135,7 @@ public sealed class AlertsModule : ICarterModule
             if (!sender.IsConfigured)
             {
                 return Results.Json(
-                    new { error = "email is not configured; set Email:Host and Email:FromAddress" },
+                    new { error = "Email is not configured; set Email:Host and Email:FromAddress" },
                     statusCode: 400);
             }
 

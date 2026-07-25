@@ -13,7 +13,12 @@ export function ComplianceBar({
   showValue?: boolean
   className?: string
 }) {
-  const color = value >= 95 ? '#0e9481' : value >= 75 ? '#d97706' : '#dc3d5c'
+  const color =
+    value >= 95
+      ? 'var(--status-ok-dot)'
+      : value >= 75
+        ? 'var(--status-warn-dot)'
+        : 'var(--status-danger-dot)'
   const pct = Math.max(0, Math.min(100, value))
   return (
     <span className={cn('inline-flex items-center gap-3', className)}>
@@ -27,8 +32,8 @@ export function ComplianceBar({
         />
       </span>
       {showValue ? (
-        <span className="min-w-[34px] text-right text-sm tabular-nums text-secondary">
-          {value}%
+        <span className="min-w-[44px] text-right text-sm tabular-nums text-secondary">
+          {value.toFixed(1)}%
         </span>
       ) : null}
     </span>
