@@ -529,21 +529,30 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUse
             .FirstOrDefaultAsync(ct);
 
         var window = await ResolveWindowAsync(days, ct);
-        var records = DomainRecordsInWindow(domainId, window);
 
-        // Flatten navigations before grouping (see ListDomainAnalyticsAsync) so
-        // the per-source Min/Max don't become correlated subqueries on Postgres;
-        // also keeps this translatable on the InMemory provider used by tests.
-        var sourceRows = await records
-            .Select(r => new
-            {
-                r.SourceIp,
-                r.MessageCount,
-                r.DkimResult,
-                r.SpfResult,
-                Begin = r.DmarcReport!.RangeBeginUtc,
-                End = r.DmarcReport.RangeEndUtc,
-            })
+        // Join dmarc_report explicitly rather than filtering/projecting through the
+        // navigation. Reaching the report through `r.DmarcReport` leaves EF with a
+        // subquery it then correlates once per group for the Min/Max, so this
+        // aggregation took ~7.7s on a domain with 1.1k sources (first row at 567ms,
+        // last at 25s — the cost lands during row streaming, which is why
+        // "Executed DbCommand" only reported ~1s). An explicit join collapses it to
+        // a single-pass GROUP BY, and stays translatable on the InMemory provider
+        // the tests use, unlike the hand-written SQL in GetSourceAnalyticsAsync.
+        var sourceRows = await (
+                from rec in db.DmarcReportRecords.AsNoTracking()
+                join rep in db.DmarcReports.AsNoTracking() on rec.DmarcReportId equals rep.Id
+                where rep.DomainId == domainId
+                      && rep.RangeBeginUtc >= window.BeginUtc
+                      && rep.RangeBeginUtc <= window.EndUtc
+                select new
+                {
+                    rec.SourceIp,
+                    rec.MessageCount,
+                    rec.DkimResult,
+                    rec.SpfResult,
+                    Begin = rep.RangeBeginUtc,
+                    End = rep.RangeEndUtc,
+                })
             .GroupBy(r => r.SourceIp)
             .Select(g => new
             {
@@ -601,24 +610,32 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUse
         limit = limit switch { <= 0 => 100, > 500 => 500, _ => limit };
 
         var window = await ResolveWindowAsync(days, ct);
-        var records = RecordsInWindow(window);
 
         // Spoofing candidates: (source, domain) pairs with fully unauthenticated
-        // volume (both DKIM and SPF failed). Flattened before grouping — see
-        // ListDomainAnalyticsAsync for why navigations inside grouped aggregates
-        // are avoided.
-        var grouped = records
-            .Select(r => new
-            {
-                r.SourceIp,
-                r.DmarcReport!.DomainId,
-                r.MessageCount,
-                r.DkimResult,
-                r.SpfResult,
-                r.Disposition,
-                Begin = r.DmarcReport.RangeBeginUtc,
-                End = r.DmarcReport.RangeEndUtc,
-            })
+        // volume (both DKIM and SPF failed).
+        //
+        // dmarc_report and domain are joined explicitly instead of being reached
+        // through `r.DmarcReport`. Going through the navigation leaves EF with a
+        // subquery it correlates once per group for the Min/Max, which cost ~4s
+        // across the whole tenant; an explicit join collapses it to a single-pass
+        // GROUP BY. Joining ScopedDomains() also keeps client_viewer scoping in
+        // exactly one place instead of re-deriving it from the record side.
+        var grouped = (
+                from rec in db.DmarcReportRecords.AsNoTracking()
+                join rep in db.DmarcReports.AsNoTracking() on rec.DmarcReportId equals rep.Id
+                join dom in ScopedDomains() on rep.DomainId equals dom.Id
+                where rep.RangeBeginUtc >= window.BeginUtc && rep.RangeBeginUtc <= window.EndUtc
+                select new
+                {
+                    rec.SourceIp,
+                    rep.DomainId,
+                    rec.MessageCount,
+                    rec.DkimResult,
+                    rec.SpfResult,
+                    rec.Disposition,
+                    Begin = rep.RangeBeginUtc,
+                    End = rep.RangeEndUtc,
+                })
             .GroupBy(r => new { r.SourceIp, r.DomainId })
             .Select(g => new
             {
