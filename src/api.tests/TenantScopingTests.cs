@@ -93,7 +93,7 @@ public sealed class TenantScopingTests
         await using var db = NewDb();
         var (granted, _, grantedDomain, otherDomain) = await SeedAsync(db);
 
-        var service = new AnalyticsQueryService(db, TestCurrentUserContext.Viewer(granted.Id), TestDnsTxtResolver.Empty());
+        var service = TestAnalytics.Service(db, TestCurrentUserContext.Viewer(granted.Id), TestDnsTxtResolver.Empty());
 
         Assert.Null(await service.GetDomainDrilldownAsync(otherDomain.Id, 30, CancellationToken.None));
         Assert.NotNull(await service.GetDomainDrilldownAsync(grantedDomain.Id, 30, CancellationToken.None));
@@ -107,7 +107,7 @@ public sealed class TenantScopingTests
         await using var db = NewDb();
         var (granted, _, grantedDomain, _) = await SeedAsync(db);
 
-        var service = new AnalyticsQueryService(db, TestCurrentUserContext.Viewer(granted.Id), TestDnsTxtResolver.Empty());
+        var service = TestAnalytics.Service(db, TestCurrentUserContext.Viewer(granted.Id), TestDnsTxtResolver.Empty());
         var rows = await service.ListDomainAnalyticsAsync(30, CancellationToken.None);
 
         Assert.Single(rows);
@@ -120,13 +120,13 @@ public sealed class TenantScopingTests
         await using var db = NewDb();
         var (granted, _, _, _) = await SeedAsync(db);
 
-        var viewer = new AnalyticsQueryService(db, TestCurrentUserContext.Viewer(granted.Id), TestDnsTxtResolver.Empty());
+        var viewer = TestAnalytics.Service(db, TestCurrentUserContext.Viewer(granted.Id), TestDnsTxtResolver.Empty());
         var viewerSummary = await viewer.GetSummaryAsync(30, CancellationToken.None);
 
         Assert.Null(viewerSummary.Mailboxes);
         Assert.Equal(1, viewerSummary.Totals.Domains);
 
-        var admin = new AnalyticsQueryService(db, TestCurrentUserContext.Admin(), TestDnsTxtResolver.Empty());
+        var admin = TestAnalytics.Service(db, TestCurrentUserContext.Admin(), TestDnsTxtResolver.Empty());
         var adminSummary = await admin.GetSummaryAsync(30, CancellationToken.None);
 
         Assert.NotNull(adminSummary.Mailboxes);

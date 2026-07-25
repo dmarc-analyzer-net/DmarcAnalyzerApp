@@ -142,6 +142,10 @@ export type DomainAnalytics = {
   publishedPct: number | null
   dkimAlignment: string | null
   spfAlignment: string | null
+  /** Why the cached policy is what it is: found / missing / lookup_failed, or null if never checked. */
+  dnsLookupStatus: string | null
+  /** When the cached policy was last refreshed from DNS. */
+  dnsCheckedAtUtc: string | null
   /** Policy-aware posture used by the Status column. */
   enforcementStatus: EnforcementStatus
 }

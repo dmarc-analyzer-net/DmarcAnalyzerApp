@@ -2,6 +2,7 @@ using DmarcAnalyzer.Api.Application.Analytics;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace DmarcAnalyzer.Api.Tests;
@@ -66,7 +67,13 @@ public sealed class ThreatFeedTests
             ("192.0.2.77", 300, "fail", "fail"));    // bigger threat
         await db.SaveChangesAsync();
 
-        var feed = await new AnalyticsQueryService(db, TestCurrentUserContext.Admin(), TestDnsTxtResolver.Empty())
+        // The feed reads the cached DNS policy, so refresh the cache first — the same
+        // thing the worker's DNS pass does before any list view is rendered.
+        var dns = TestDnsTxtResolver.WithPolicy("acme.example", "none");
+        await new DnsPolicyCache(db, dns, NullLogger<DnsPolicyCache>.Instance)
+            .RefreshAllAsync(CancellationToken.None);
+
+        var feed = await TestAnalytics.Service(db, TestCurrentUserContext.Admin(), dns)
             .GetThreatFeedAsync(30, 100, CancellationToken.None);
 
         Assert.Equal(2, feed.TotalSources);
@@ -90,7 +97,7 @@ public sealed class ThreatFeedTests
             ("203.0.113.10", 200, "fail", "fail")); // same ip, partly failing
         await db.SaveChangesAsync();
 
-        var feed = await new AnalyticsQueryService(db, TestCurrentUserContext.Admin(), TestDnsTxtResolver.Empty())
+        var feed = await TestAnalytics.Service(db, TestCurrentUserContext.Admin(), TestDnsTxtResolver.Empty())
             .GetThreatFeedAsync(30, 100, CancellationToken.None);
 
         var source = Assert.Single(feed.Sources);
@@ -110,7 +117,7 @@ public sealed class ThreatFeedTests
         AddReport(db, otherDomain.Id, ("192.0.2.99", 999, "fail", "fail"));
         await db.SaveChangesAsync();
 
-        var feed = await new AnalyticsQueryService(db, TestCurrentUserContext.Viewer(granted.Id), TestDnsTxtResolver.Empty())
+        var feed = await TestAnalytics.Service(db, TestCurrentUserContext.Viewer(granted.Id), TestDnsTxtResolver.Empty())
             .GetThreatFeedAsync(30, 100, CancellationToken.None);
 
         var source = Assert.Single(feed.Sources);

@@ -7,7 +7,9 @@ namespace DmarcAnalyzer.Api.Application.Analytics;
 public sealed class AnalyticsQueryService(
     DmarcAnalyzerDbContext db,
     ICurrentUserContext currentUser,
-    IDnsTxtResolver dns) : IAnalyticsQueryService
+    IDnsTxtResolver dns,
+    IDnsPolicyCache dnsCache,
+    ILogger<AnalyticsQueryService> logger) : IAnalyticsQueryService
 {
     private const double AlignedThreshold = 0.98;
     private const double IssuesThreshold = 0.90;
@@ -23,8 +25,24 @@ public sealed class AnalyticsQueryService(
     /// rather than one per request. A missing or failed lookup yields nulls, which
     /// the header renders as "policy unknown" rather than guessing.
     /// </summary>
-    private async Task<DnsDmarcRecordDto> PublishedDmarcAsync(string domainName, CancellationToken ct)
-        => RecordInspectionService.ParseDmarc(await dns.ResolveAsync($"_dmarc.{domainName}", ct));
+    private async Task<DnsDmarcRecordDto> PublishedDmarcAsync(Guid domainId, string domainName, CancellationToken ct)
+    {
+        var record = RecordInspectionService.ParseDmarc(await dns.ResolveAsync($"_dmarc.{domainName}", ct));
+
+        // Correct the cached copy the list views read from, using the lookup we just
+        // paid for. A no-op unless something actually changed. Best-effort on purpose:
+        // a read request must not fail because a cache row could not be written.
+        try
+        {
+            await dnsCache.WriteBackAsync(domainId, record, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(ex, "Could not write back the DNS policy for {Domain}", domainName);
+        }
+
+        return record;
+    }
 
     public async Task<AnalyticsSummaryDto> GetSummaryAsync(int days, CancellationToken ct)
     {
@@ -205,12 +223,14 @@ public sealed class AnalyticsQueryService(
                 x.ClientId,
                 ClientName = x.Client!.Name,
                 ClientSlug = x.Client.Slug,
+                x.DnsPolicy,
+                x.DnsLookupStatus,
+                x.DnsCheckedAtUtc,
             })
             .ToListAsync(ct);
 
         var statsByDomain = perDomain.ToDictionary(x => x.DomainId);
         var lastEndByDomain = lastReportEnds.ToDictionary(x => x.DomainId, x => x.LastEnd);
-        var policyByDomain = await LatestPolicyByDomainAsync(window, ct);
 
         return domains
             .Select(d =>
@@ -239,51 +259,21 @@ public sealed class AnalyticsQueryService(
                     s?.Rejected ?? 0,
                     lastEndByDomain.TryGetValue(d.Id, out var lastEnd) ? lastEnd : null,
                     ResolveStatus(messages, rate),
-                    policyByDomain.TryGetValue(d.Id, out var p) ? p.PublishedPolicy : null,
-                    p?.SubdomainPolicy,
-                    p?.PublishedPct,
-                    p?.DkimAlignment,
-                    p?.SpfAlignment,
-                    EnforcementStatus.Resolve(messages, rate, p?.PublishedPolicy));
+                    // The cached DNS policy, refreshed by the worker and corrected by
+                    // detail-page views. Only the policy is cached; sp/pct/alignment stay
+                    // on the live path (domain detail) rather than being served stale.
+                    d.DnsPolicy,
+                    null,
+                    null,
+                    null,
+                    null,
+                    d.DnsLookupStatus,
+                    d.DnsCheckedAtUtc,
+                    EnforcementStatus.Resolve(messages, rate, d.DnsPolicy));
             })
             .ToArray();
     }
 
-    private sealed class DomainPolicyRow
-    {
-        public Guid DomainId { get; set; }
-        public string PublishedPolicy { get; set; } = "none";
-        public string? SubdomainPolicy { get; set; }
-        public int PublishedPct { get; set; } = 100;
-        public string DkimAlignment { get; set; } = "relaxed";
-        public string SpfAlignment { get; set; } = "relaxed";
-    }
-
-    // Latest published policy per (scoped) domain within the window — top-1 per
-    // group by newest report. Translatable on Postgres and executable on the
-    // InMemory provider used by tests.
-    private async Task<Dictionary<Guid, DomainPolicyRow>> LatestPolicyByDomainAsync(AnalyticsWindowDto window, CancellationToken ct)
-    {
-        var rows = await ScopedReports()
-            .Where(x => x.RangeBeginUtc >= window.BeginUtc && x.RangeBeginUtc <= window.EndUtc)
-            .GroupBy(x => x.DomainId)
-            .Select(g => g
-                .OrderByDescending(r => r.RangeEndUtc)
-                .ThenByDescending(r => r.IngestedAtUtc)
-                .Select(r => new DomainPolicyRow
-                {
-                    DomainId = r.DomainId,
-                    PublishedPolicy = r.PublishedPolicy,
-                    SubdomainPolicy = r.SubdomainPolicy,
-                    PublishedPct = r.PublishedPct,
-                    DkimAlignment = r.DkimAlignment,
-                    SpfAlignment = r.SpfAlignment,
-                })
-                .First())
-            .ToListAsync(ct);
-
-        return rows.ToDictionary(x => x.DomainId);
-    }
 
     public async Task<DomainDrilldownDto?> GetDomainDrilldownAsync(Guid domainId, int days, CancellationToken ct)
     {
@@ -304,7 +294,7 @@ public sealed class AnalyticsQueryService(
         // "Published" means published in DNS — the observed values a reporter sent
         // are surfaced separately by the record-inspection comparison, which is the
         // only place the two should be shown against each other.
-        var published = await PublishedDmarcAsync(domainRow.Name, ct);
+        var published = await PublishedDmarcAsync(domainRow.Id, domainRow.Name, ct);
 
         var domain = new DomainDrilldownDomainDto(
             domainRow.Id, domainRow.Name, domainRow.IsActive, domainRow.ClientId, domainRow.ClientName, domainRow.ClientSlug,
@@ -536,7 +526,7 @@ public sealed class AnalyticsQueryService(
 
         // Advice about what to publish is only sound against what is published now,
         // so this reads DNS rather than the newest report.
-        var published = await PublishedDmarcAsync(domainRow.Name, ct);
+        var published = await PublishedDmarcAsync(domainRow.Id, domainRow.Name, ct);
 
         var window = await ResolveWindowAsync(days, ct);
 
@@ -676,10 +666,9 @@ public sealed class AnalyticsQueryService(
         var domainIds = rows.Select(x => x.DomainId).Distinct().ToList();
         var domains = await ScopedDomains()
             .Where(x => domainIds.Contains(x.Id))
-            .Select(x => new { x.Id, x.Name, x.ClientId, ClientName = x.Client!.Name })
+            .Select(x => new { x.Id, x.Name, x.ClientId, ClientName = x.Client!.Name, x.DnsPolicy })
             .ToListAsync(ct);
         var domainById = domains.ToDictionary(x => x.Id);
-        var policyByDomain = await LatestPolicyByDomainAsync(window, ct);
 
         var sources = rows
             .Where(x => domainById.ContainsKey(x.DomainId))
@@ -695,7 +684,7 @@ public sealed class AnalyticsQueryService(
                     x.Messages,
                     x.Failed,
                     Rate(x.Messages - x.Failed, x.Messages),
-                    policyByDomain.TryGetValue(x.DomainId, out var p) ? p.PublishedPolicy : null,
+                    d.DnsPolicy,
                     x.Quarantined,
                     x.Rejected,
                     x.FirstSeen,

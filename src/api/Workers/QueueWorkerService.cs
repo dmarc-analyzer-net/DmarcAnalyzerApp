@@ -1,3 +1,4 @@
+using DmarcAnalyzer.Api.Application.Analytics;
 using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Application.Retention;
@@ -36,6 +37,7 @@ public sealed class QueueWorkerService(
                 await RunAlertPassIfDueAsync(stoppingToken);
                 await RunDigestPassIfDueAsync(stoppingToken);
                 await RunRetentionPassIfDueAsync(stoppingToken);
+                await RunDnsRefreshPassIfDueAsync(stoppingToken);
                 consecutiveFailures = 0;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -110,6 +112,39 @@ public sealed class QueueWorkerService(
 
         // Only on success, so a failure retries next pass.
         _lastAlertRunUtc = DateTime.UtcNow;
+    }
+
+    private DateTime? _lastDnsRefreshUtc;
+
+    /// <summary>
+    /// Keeps each domain's cached DMARC policy fresh so list views can render the real
+    /// policy from one query. Detail-page views correct individual domains as a side
+    /// effect of the lookup they already make; this pass is what covers the domains
+    /// nobody opens — including the ones that stopped reporting, which are exactly the
+    /// ones whose policy would otherwise be silently wrong.
+    /// </summary>
+    private async Task RunDnsRefreshPassIfDueAsync(CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var dnsOptions = scope.ServiceProvider
+            .GetRequiredService<IOptions<DnsOptions>>().Value;
+
+        if (!dnsOptions.Enabled)
+        {
+            return;
+        }
+
+        var interval = TimeSpan.FromHours(Math.Max(1, dnsOptions.RefreshIntervalHours));
+        if (_lastDnsRefreshUtc is { } last && DateTime.UtcNow - last < interval)
+        {
+            return;
+        }
+
+        var cache = scope.ServiceProvider.GetRequiredService<IDnsPolicyCache>();
+        await cache.RefreshAllAsync(ct);
+
+        // Only on success, so a failure retries next pass.
+        _lastDnsRefreshUtc = DateTime.UtcNow;
     }
 
     private DateTime? _lastDigestCheckUtc;
