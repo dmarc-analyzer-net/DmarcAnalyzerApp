@@ -9,8 +9,13 @@ OIDC), worker ingestion, analytics dashboards, and per-source drill-down are
 all shipped. The near-term sequence below turns it from "works" into
 "operable and client-facing", ordered by value and dependencies.
 
-1. **Audit logging.** Login, config change, sync run, and (future) magic-link
-   events. Needed for agency trust and as a prerequisite for #2.
+1. **Surface the audit trail in the console.** The backend shipped (`audit_event`,
+   `IAuditLog`, `GET /api/v1/admin/audit-events` filterable by day range, event
+   type, actor and client), but nothing in the console reads it — the trail is
+   reachable only by curl, which undercuts the agency-trust case it was built for.
+   A browser review of the audit-logging branch could not check timestamps, actor
+   names or paging at real volume for exactly this reason. Needs a filterable page
+   plus a nav entry.
 3. **Client access: portal polish + magic links.** The `client_viewer` role
    already approximates a read-only portal; add magic-link (single-client,
    read-only, 7-day) sharing for occasional client access without accounts.
