@@ -450,7 +450,7 @@ export function DomainsPage() {
                       {noData ? (
                         <span className="text-faint">—</span>
                       ) : (
-                        <ComplianceBar value={+(row.complianceRate * 100).toFixed(1)} width={130} />
+                        <ComplianceBar value={row.complianceRate * 100} width={130} />
                       )}
                     </TableCell>
                     <TableCell mono align="right">

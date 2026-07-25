@@ -24,6 +24,7 @@ import {
   type DrilldownTotals,
   type EnforcementGuidance,
   type EvaluatedCombo,
+  type RecordComparison,
   type RecordInspection,
   type SourceDetail,
   type ValueCount,
@@ -339,6 +340,8 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
   // Only 'differs' counts. A tag DNS never published has nothing to disagree with,
   // and a tag the reporter omitted says nothing about the record either.
   const mismatches = inspection?.comparison.filter((c) => c.status === 'differs') ?? []
+  // inherited / not_reported carry an explanation; render it as visible text.
+  const annotations = inspection?.comparison.filter((c) => c.note) ?? []
 
   return (
     <Card pad>
@@ -401,12 +404,7 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
                           ? 'border-[var(--status-warn-bg)] bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]'
                           : 'border-border bg-surface-card text-secondary',
                       )}
-                      title={
-                        row.note ??
-                        (differs
-                          ? 'DNS differs from the last report — a recent change may still be propagating to reporters'
-                          : undefined)
-                      }
+                      aria-label={describeComparison(row)}
                     >
                       <span className="font-semibold">{row.field}=</span>
                       {row.status === 'inherited' ? (
@@ -429,12 +427,45 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
                   )
                 })}
               </div>
+              {/* Visible prose, not a title= tooltip: these states explain an
+                  *absence*, and a hover-only explanation is unreachable by
+                  keyboard and touch users — and undiscoverable for everyone,
+                  since no other chip is hoverable. */}
+              {annotations.length > 0 ? (
+                <ul className="mt-2 space-y-1">
+                  {annotations.map((row) => (
+                    <li key={row.field} className="text-xs leading-relaxed text-secondary">
+                      <span className="font-mono font-semibold">{row.field}</span> — {row.note}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {mismatches.length > 0 ? (
+                <p className="mt-2 text-xs leading-relaxed text-secondary">
+                  DNS differs from the last report — a recent change may still be propagating to
+                  reporters.
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>
       ) : null}
     </Card>
   )
+}
+
+/** Full sentence for assistive tech: the chips are terse by design. */
+function describeComparison(row: RecordComparison): string {
+  switch (row.status) {
+    case 'inherited':
+      return `${row.field}: ${row.note ?? 'not published'}`
+    case 'not_reported':
+      return `${row.field} published as ${row.published}, but ${row.note ?? 'not reported'}`
+    case 'differs':
+      return `${row.field}: DNS publishes ${row.published ?? 'nothing'}, reporters observed ${row.observed ?? 'nothing'}`
+    default:
+      return `${row.field}: ${row.published ?? 'nothing'}, matching reports`
+  }
 }
 
 // --- Expandable per-source detail panel ---
@@ -1067,7 +1098,7 @@ export function DomainDetailPage() {
                               {formatCompact(source.failedMessages)}
                             </TableCell>
                             <TableCell>
-                              <ComplianceBar value={+(source.complianceRate * 100).toFixed(1)} width={110} />
+                              <ComplianceBar value={source.complianceRate * 100} width={110} />
                             </TableCell>
                             <TableCell align="right" className="tabular-nums">
                               {formatPercent(source.dkimPassRate)}
