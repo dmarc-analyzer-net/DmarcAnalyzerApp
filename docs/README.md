@@ -19,7 +19,7 @@ docker compose up -d
 
 | Path | Audience | Contents |
 |---|---|---|
-| [`ops/`](ops/) | operators | Runbooks: [mailbox sync](ops/mailbox-sync.md), [OIDC with Zitadel](ops/oidc-zitadel.md) |
+| [`ops/`](ops/) | operators & maintainers | Runbooks: [cutting a release](ops/release.md), [mailbox sync](ops/mailbox-sync.md), [OIDC with Zitadel](ops/oidc-zitadel.md) |
 | [`planning/`](planning/) | contributors | **Internal design artifacts** — architecture, data model, API contract, roadmap, backlog, ADRs |
 
 > **`planning/` is not product documentation.** It is where we work out what to

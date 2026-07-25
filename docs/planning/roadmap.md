@@ -74,8 +74,9 @@ Target: improve reliability and readiness.
       README quick-start run it without a local build.
 - [ ] Provide Kubernetes deployment guidance at equal depth (manifests/Helm + operations notes).
 - [~] Finalize runbooks, per-client retention operations (default 27 months), and
-      release checklist. *(runbooks exist under `docs/ops`; retention is
-      configurable per client but **nothing enforces it yet** — no purge job.)*
+      release checklist. *(runbooks and the [release process](../ops/release.md)
+      are in `docs/ops`; retention is configurable per client but **nothing
+      enforces it yet** — no purge job, which is the remaining piece.)*
 - [ ] Finalize core audit logging for operational traceability.
 
 ## Milestone 5 - Enterprise Integrations (Post-MVP) — **started**

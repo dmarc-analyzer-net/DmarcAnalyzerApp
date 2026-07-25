@@ -61,6 +61,7 @@ docker compose up -d --build
 7. [Authorization & pluggable authentication](docs/planning/adr/0007-authorization-and-pluggable-authentication.md)
 
 ### Operations runbooks — [`docs/ops/`](docs/ops/)
+- [Cutting a release](docs/ops/release.md) — tag-driven; merging to `main` does not publish a release
 - [Mailbox sync operations](docs/ops/mailbox-sync.md)
 - [OIDC login with Zitadel (dev setup)](docs/ops/oidc-zitadel.md)
 
