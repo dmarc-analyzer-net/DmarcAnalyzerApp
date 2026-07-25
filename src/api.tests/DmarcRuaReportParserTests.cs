@@ -44,6 +44,58 @@ public sealed class DmarcRuaReportParserTests
         Assert.False(result.HasValidationErrors);
     }
 
+    /// <summary>
+    /// Absent sp and explicit sp=none deserialize identically (the XSD defaults sp
+    /// to "none" and DmarcRua exposes no *Specified flag), so presence is read from
+    /// the XML. The two real fixtures happen to cover both: Yahoo omits sp, Zoho
+    /// sends sp=none.
+    /// </summary>
+    [Fact]
+    public void Parse_DistinguishesAbsentSpFromExplicitSpNone()
+    {
+        using var withoutSp = OpenFixture("sample-yahoo-aggregate.xml");
+        Assert.Null(_parser.Parse(withoutSp).SubdomainPolicy);
+
+        using var withSp = OpenFixture("sample-zoho-aggregate.xml");
+        Assert.Equal("none", _parser.Parse(withSp).SubdomainPolicy);
+    }
+
+    [Theory]
+    [InlineData("<sp>reject</sp>", "reject")]
+    [InlineData("<sp>quarantine</sp>", "quarantine")]
+    [InlineData("", null)]
+    public void Parse_ReadsSubdomainPolicyPresence(string spElement, string? expected)
+    {
+        var xml = $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback>
+              <report_metadata>
+                <org_name>example.net</org_name>
+                <report_id>sp-presence</report_id>
+                <date_range><begin>1737676800</begin><end>1737763199</end></date_range>
+              </report_metadata>
+              <policy_published>
+                <domain>acme.example</domain><adkim>r</adkim><aspf>r</aspf>
+                <p>reject</p>{spElement}<pct>100</pct>
+              </policy_published>
+              <record>
+                <row><source_ip>192.0.2.1</source_ip><count>1</count>
+                  <policy_evaluated><disposition>none</disposition><dkim>pass</dkim><spf>pass</spf></policy_evaluated>
+                </row>
+                <identifiers><header_from>acme.example</header_from></identifiers>
+                <auth_results><spf><domain>acme.example</domain><result>pass</result></spf></auth_results>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal("reject", result.PublishedPolicy);
+        Assert.Equal(expected, result.SubdomainPolicy);
+    }
+
     [Fact]
     public void Parse_WithUnreadableStream_Throws()
     {

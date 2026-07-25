@@ -336,7 +336,9 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
     void loadInspection()
   }, [loadInspection])
 
-  const mismatches = inspection?.comparison.filter((c) => !c.match) ?? []
+  // Only 'differs' counts. A tag DNS never published has nothing to disagree with,
+  // and a tag the reporter omitted says nothing about the record either.
+  const mismatches = inspection?.comparison.filter((c) => c.status === 'differs') ?? []
 
   return (
     <Card pad>
@@ -388,31 +390,44 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
                 </span>
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
-                {inspection.comparison.map((row) => (
-                  <div
-                    key={row.field}
-                    className={cn(
-                      'flex items-center gap-2 rounded-md border px-3 py-1.5 font-mono text-xs',
-                      row.match
-                        ? 'border-border bg-surface-card text-secondary'
-                        : 'border-[var(--status-warn-bg)] bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]',
-                    )}
-                    title={
-                      row.match
-                        ? undefined
-                        : 'DNS differs from the last report — a recent change may still be propagating to reporters'
-                    }
-                  >
-                    <span className="font-semibold">{row.field}=</span>
-                    <span>{row.published ?? '—'}</span>
-                    {!row.match ? (
-                      <>
-                        <Icon name="arrow-right" size={12} aria-hidden />
-                        <span>observed {row.observed ?? '—'}</span>
-                      </>
-                    ) : null}
-                  </div>
-                ))}
+                {inspection.comparison.map((row) => {
+                  const differs = row.status === 'differs'
+                  return (
+                    <div
+                      key={row.field}
+                      className={cn(
+                        'flex items-center gap-2 rounded-md border px-3 py-1.5 font-mono text-xs',
+                        differs
+                          ? 'border-[var(--status-warn-bg)] bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]'
+                          : 'border-border bg-surface-card text-secondary',
+                      )}
+                      title={
+                        row.note ??
+                        (differs
+                          ? 'DNS differs from the last report — a recent change may still be propagating to reporters'
+                          : undefined)
+                      }
+                    >
+                      <span className="font-semibold">{row.field}=</span>
+                      {row.status === 'inherited' ? (
+                        <span className="font-sans italic opacity-70">inherits p</span>
+                      ) : (
+                        <>
+                          <span>{row.published ?? '—'}</span>
+                          {differs ? (
+                            <>
+                              <Icon name="arrow-right" size={12} aria-hidden />
+                              <span>observed {row.observed ?? '—'}</span>
+                            </>
+                          ) : null}
+                          {row.status === 'not_reported' ? (
+                            <span className="font-sans italic opacity-70">not reported</span>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             </div>
           ) : null}

@@ -185,7 +185,7 @@ A normalized aggregate (RUA) report, resolved to a `domain`.
 | `RecordCount` | |
 | `IngestedAtUtc` | |
 | `PublishedPolicy` | max 16, default `none` — `policy_published.p` |
-| `SubdomainPolicy` | max 16, default `none` — `sp` |
+| `SubdomainPolicy` | max 16, **nullable** — `sp`. NULL means the reporter sent no `sp` tag, so subdomains inherit `p` (RFC 7489 §6.3). Rows ingested before this became nullable store `none` either way. |
 | `PublishedPct` | default 100 — `pct` |
 | `DkimAlignment`, `SpfAlignment` | max 16, default `relaxed` — `adkim` / `aspf` |
 | — | **`(DomainId, ReportId, RangeBeginUtc, RangeEndUtc)` unique — the dedup key** |

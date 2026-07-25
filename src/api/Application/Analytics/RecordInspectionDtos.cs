@@ -37,15 +37,36 @@ public sealed record DnsSpfRecordDto(
 /// <summary>The DMARC policy reporters most recently observed (policy_published).</summary>
 public sealed record ObservedPolicyDto(
     string Policy,
-    string SubdomainPolicy,
+    string? SubdomainPolicy,
     int Pct,
     string DkimAlignment,
     string SpfAlignment,
     DateTime AsOfUtc,
     string ReportedBy);
 
-/// <summary>One published-vs-observed field comparison.</summary>
-public sealed record RecordComparisonDto(string Field, string? Published, string? Observed, bool Match);
+/// <summary>How a published tag lines up with what the reporter echoed back.</summary>
+public static class RecordComparisonStatus
+{
+    public const string Match = "match";
+    public const string Differs = "differs";
+
+    /// <summary>Not published, so RFC 7489 derives it — nothing to disagree with.</summary>
+    public const string Inherited = "inherited";
+
+    /// <summary>Published, but the reporter sent no value for it.</summary>
+    public const string NotReported = "not_reported";
+}
+
+/// <summary>
+/// One published-vs-observed field comparison. Only <see cref="RecordComparisonStatus.Differs"/>
+/// is a finding; the other three states are informational.
+/// </summary>
+public sealed record RecordComparisonDto(
+    string Field,
+    string? Published,
+    string? Observed,
+    string Status,
+    string? Note = null);
 
 public sealed record RecordInspectionDto(
     Guid DomainId,

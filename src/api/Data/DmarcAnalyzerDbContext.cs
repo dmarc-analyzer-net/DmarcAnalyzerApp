@@ -190,7 +190,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.OrganizationName).HasMaxLength(255).IsRequired();
             entity.Property(x => x.ReportId).HasMaxLength(255).IsRequired();
             entity.Property(x => x.PublishedPolicy).HasMaxLength(16).IsRequired().HasDefaultValue("none");
-            entity.Property(x => x.SubdomainPolicy).HasMaxLength(16).IsRequired().HasDefaultValue("none");
+            entity.Property(x => x.SubdomainPolicy).HasMaxLength(16);
             entity.Property(x => x.PublishedPct).HasDefaultValue(100);
             entity.Property(x => x.DkimAlignment).HasMaxLength(16).IsRequired().HasDefaultValue("relaxed");
             entity.Property(x => x.SpfAlignment).HasMaxLength(16).IsRequired().HasDefaultValue("relaxed");
