@@ -48,6 +48,24 @@ const POLICY_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: 'none', label: 'p=none' },
 ]
 
+/**
+ * Why a row has no policy to show. Without this an em dash is ambiguous between
+ * "nothing published", "the lookup failed" and "we have not looked yet" — which are
+ * three quite different things for an operator to act on.
+ */
+function describePolicyGap(row: { dnsLookupStatus: string | null }): string {
+  switch (row.dnsLookupStatus) {
+    case 'missing':
+      return 'No DMARC record is published in DNS for this domain'
+    case 'lookup_failed':
+      return 'The last DNS lookup for this domain failed'
+    case 'found':
+      return 'A DMARC record is published but names no policy'
+    default:
+      return 'This domain has not been checked yet'
+  }
+}
+
 type DomainRow = Omit<DomainAnalytics, 'clientName' | 'clientSlug'> & {
   clientName: string | null
   clientSlug: string | null
@@ -244,6 +262,8 @@ export function DomainsPage() {
         publishedPct: null,
         dkimAlignment: null,
         spfAlignment: null,
+        dnsLookupStatus: null,
+        dnsCheckedAtUtc: null,
         enforcementStatus: 'no_data',
         crud: domain,
       })
@@ -440,10 +460,15 @@ export function DomainsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      {noData ? (
-                        <span className="text-faint">—</span>
+                      {/* The policy is cached from DNS, so it no longer depends on
+                          whether reports arrived in this window — a silent domain still
+                          shows the policy it really publishes. */}
+                      {row.publishedPolicy ? (
+                        <PolicyBadge policy={row.publishedPolicy} />
                       ) : (
-                        <PolicyBadge policy={row.publishedPolicy ?? 'none'} />
+                        <span className="text-faint" title={describePolicyGap(row)}>
+                          —
+                        </span>
                       )}
                     </TableCell>
                     <TableCell>

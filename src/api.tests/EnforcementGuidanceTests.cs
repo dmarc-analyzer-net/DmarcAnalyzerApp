@@ -56,7 +56,7 @@ public sealed class EnforcementGuidanceTests
     // The guidance reads the current policy from live DNS, not from reports, so
     // each test states what DNS publishes. No stub means no DMARC record at all.
     private static AnalyticsQueryService Service(DmarcAnalyzerDbContext db, IDnsTxtResolver? dns = null)
-        => new(db, TestCurrentUserContext.Admin(), dns ?? TestDnsTxtResolver.Empty());
+        => TestAnalytics.Service(db, TestCurrentUserContext.Admin(), dns);
 
     /// <summary>
     /// Places a report for `domain` at `daysAgo`, and a second domain's report
@@ -211,7 +211,7 @@ public sealed class EnforcementGuidanceTests
         var (clientId, domainId) = await SeedAsync(db, "none", ("203.0.113.10", 10, true));
 
         // A viewer granted a *different* client must not see this domain.
-        var svc = new AnalyticsQueryService(db, TestCurrentUserContext.Viewer(Guid.NewGuid()), TestDnsTxtResolver.Empty());
+        var svc = TestAnalytics.Service(db, TestCurrentUserContext.Viewer(Guid.NewGuid()));
         var g = await svc.GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
 
         Assert.Null(g);

@@ -175,6 +175,10 @@ public sealed record DomainAnalyticsDto(
     int? PublishedPct,
     string? DkimAlignment,
     string? SpfAlignment,
+    /// <summary>found / missing / lookup_failed, or null if never checked.</summary>
+    string? DnsLookupStatus,
+    /// <summary>When the cached policy above was last refreshed from DNS.</summary>
+    DateTime? DnsCheckedAtUtc,
     string EnforcementStatus);
 
 /// <summary>A sending source still emitting unaligned mail — what blocks tightening the policy.</summary>

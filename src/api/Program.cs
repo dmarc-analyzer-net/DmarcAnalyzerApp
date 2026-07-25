@@ -41,6 +41,12 @@ if (mode == "worker")
     workerBuilder.Services.Configure<DigestOptions>(workerBuilder.Configuration.GetSection("Digest"));
     workerBuilder.Services.AddScoped<IAlertEvaluationService, AlertEvaluationService>();
     workerBuilder.Services.AddScoped<IDigestService, DigestService>();
+    // DnsTxtResolver caches lookups in IMemoryCache; the worker host has to provide
+    // it too, not just the API host.
+    workerBuilder.Services.AddMemoryCache();
+    workerBuilder.Services.Configure<DnsOptions>(workerBuilder.Configuration.GetSection("Dns"));
+    workerBuilder.Services.AddSingleton<IDnsTxtResolver, DnsTxtResolver>();
+    workerBuilder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
     workerBuilder.Services.Configure<WorkerOptions>(workerBuilder.Configuration.GetSection("Worker"));
     workerBuilder.Services.AddHostedService<QueueWorkerService>();
 
@@ -87,6 +93,8 @@ builder.Services.AddScoped<IDigestService, DigestService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IHostnameResolver, HostnameResolver>();
 builder.Services.AddSingleton<IDnsTxtResolver, DnsTxtResolver>();
+builder.Services.Configure<DnsOptions>(builder.Configuration.GetSection("Dns"));
+builder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
 
 if (builder.Environment.IsDevelopment())
