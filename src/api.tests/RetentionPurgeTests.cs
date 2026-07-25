@@ -3,6 +3,7 @@ using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace DmarcAnalyzer.Api.Tests;
@@ -17,8 +18,10 @@ public sealed class RetentionPurgeTests
         return new DmarcAnalyzerDbContext(options);
     }
 
-    private static RetentionPurgeService Service(DmarcAnalyzerDbContext db)
-        => new(db, NullLogger<RetentionPurgeService>.Instance);
+    private static RetentionPurgeService Service(DmarcAnalyzerDbContext db, int auditRetentionDays = 730)
+        => new(db,
+            Options.Create(new RetentionOptions { AuditRetentionDays = auditRetentionDays }),
+            NullLogger<RetentionPurgeService>.Instance);
 
     private static Client NewClient(string slug, int retentionMonths = 27, bool legalHold = false) => new()
     {
@@ -206,5 +209,66 @@ public sealed class RetentionPurgeTests
 
         Assert.Equal(25, result.ReportsDeleted);
         Assert.Empty(await db.DmarcReports.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PurgesAuditEventsOnTheirOwnLongerWindow()
+    {
+        await using var db = NewDb();
+        var (client, _) = (NewClient("acme"), (Domain?)null);
+        db.Add(client);
+        db.AddRange(
+            new AuditEvent
+            {
+                Id = Guid.NewGuid(), ActorType = "user", ActorEmail = "a@b.c", EventType = "auth.login.succeeded",
+                Summary = "old", OccurredAtUtc = DateTime.UtcNow.AddDays(-800),
+            },
+            new AuditEvent
+            {
+                Id = Guid.NewGuid(), ActorType = "user", ActorEmail = "a@b.c", EventType = "auth.login.succeeded",
+                Summary = "recent", OccurredAtUtc = DateTime.UtcNow.AddDays(-10),
+            });
+        await db.SaveChangesAsync();
+
+        var result = await Service(db).PurgeAsync(dryRun: false, 500, CancellationToken.None);
+
+        Assert.Equal(1, result.AuditEventsDeleted);
+        Assert.Equal("recent", Assert.Single(await db.AuditEvents.ToListAsync()).Summary);
+    }
+
+    [Fact]
+    public async Task AuditRetentionOfZeroKeepsTheTrailForever()
+    {
+        await using var db = NewDb();
+        db.Add(new AuditEvent
+        {
+            Id = Guid.NewGuid(), ActorType = "user", ActorEmail = "a@b.c", EventType = "auth.login.succeeded",
+            Summary = "ancient", OccurredAtUtc = DateTime.UtcNow.AddDays(-5000),
+        });
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, auditRetentionDays: 0)
+            .PurgeAsync(dryRun: false, 500, CancellationToken.None);
+
+        Assert.Equal(0, result.AuditEventsDeleted);
+        Assert.Single(await db.AuditEvents.ToListAsync());
+    }
+
+    [Fact]
+    public async Task LegalHoldDoesNotProtectTheAuditTrail()
+    {
+        await using var db = NewDb();
+        // The trail spans the whole install, so one client's hold must not pin it.
+        db.Add(NewClient("held", legalHold: true));
+        db.Add(new AuditEvent
+        {
+            Id = Guid.NewGuid(), ActorType = "user", ActorEmail = "a@b.c", EventType = "client.updated",
+            Summary = "old", OccurredAtUtc = DateTime.UtcNow.AddDays(-900),
+        });
+        await db.SaveChangesAsync();
+
+        var result = await Service(db).PurgeAsync(dryRun: false, 500, CancellationToken.None);
+
+        Assert.Equal(1, result.AuditEventsDeleted);
     }
 }

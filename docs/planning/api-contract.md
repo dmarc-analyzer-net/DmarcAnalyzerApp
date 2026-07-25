@@ -85,6 +85,7 @@ cross-tenant ids return **404**, never 403.
 |---|---|---|
 | GET | `/system/status` | staff |
 | POST | `/admin/database/migrate` | admin — applies pending EF migrations |
+| GET | `/admin/audit-events` | admin — audit trail (`days`, `eventType` prefix, `actor`, `clientId`, `limit`). Read-only by design |
 | GET | `/admin/retention/preview` | admin — what the next purge would delete, per client; deletes nothing |
 | POST | `/admin/retention/purge` | admin — runs the purge now. Optional `batchSize` |
 | GET | `/alerts` | any — alert history (`days`, default 30); client-scoped for viewers |
@@ -546,8 +547,9 @@ Get render status and artifact link.
 
 ### GET `/admin/audit-events`
 
-> **Not implemented** — no audit log exists yet (see the *core audit logging*
-> backlog item). The implemented admin route is `POST /admin/database/migrate`.
+> **Implemented** as `GET /admin/audit-events` — see §0. Filters are `days`,
+> `eventType` (prefix match), `actor` (email substring), `clientId` and `limit`.
+> There is deliberately no write endpoint.
 
 Query core audit log.
 

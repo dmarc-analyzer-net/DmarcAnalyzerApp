@@ -1,4 +1,5 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Application.MailboxSources;
@@ -18,7 +19,7 @@ public sealed class MailboxSourcesModule : ICarterModule
             return Results.Ok(items);
         });
 
-        app.MapPost("/api/v1/mailbox-sources", async (CreateMailboxSourceRequest request, IMailboxSourceService service, CancellationToken ct) =>
+        app.MapPost("/api/v1/mailbox-sources", async (CreateMailboxSourceRequest request, IMailboxSourceService service, IAuditLog audit, CancellationToken ct) =>
         {
             var result = await service.CreateAsync(request, ct);
             if (!result.IsSuccess)
@@ -28,10 +29,13 @@ public sealed class MailboxSourcesModule : ICarterModule
 
             var source = result.Value!;
 
+            await audit.RecordAsync(AuditEvents.MailboxSourceCreated,
+                $"Created mailbox source {source.Name} ({source.Host})",
+                "mailbox_source", source.Id, ct: ct);
             return Results.Created($"/api/v1/mailbox-sources/{source.Id}", source);
         }).RequireAgencyAdmin();
 
-        app.MapPatch("/api/v1/mailbox-sources/{id:guid}", async (Guid id, UpdateMailboxSourceRequest request, IMailboxSourceService service, CancellationToken ct) =>
+        app.MapPatch("/api/v1/mailbox-sources/{id:guid}", async (Guid id, UpdateMailboxSourceRequest request, IMailboxSourceService service, IAuditLog audit, CancellationToken ct) =>
         {
             var result = await service.UpdateAsync(id, request, ct);
             if (!result.IsSuccess)
@@ -44,11 +48,18 @@ public sealed class MailboxSourcesModule : ICarterModule
                 return Results.Json(new { error = result.Error }, statusCode: result.StatusCode);
             }
 
-            return Results.Ok(result.Value);
+            var updatedSource = result.Value!;
+            await audit.RecordAsync(AuditEvents.MailboxSourceUpdated,
+                $"Updated mailbox source {updatedSource.Name}",
+                "mailbox_source", updatedSource.Id, ct: ct);
+            return Results.Ok(updatedSource);
         }).RequireAgencyAdmin();
 
-        app.MapPost("/api/v1/mailbox-sources/{id:guid}/sync", async (Guid id, IMailboxSyncService service, CancellationToken ct) =>
+        app.MapPost("/api/v1/mailbox-sources/{id:guid}/sync", async (Guid id, IMailboxSyncService service, IAuditLog audit, CancellationToken ct) =>
         {
+            await audit.RecordAsync(AuditEvents.MailboxSyncTriggered,
+                "Triggered a manual mailbox sync", "mailbox_source", id, ct: ct);
+
             var result = await service.SyncMailboxSourceAsync(id, ct);
             if (!result.IsSuccess)
             {

@@ -4,6 +4,7 @@ using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Application.Ingestion;
+using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Application.Retention;
 using DmarcAnalyzer.Api.Application.MailboxSources;
@@ -29,6 +30,10 @@ if (mode == "worker")
     workerBuilder.Services.AddCredentialProtection(workerBuilder.Configuration);
     workerBuilder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
     workerBuilder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
+    workerBuilder.Services.AddHttpContextAccessor();
+    workerBuilder.Services.AddScoped<ICurrentUserContext, SystemUserContext>();
+    workerBuilder.Services.AddScoped<IAuditLog, AuditLog>();
+    workerBuilder.Services.Configure<RetentionOptions>(workerBuilder.Configuration.GetSection("Retention"));
     workerBuilder.Services.AddScoped<IRetentionPurgeService, RetentionPurgeService>();
     workerBuilder.Services.Configure<EmailOptions>(workerBuilder.Configuration.GetSection("Email"));
     workerBuilder.Services.Configure<AlertOptions>(workerBuilder.Configuration.GetSection("Alerts"));
@@ -68,6 +73,9 @@ builder.Services.AddScoped<IMailboxSyncRunQueryService, MailboxSyncRunQueryServi
 builder.Services.AddScoped<IMailboxHealthQueryService, MailboxHealthQueryService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IRecordInspectionService, RecordInspectionService>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IAuditLog, AuditLog>();
+builder.Services.Configure<RetentionOptions>(builder.Configuration.GetSection("Retention"));
 builder.Services.AddScoped<IRetentionPurgeService, RetentionPurgeService>();
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
 builder.Services.Configure<AlertOptions>(builder.Configuration.GetSection("Alerts"));

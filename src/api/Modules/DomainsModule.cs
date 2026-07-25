@@ -1,4 +1,5 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Contracts.Domains;
@@ -24,7 +25,7 @@ public sealed class DomainsModule : ICarterModule
             return Results.Ok(domains);
         }).AllowClientViewer();
 
-        app.MapPost("/api/v1/domains", async (CreateDomainRequest request, IDomainService service, CancellationToken ct) =>
+        app.MapPost("/api/v1/domains", async (CreateDomainRequest request, IDomainService service, IAuditLog audit, CancellationToken ct) =>
         {
             var result = await service.CreateAsync(request, ct);
             if (!result.IsSuccess)
@@ -34,10 +35,12 @@ public sealed class DomainsModule : ICarterModule
 
             var domain = result.Value!;
 
+            await audit.RecordAsync(AuditEvents.DomainCreated, $"Created domain {domain.Name}",
+                "domain", domain.Id, domain.ClientId, ct: ct);
             return Results.Created($"/api/v1/domains/{domain.Id}", domain);
         }).RequireAgencyAdmin();
 
-        app.MapPatch("/api/v1/domains/{id:guid}", async (Guid id, UpdateDomainRequest request, IDomainService service, CancellationToken ct) =>
+        app.MapPatch("/api/v1/domains/{id:guid}", async (Guid id, UpdateDomainRequest request, IDomainService service, IAuditLog audit, CancellationToken ct) =>
         {
             var result = await service.UpdateAsync(id, request, ct);
             if (!result.IsSuccess)
@@ -50,7 +53,10 @@ public sealed class DomainsModule : ICarterModule
                 return Results.Json(new { error = result.Error }, statusCode: result.StatusCode);
             }
 
-            return Results.Ok(result.Value);
+            var updatedDomain = result.Value!;
+            await audit.RecordAsync(AuditEvents.DomainUpdated, $"Updated domain {updatedDomain.Name}",
+                "domain", updatedDomain.Id, updatedDomain.ClientId, ct: ct);
+            return Results.Ok(updatedDomain);
         }).RequireAgencyAdmin();
     }
 }
