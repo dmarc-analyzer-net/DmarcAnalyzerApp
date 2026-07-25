@@ -162,8 +162,10 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     first-run registration, client/domain/mailbox-source/user changes, grant
     changes, manual sync triggers, alert triage, recipient changes, and admin
     migrations — with IP and user agent
-  - actor email is denormalised and the table has **no foreign keys**, so the
-    trail outlives the rows it refers to
+  - actor email **and client name** are denormalised and the table has **no
+    foreign keys**, so the trail outlives the rows it refers to and does not
+    re-label history when a client is renamed. Rows written before the client
+    name was captured fall back to the current name
   - `IAuditLog` never throws: a failed audit write is logged, not propagated, so
     it cannot break the operation it describes
   - read-only over HTTP (`GET /api/v1/admin/audit-events`, filterable by day

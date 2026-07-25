@@ -270,6 +270,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
 
         modelBuilder.Entity<AuditEvent>(entity =>
         {
+            entity.Property(x => x.ClientName).HasMaxLength(200);
             entity.ToTable("audit_event");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.ActorType).HasMaxLength(16).IsRequired();

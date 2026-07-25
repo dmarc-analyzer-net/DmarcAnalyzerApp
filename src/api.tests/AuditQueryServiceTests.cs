@@ -1,6 +1,8 @@
 using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -11,6 +13,13 @@ public sealed class AuditQueryServiceTests
     private static DmarcAnalyzerDbContext NewDb()
         => new(new DbContextOptionsBuilder<DmarcAnalyzerDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options);
+
+    /// <summary>Writes through the real AuditLog, so the snapshot is captured the
+    /// same way production captures it.</summary>
+    private static AuditLog Log(DmarcAnalyzerDbContext db)
+        => new(db, TestCurrentUserContext.Admin(),
+               new HttpContextAccessor { HttpContext = new DefaultHttpContext() },
+               NullLogger<AuditLog>.Instance);
 
     private static Client SeedClient(DmarcAnalyzerDbContext db, string name = "Acme")
     {
@@ -95,6 +104,70 @@ public sealed class AuditQueryServiceTests
         var page = await new AuditQueryService(db).QueryAsync(new AuditQuery(Actor: "OPS@"), CancellationToken.None);
 
         Assert.Equal("Ops@Agency.example", Assert.Single(page.Items).ActorEmail);
+    }
+
+    /// <summary>
+    /// The defect this guards, seen in real data: a row's summary read "Updated
+    /// client Middelfart Sparrekasse" — the old, misspelled name frozen into the
+    /// text — while the Client column beside it read the corrected name, because
+    /// that column was a live join. The row disagreed with itself.
+    /// </summary>
+    [Fact]
+    public async Task ARenamedClientDoesNotRelabelHistory()
+    {
+        await using var db = NewDb();
+        var client = SeedClient(db, "Middelfart Sparrekasse");
+        await db.SaveChangesAsync();
+
+        // written while the misspelling was live
+        await Log(db).RecordAsync(AuditEvents.ClientUpdated,
+            "Updated client Middelfart Sparrekasse", "client", client.Id, client.Id);
+
+        client.Name = "Middelfart Sparekasse";
+        await db.SaveChangesAsync();
+
+        var page = await new AuditQueryService(db).QueryAsync(new AuditQuery(), CancellationToken.None);
+
+        var row = Assert.Single(page.Items);
+        Assert.Equal("Middelfart Sparrekasse", row.ClientName);   // as it was, not as it is
+        Assert.Contains("Middelfart Sparrekasse", row.Summary);   // and it agrees with its own summary
+    }
+
+    [Fact]
+    public async Task RowsWrittenBeforeTheSnapshotFallBackToTheCurrentName()
+    {
+        await using var db = NewDb();
+        var client = SeedClient(db, "Acme");
+        // a pre-migration row: ClientId set, ClientName never recorded
+        db.Add(new AuditEvent
+        {
+            Id = Guid.NewGuid(), OccurredAtUtc = DateTime.UtcNow, ActorType = "user",
+            ActorEmail = "a@x.example", EventType = "client.updated", Summary = "legacy row",
+            ClientId = client.Id, ClientName = null,
+        });
+        await db.SaveChangesAsync();
+
+        var page = await new AuditQueryService(db).QueryAsync(new AuditQuery(), CancellationToken.None);
+
+        Assert.Equal("Acme", Assert.Single(page.Items).ClientName);
+    }
+
+    [Fact]
+    public async Task ADeletedClientKeepsTheNameItWasRecordedWith()
+    {
+        await using var db = NewDb();
+        var client = SeedClient(db, "Gone Ltd");
+        await db.SaveChangesAsync();
+        await Log(db).RecordAsync(AuditEvents.ClientUpdated, "Updated client Gone Ltd", "client", client.Id, client.Id);
+
+        db.Clients.Remove(client);
+        await db.SaveChangesAsync();
+
+        var page = await new AuditQueryService(db).QueryAsync(new AuditQuery(), CancellationToken.None);
+
+        var row = Assert.Single(page.Items);
+        Assert.Equal("Gone Ltd", row.ClientName);   // previously this went blank
+        Assert.NotNull(row.ClientId);
     }
 
     [Fact]

@@ -28,6 +28,14 @@ public sealed class AuditEvent
     /// <summary>Set when the event concerns one client, so the trail can be filtered per tenant.</summary>
     public Guid? ClientId { get; set; }
 
+    /// <summary>
+    /// The client's name as it was when the event happened, copied in for the
+    /// same reason as <see cref="ActorEmail"/>: a trail that silently re-labels
+    /// history when something is renamed is not a trail. Null on rows written
+    /// before this was recorded — those fall back to the current name.
+    /// </summary>
+    public string? ClientName { get; set; }
+
     public string Summary { get; set; } = string.Empty;
 
     /// <summary>Optional extra context. Never store credentials here.</summary>

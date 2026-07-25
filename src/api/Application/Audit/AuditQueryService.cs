@@ -14,7 +14,11 @@ public sealed record AuditEventDto(
     string? TargetType,
     Guid? TargetId,
     Guid? ClientId,
-    /// <summary>Null when the event has no client, or the client has since been deleted.</summary>
+    /// <summary>
+    /// The client's name as recorded when the event happened. Falls back to the
+    /// current name for rows written before that was captured, and is null when
+    /// the event has no client or the client is gone and nothing was recorded.
+    /// </summary>
     string? ClientName,
     string Summary,
     string? Details,
@@ -69,8 +73,9 @@ public sealed class AuditQueryService(DmarcAnalyzerDbContext db)
         var total = await query.CountAsync(ct);
 
         // Left join rather than a navigation: audit_event deliberately has no FK to
-        // client, so the trail outlives the rows it refers to. A deleted client
-        // leaves its id in place and simply resolves to no name.
+        // client, so the trail outlives the rows it refers to. Still needed after
+        // ClientName was added, because rows written before it are null and fall
+        // back to the current name.
         var items = await (
             from e in query
             join c in db.Clients on e.ClientId equals c.Id into clients
@@ -78,7 +83,12 @@ public sealed class AuditQueryService(DmarcAnalyzerDbContext db)
             orderby e.OccurredAtUtc descending, e.Id
             select new AuditEventDto(
                 e.Id, e.OccurredAtUtc, e.ActorType, e.ActorUserId, e.ActorEmail, e.EventType,
-                e.TargetType, e.TargetId, e.ClientId, c != null ? c.Name : null,
+                e.TargetType, e.TargetId, e.ClientId,
+                // Prefer the name recorded at write time. Rows predating that
+                // column fall back to the live join, which is exactly the
+                // behaviour they had before — and they age out with the trail's
+                // two-year retention.
+                e.ClientName ?? (c != null ? c.Name : null),
                 e.Summary, e.Details, e.IpAddress, e.UserAgent))
             .Skip(Math.Max(0, request.Offset ?? 0))
             .Take(Math.Clamp(request.Limit ?? DefaultLimit, 1, MaxLimit))

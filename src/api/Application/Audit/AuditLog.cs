@@ -2,6 +2,7 @@ using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Audit;
 
@@ -111,6 +112,19 @@ public sealed class AuditLog(
     {
         try
         {
+            // Resolved here rather than at the call sites: this is the moment the
+            // event happened, and most callers hold only an id. One indexed
+            // lookup, and only for client-scoped events, which are user actions
+            // rather than anything on the ingestion path.
+            if (entry.ClientId is { } clientId && entry.ClientName is null)
+            {
+                entry.ClientName = await db.Clients
+                    .AsNoTracking()
+                    .Where(c => c.Id == clientId)
+                    .Select(c => c.Name)
+                    .FirstOrDefaultAsync(ct);
+            }
+
             var request = httpContextAccessor.HttpContext?.Request;
             entry.IpAddress = httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString();
             entry.UserAgent = Truncate(request?.Headers.UserAgent.ToString(), 512);
