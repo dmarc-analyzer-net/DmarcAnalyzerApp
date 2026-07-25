@@ -4,6 +4,7 @@ using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Application.Ingestion;
+using DmarcAnalyzer.Api.Application.Retention;
 using DmarcAnalyzer.Api.Application.MailboxSources;
 using DmarcAnalyzer.Api.Application.Reports;
 using DmarcAnalyzer.Api.Application.Security;
@@ -27,6 +28,7 @@ if (mode == "worker")
     workerBuilder.Services.AddCredentialProtection(workerBuilder.Configuration);
     workerBuilder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
     workerBuilder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
+    workerBuilder.Services.AddScoped<IRetentionPurgeService, RetentionPurgeService>();
     workerBuilder.Services.Configure<WorkerOptions>(workerBuilder.Configuration.GetSection("Worker"));
     workerBuilder.Services.AddHostedService<QueueWorkerService>();
 
@@ -59,6 +61,7 @@ builder.Services.AddScoped<IMailboxSyncRunQueryService, MailboxSyncRunQueryServi
 builder.Services.AddScoped<IMailboxHealthQueryService, MailboxHealthQueryService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IRecordInspectionService, RecordInspectionService>();
+builder.Services.AddScoped<IRetentionPurgeService, RetentionPurgeService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IHostnameResolver, HostnameResolver>();
 builder.Services.AddSingleton<IDnsTxtResolver, DnsTxtResolver>();

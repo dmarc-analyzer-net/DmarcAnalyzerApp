@@ -118,6 +118,11 @@ public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext
             client.RetentionMonths = request.RetentionMonths.Value;
         }
 
+        if (request.LegalHold.HasValue)
+        {
+            client.LegalHold = request.LegalHold.Value;
+        }
+
         if (request.Timezone is not null)
         {
             if (string.IsNullOrWhiteSpace(request.Timezone))
@@ -146,6 +151,7 @@ public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext
             x.Slug,
             x.IsActive,
             x.RetentionMonths,
+            x.LegalHold,
             x.Timezone,
             x.CreatedAtUtc,
             x.UpdatedAtUtc);

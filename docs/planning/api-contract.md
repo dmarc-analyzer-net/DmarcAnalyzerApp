@@ -85,6 +85,8 @@ cross-tenant ids return **404**, never 403.
 |---|---|---|
 | GET | `/system/status` | staff |
 | POST | `/admin/database/migrate` | admin — applies pending EF migrations |
+| GET | `/admin/retention/preview` | admin — what the next purge would delete, per client; deletes nothing |
+| POST | `/admin/retention/purge` | admin — runs the purge now. Optional `batchSize` |
 | GET | `/health/live`, `/health/ready` | public |
 
 ## 1) Conventions

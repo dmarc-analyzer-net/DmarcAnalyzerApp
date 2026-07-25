@@ -73,10 +73,10 @@ Target: improve reliability and readiness.
       a multi-arch image to GHCR and Docker Hub; `deploy/compose.yml` plus the
       README quick-start run it without a local build.
 - [ ] Provide Kubernetes deployment guidance at equal depth (manifests/Helm + operations notes).
-- [~] Finalize runbooks, per-client retention operations (default 27 months), and
+- [x] Finalize runbooks, per-client retention operations (default 27 months), and
       release checklist. *(runbooks and the [release process](../ops/release.md)
-      are in `docs/ops`; retention is configurable per client but **nothing
-      enforces it yet** — no purge job, which is the remaining piece.)*
+      are in `docs/ops`; retention is enforced by a daily purge pass honouring
+      per-client windows and legal hold.)*
 - [ ] Finalize core audit logging for operational traceability.
 
 ## Milestone 5 - Enterprise Integrations (Post-MVP) — **started**

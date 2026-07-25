@@ -9,31 +9,20 @@ OIDC), worker ingestion, analytics dashboards, and per-source drill-down are
 all shipped. The near-term sequence below turns it from "works" into
 "operable and client-facing", ordered by value and dependencies.
 
-1. **Worker hardening.** The 60-minute 24/7 production cadence is already the
-   default (`Worker:ScheduleIntervalSeconds` = 3600 in `appsettings.json`; the
-   dev override is 15s in `appsettings.Development.json`), so what remains is
-   resilience: the worker host currently dies permanently on an unguarded
-   startup DB call — see issue #20 (one-line fix) — plus retry/backoff around
-   first DB contact.
-2. **Retention + purge jobs.** `client.retention_months` (default 27) exists
-   but nothing enforces it — `dmarc_report*` data grows unbounded. Add
-   scheduled archival/purge with legal-hold support. Compliance-relevant.
-3. **Alert engine for failure spikes / policy regression.** The drill-down
+1. **Alert engine for failure spikes / policy regression.** The drill-down
    surfaces problems reactively; per-client thresholds + notifications make it
    proactive. Highest client-facing value now that the data is trustworthy.
-4. **Email digest + SMTP relay.** Monthly per-client summaries; shares
-   delivery infrastructure with #3, so build them together.
-5. **Audit logging.** Login, config change, sync run, and (future) magic-link
-   events. Needed for agency trust and as a prerequisite for #6.
-6. **Client access: portal polish + magic links.** The `client_viewer` role
+2. **Email digest + SMTP relay.** Monthly per-client summaries; shares
+   delivery infrastructure with #1, so build them together.
+3. **Audit logging.** Login, config change, sync run, and (future) magic-link
+   events. Needed for agency trust and as a prerequisite for #4.
+4. **Client access: portal polish + magic links.** The `client_viewer` role
    already approximates a read-only portal; add magic-link (single-client,
    read-only, 7-day) sharing for occasional client access without accounts.
 
-Smaller, independent items to slot in opportunistically: a **published
-container image + README quick-start** (small, and the fastest win for new-user
-onboarding — it also becomes the artifact the Helm chart deploys), **POP3
-ingestion**, the **report upload/query API endpoints**, and **CSV/JSON
-export**. Larger, deferred until a deployment calls for them: **Helm/K8s
+Smaller, independent items to slot in opportunistically: **POP3 ingestion**, the
+**report upload/query API endpoints** (which would also make seeding test data
+far easier), and **CSV/JSON export**. Larger, deferred until a deployment calls for them: **Helm/K8s
 charts**, **branded PDF reports**, and **M365/Google Workspace connectors**.
 (The console **visual redesign** is done — shipped as the new ink-green/teal
 design system.) See the categorized lists below for the full inventory.
@@ -70,7 +59,7 @@ design system.) See the categorized lists below for the full inventory.
 - [x] (done) Build React dashboards for pass/fail, SPF/DKIM alignment, and disposition (source IP trends pending drill-down below).
 - [x] (done) Add per-source drill-down with daily aggregates (domain detail page with per-IP DMARC results and raw auth breakdown).
 - [x] (done) Add scheduled polling orchestration with retries and sync audit history (worker-driven, `mailbox_sync_run`).
-- [ ] (todo) Implement per-client retention rules with default 27 months plus archival/purge jobs and legal-hold support.
+- [x] (done) Implement per-client retention rules with default 27 months plus purge job and legal-hold support (`RetentionPurgeService`, daily worker pass, `client.LegalHold`, admin preview/purge endpoints). Archival-before-delete was not implemented — purging is outright deletion.
 - [x] (done) Publish a versioned container image (GHCR) via CI and add a README quick-start (`.github/workflows/ci.yml` builds/tests then pushes `ghcr.io/dmarc-analyzer-net/dmarc-analyzer` for amd64+arm64; `deploy/compose.yml` + README "Quick Start" run it without a local build).
 - [x] (done) Redesign the console UI — new "ink-green/teal" design system (tokens + self-hosted fonts), ported primitives, new sidebar shell, all six screens + login rebuilt; Domains/Detail surface published policy + enforcement status.
 - [ ] (todo) Add Kubernetes deployment assets — Helm chart(s) with health checks and stateless service patterns, supporting both self-contained (bundled PostgreSQL, local auth) and bring-your-own deployments (external managed PostgreSQL, external OIDC), toggled via chart values.

@@ -98,6 +98,20 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - `GET /api/v1/analytics/domains/{id}/records` — live `_dmarc`/SPF TXT records parsed tag-by-tag (multiple-record permerror, missing rua, +all, 10-lookup count) and compared field-by-field against the latest `policy_published` reporters observed
   - Domain Detail "Record inspection" card, fetched separately so slow DNS never blocks the analytics render
 
+- Retention enforcement:
+  - `RetentionPurgeService` deletes DMARC data whose **reporting window end**
+    (`RangeEndUtc`) predates each client's `RetentionMonths` window (default 27) —
+    keyed off the report window rather than ingest date, so a backfill doesn't
+    grant old reports a fresh lease
+  - `client.LegalHold` exempts a client entirely; a non-positive `RetentionMonths`
+    falls back to 27 rather than deleting everything
+  - batched deletes; report deletion cascades to records and auth results at the
+    database level; the `dmarc_report_ingest` ledger is purged on the same window
+  - runs as a daily worker pass (`Worker:RetentionEnabled`,
+    `RetentionIntervalHours`, `RetentionBatchSize`)
+  - `GET /api/v1/admin/retention/preview` (non-destructive) and
+    `POST /api/v1/admin/retention/purge` for operators
+
 ## Planned Next
 
 - Repository/service pattern hardening and broader indexing strategy.

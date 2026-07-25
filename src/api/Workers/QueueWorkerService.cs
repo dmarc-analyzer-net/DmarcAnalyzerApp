@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Application.Ingestion;
+using DmarcAnalyzer.Api.Application.Retention;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Data;
 using Microsoft.EntityFrameworkCore;
@@ -31,6 +32,7 @@ public sealed class QueueWorkerService(
             {
                 await CloseStaleRunningSyncsAsync(stoppingToken);
                 await RunScheduledSyncPassAsync(stoppingToken);
+                await RunRetentionPassIfDueAsync(stoppingToken);
                 consecutiveFailures = 0;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -73,6 +75,37 @@ public sealed class QueueWorkerService(
 
         var backoffSeconds = 5L << Math.Min(consecutiveFailures - 1, 10);
         return TimeSpan.FromSeconds(Math.Min(backoffSeconds, normalSeconds));
+    }
+
+    private DateTime? _lastRetentionRunUtc;
+
+    /// <summary>
+    /// Enforces per-client retention. Runs on its own slow cadence
+    /// (<c>Worker:RetentionIntervalHours</c>, daily by default) rather than every
+    /// sync pass — retention is measured in months, so there is nothing to gain
+    /// from checking hourly. The timestamp is in-memory, so a restart simply runs
+    /// it once more; purging is idempotent.
+    /// </summary>
+    private async Task RunRetentionPassIfDueAsync(CancellationToken ct)
+    {
+        if (!_options.RetentionEnabled)
+        {
+            return;
+        }
+
+        var interval = TimeSpan.FromHours(Math.Max(1, _options.RetentionIntervalHours));
+        if (_lastRetentionRunUtc is { } last && DateTime.UtcNow - last < interval)
+        {
+            return;
+        }
+
+        using var scope = scopeFactory.CreateScope();
+        var retention = scope.ServiceProvider.GetRequiredService<IRetentionPurgeService>();
+        await retention.PurgeAsync(dryRun: false, _options.RetentionBatchSize, ct);
+
+        // Only mark it done on success, so a failure retries on the next pass
+        // instead of waiting out the whole interval.
+        _lastRetentionRunUtc = DateTime.UtcNow;
     }
 
     private async Task RunScheduledSyncPassAsync(CancellationToken ct)

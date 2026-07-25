@@ -94,7 +94,8 @@ The tenant.
 | `Name` | max 200 |
 | `Slug` | max 120, **unique** |
 | `IsActive` | bool |
-| `RetentionMonths` | default 27 — **configured but not yet enforced**; no purge job exists |
+| `RetentionMonths` | default 27 — enforced by the daily retention pass, measured against report **window end** (`RangeEndUtc`), not ingest date |
+| `LegalHold` | default false — when true the client is skipped entirely by retention purging |
 | `Timezone` | max 64, default `UTC` |
 | `CreatedAtUtc`, `UpdatedAtUtc` | |
 
@@ -257,7 +258,7 @@ are provisional.
 | `pdf_report_job` | Branded PDF summaries | branded PDF reports |
 | `magic_link_nonce` | Signed single-client read-only links (7-day default), revocable via DB nonce | magic link access |
 | `audit_event` | Login, config change, sync run, magic-link usage | core audit logging |
-| retention enforcement | `client.RetentionMonths` exists; a scheduled purge/archival job with legal-hold does not | retention + purge jobs |
+| archival before deletion | purging deletes outright; archiving to cold storage first is not implemented | — |
 | daily rollup table | Only if on-demand aggregation stops scaling (see A.5) | — |
 
 ---

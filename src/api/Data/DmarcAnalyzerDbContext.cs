@@ -95,6 +95,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Slug).HasMaxLength(120).IsRequired();
             entity.Property(x => x.Timezone).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.LegalHold).HasDefaultValue(false);
             entity.HasIndex(x => x.Slug).IsUnique();
         });
 

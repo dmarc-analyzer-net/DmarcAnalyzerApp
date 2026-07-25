@@ -6,6 +6,7 @@ public sealed record ClientDto(
     string Slug,
     bool IsActive,
     int RetentionMonths,
+    bool LegalHold,
     string Timezone,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);

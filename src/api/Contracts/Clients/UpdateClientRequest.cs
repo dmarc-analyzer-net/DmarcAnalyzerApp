@@ -6,5 +6,6 @@ public sealed class UpdateClientRequest
     public string? Slug { get; set; }
     public bool? IsActive { get; set; }
     public int? RetentionMonths { get; set; }
+    public bool? LegalHold { get; set; }
     public string? Timezone { get; set; }
 }
