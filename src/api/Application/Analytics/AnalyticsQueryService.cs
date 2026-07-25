@@ -176,22 +176,31 @@ public sealed class AnalyticsQueryService(
         days = ClampDays(days);
         var window = await ResolveWindowAsync(days, ct);
 
-        var records = RecordsInWindow(window);
-
-        // Flattened before grouping for the same reason as ListDomainSourcesAsync:
-        // navigations inside grouped aggregates become per-group correlated subqueries.
-        var perDomain = await records
-            .Select(r => new
-            {
-                r.DmarcReport!.DomainId,
-                r.MessageCount,
-                r.DkimResult,
-                r.SpfResult,
-                r.Disposition,
-                r.DmarcReportId,
-                r.SourceIp,
-                r.DmarcReport.OrganizationName,
-            })
+        // Joined explicitly rather than projected through r.DmarcReport. Flattening with a
+        // Select was not enough: EF composes that projection away and re-resolves the
+        // navigation inside each aggregate, so Reporters — a distinct count of
+        // OrganizationName, which lives on the report — became one correlated subquery per
+        // domain, each re-joining dmarc_report twice. That cost 1,930ms of a 1,988ms
+        // request while the window scan under it took 239ms. Reports and Sources never had
+        // the problem, being columns on the record itself. An explicit join makes the
+        // report a real table in the same FROM, so all three become plain aggregates.
+        var perDomain = await (
+                from rec in db.DmarcReportRecords.AsNoTracking()
+                join rep in db.DmarcReports.AsNoTracking() on rec.DmarcReportId equals rep.Id
+                join dom in ScopedDomains() on rep.DomainId equals dom.Id
+                where rec.ReportRangeBeginUtc >= window.BeginUtc
+                      && rec.ReportRangeBeginUtc <= window.EndUtc
+                select new
+                {
+                    rep.DomainId,
+                    rec.MessageCount,
+                    rec.DkimResult,
+                    rec.SpfResult,
+                    rec.Disposition,
+                    rec.DmarcReportId,
+                    rec.SourceIp,
+                    rep.OrganizationName,
+                })
             .GroupBy(r => r.DomainId)
             .Select(g => new
             {
