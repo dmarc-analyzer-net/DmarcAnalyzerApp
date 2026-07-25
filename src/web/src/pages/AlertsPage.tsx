@@ -265,6 +265,7 @@ export function AlertsPage() {
                                 </Button>
                               ) : (
                                 <Button variant="ghost" size="sm" onClick={() => void setStatus(alert.id, 'open')}>
+                                  <Icon name="refresh-cw" size={14} />
                                   Reopen
                                 </Button>
                               )}
