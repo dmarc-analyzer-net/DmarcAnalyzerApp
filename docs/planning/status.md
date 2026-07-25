@@ -150,6 +150,13 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     (enable, compliance-drop threshold, minimum messages) are editable in the
     console rather than API-only
 
+- SMTP TLS reports (TLS-RPT, RFC 8460) are **recognised and skipped**, not
+  parsed. They share the mailbox with DMARC reports and arrive gzipped as
+  `application/tlsrpt+gzip`; because gzip is detected by magic bytes, they used
+  to reach the DMARC parser, throw, and inflate the parse-failure counter that
+  marks a mailbox source unhealthy. They are now classified by content and
+  logged. Ingesting them is a backlog item.
+
 - Audit logging:
   - `audit_event` records who did what: sign-in success and failure, sign-out,
     first-run registration, client/domain/mailbox-source/user changes, grant

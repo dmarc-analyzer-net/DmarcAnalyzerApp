@@ -86,4 +86,45 @@ design system.) See the categorized lists below for the full inventory.
 - [ ] (todo) Investigate DNS and WHOIS enrichment for sending infrastructure insights.
 - [ ] (todo) Add sending-source enrichment: map sending IPs/hostnames to known ESPs/services (beyond reverse DNS, which exists in HostnameResolver) and add IP geolocation for threat context (site claims sources "resolved to a recognisable service" and shown with "geography").
 - [ ] (todo) Evaluate anomaly detection for sudden DMARC/SPF/DKIM failure spikes.
-- [ ] (todo) Evaluate optional BIMI and TLS-RPT support after DMARC MVP.
+- [ ] (todo) Evaluate optional BIMI support after DMARC MVP.
+- [ ] (todo) **Ingest and store SMTP TLS reports (TLS-RPT, RFC 8460).** Scoped
+      2026-07-25. Attachments are already recognised and skipped cleanly, so this
+      is additive rather than a fix.
+
+      *Why:* two competitors researched the same day ship it — DMARCwise hosts
+      MTA-STS and TLS-RPT, and `cry-inc/dmarc-report-viewer` parses TLS reports
+      in a 10 MB binary. Adoption is real: 4 of 13 sampled domains publish
+      `_smtp._tls` records, including `skat.dk` and `borger.dk`. It answers a
+      different client question from DMARC — "is mail to this domain actually
+      encrypted in transit" rather than "is anyone spoofing us".
+
+      *Reusable as-is:* IMAP polling, message iteration, checkpointing, the job
+      queue with retry and dead-lettering, sync-run bookkeeping, and
+      `ResolveOrCreateDomainIdAsync` — it takes a domain string and does not care
+      which report produced it.
+
+      *The work:*
+      - **Extraction** returns typed payloads. `ReportPayloadFormat.Classify`
+        already identifies TLS JSON; the extraction path needs to hand it on
+        instead of skipping.
+      - **Parser.** Small: I-JSON, ~8 top-level fields, two nested arrays
+        (`policies[]` holding `policy` / `summary` / `failure-details`).
+        `System.Text.Json`, no new dependency, and none of the DmarcRua quirks
+        that produced the `sp` defect.
+      - **Model.** 2–3 tables: report, policy, failure detail.
+      - **Dedupe — the one real design decision.** `dmarc_report_ingest` is
+        DMARC-shaped (`PolicyDomain`, `RecordCount`, a five-column unique index).
+        Either add a report-type discriminator, which is cleaner but touches that
+        index and the retention purge, or add a parallel `tls_report_ingest`.
+        Decide before writing the migration.
+      - **Retention.** A second purge pass mirroring the DMARC one, keyed on the
+        report window end.
+      - **Surface.** The larger half. `AnalyticsQueryService` alone has ~40
+        `DmarcReport` references, so TLS needs its own queries and endpoints. The
+        cheapest useful UI is a panel on the domain detail page — successful vs
+        failed sessions, failure types, MX hosts — not a second product.
+
+      *Also worth adding while in here:* a skipped-TLS-report counter on
+      `mailbox_sync_run`, surfaced beside parse failures, so operators can see
+      TLS traffic arriving before support lands. Left out of the fix above
+      because it needs a migration and a UI change.

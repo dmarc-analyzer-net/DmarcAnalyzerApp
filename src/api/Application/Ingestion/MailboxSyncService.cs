@@ -455,8 +455,18 @@ public sealed class MailboxSyncService(
             foreach (var entry in zip.Entries)
             {
                 ct.ThrowIfCancellationRequested();
-                if (entry.IsDirectory || entry.Key is null ||
-                    !entry.Key.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                if (entry.IsDirectory || entry.Key is null)
+                {
+                    continue;
+                }
+
+                if (entry.Key.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                {
+                    LogSkippedTlsReport(logger, entry.Key);
+                    continue;
+                }
+
+                if (!entry.Key.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -484,22 +494,36 @@ public sealed class MailboxSyncService(
         {
             using var gzipSource = new MemoryStream(payload, writable: false);
             await using var gzip = new GZipStream(gzipSource, CompressionMode.Decompress);
-            var xml = new MemoryStream();
-            await gzip.CopyToAsync(xml, ct);
-            xml.Position = 0;
-            result.Add(xml);
+            var decoded = new MemoryStream();
+            await gzip.CopyToAsync(decoded, ct);
+            decoded.Position = 0;
+
+            // Gzip is detected by magic bytes, so whatever was inside lands here
+            // regardless of format. TLS reports arrive exactly this way
+            // (application/tlsrpt+gzip) and used to be handed to the DMARC parser,
+            // which threw and inflated the parse-failure count.
+            if (ReportPayloadFormat.Classify(decoded.GetBuffer().AsSpan(0, (int)decoded.Length))
+                == ReportPayloadKind.SmtpTlsReportJson)
+            {
+                await decoded.DisposeAsync();
+                LogSkippedTlsReport(logger, fileName);
+                return result;
+            }
+
+            result.Add(decoded);
             return result;
         }
 
         var mimeType = attachment.ContentType?.MimeType ?? string.Empty;
 
-        if (LooksLikeXml(payload) ||
-            fileName.EndsWith(".xml", StringComparison.Ordinal) ||
-            string.Equals(mimeType, "text/xml", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(mimeType, "application/xml", StringComparison.OrdinalIgnoreCase))
+        switch (ReportPayloadFormat.Classify(payload, fileName, mimeType))
         {
-            var xml = new MemoryStream(payload, writable: false);
-            result.Add(xml);
+            case ReportPayloadKind.DmarcAggregateXml:
+                result.Add(new MemoryStream(payload, writable: false));
+                break;
+            case ReportPayloadKind.SmtpTlsReportJson:
+                LogSkippedTlsReport(logger, fileName);
+                break;
         }
 
         return result;
@@ -512,22 +536,15 @@ public sealed class MailboxSyncService(
     private static bool IsGzip(byte[] payload)
         => payload.Length >= 2 && payload[0] == 0x1F && payload[1] == 0x8B;
 
-    private static bool LooksLikeXml(byte[] payload)
-    {
-        var start = 0;
+    /// <summary>
+    /// TLS reports (RFC 8460) share the mailbox with DMARC reports but are a
+    /// different format entirely. Skipped deliberately and logged, rather than
+    /// dropped silently or counted as a parse failure — see the backlog item for
+    /// actually supporting them.
+    /// </summary>
+    private static void LogSkippedTlsReport(ILogger logger, string fileName) =>
+        logger.LogInformation(
+            "Skipped SMTP TLS report attachment {AttachmentName}: TLS-RPT ingestion is not implemented",
+            fileName);
 
-        // Skip UTF-8 BOM and leading whitespace.
-        if (payload.Length >= 3 && payload[0] == 0xEF && payload[1] == 0xBB && payload[2] == 0xBF)
-        {
-            start = 3;
-        }
-
-        while (start < payload.Length && (payload[start] == 0x20 || payload[start] == 0x09 ||
-                                          payload[start] == 0x0D || payload[start] == 0x0A))
-        {
-            start++;
-        }
-
-        return start < payload.Length && payload[start] == (byte)'<';
-    }
 }
