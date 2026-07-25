@@ -75,6 +75,7 @@ builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IRecordInspectionService, RecordInspectionService>();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IAuditLog, AuditLog>();
+builder.Services.AddScoped<AuditQueryService>();
 builder.Services.Configure<RetentionOptions>(builder.Configuration.GetSection("Retention"));
 builder.Services.AddScoped<IRetentionPurgeService, RetentionPurgeService>();
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));

@@ -9,13 +9,9 @@ OIDC), worker ingestion, analytics dashboards, and per-source drill-down are
 all shipped. The near-term sequence below turns it from "works" into
 "operable and client-facing", ordered by value and dependencies.
 
-1. **Surface the audit trail in the console.** The backend shipped (`audit_event`,
-   `IAuditLog`, `GET /api/v1/admin/audit-events` filterable by day range, event
-   type, actor and client), but nothing in the console reads it — the trail is
-   reachable only by curl, which undercuts the agency-trust case it was built for.
-   A browser review of the audit-logging branch could not check timestamps, actor
-   names or paging at real volume for exactly this reason. Needs a filterable page
-   plus a nav entry.
+1. ~~**Surface the audit trail in the console.**~~ (done) `/audit`, admin only —
+   day range, event-type, actor and client filters, paged 100 at a time with the
+   unpaged total, and a per-row expander for details, target and user agent.
 3. **Client access: portal polish + magic links.** The `client_viewer` role
    already approximates a read-only portal; add magic-link (single-client,
    read-only, 7-day) sharing for occasional client access without accounts.
@@ -66,7 +62,7 @@ design system.) See the categorized lists below for the full inventory.
 - [ ] (todo) Add branded PDF report generation (server-side HTML to PDF) with agency logo/colors/footer.
 - [x] (done) Add monthly email digest delivery and SMTP relay configuration (`DigestService`, previous-whole-month period, `digest_delivery` for idempotency, worker check pass, admin preview/send endpoints).
 - [x] (done) Add alert engine for failure spikes and policy regression with per-client thresholds (`AlertEvaluationService`, hourly worker pass, `alert_event` history with cooldown, per-client overrides on `client`, email notification, `GET /alerts` + admin evaluate endpoint).
-- [x] (done) Add core audit logging for login events, config changes, and manual sync triggers (`audit_event`, `IAuditLog`, admin query endpoint, 2-year retention). Scheduled sync runs are covered by `mailbox_sync_run` rather than duplicated; magic-link events will be added with magic links.
+- [x] (done) Add core audit logging for login events, config changes, and manual sync triggers (`audit_event`, `IAuditLog`, admin query endpoint, `/audit` console page, 2-year retention). Scheduled sync runs are covered by `mailbox_sync_run` rather than duplicated; magic-link events will be added with magic links.
 - [x] (done) Add guided path to enforcement: per-domain policy recommendation engine surfacing the next safe policy step (none -> quarantine -> reject) and the sources still blocking full enforcement (`/enforcement` endpoint + Domain Detail panel).
 - [x] (done) Persist published DMARC policy (`policy_published` from reports) and add a record-inspection view comparing published DMARC/SPF records (live DNS via host resolver) against observed report data (`/records` endpoint + Domain Detail card).
 - [x] (done) Add a threat feed view: dedicated list of unauthenticated/failing sending sources with IP, volume, and first/last-seen for spoofing investigation (`/threats` endpoint + Threats page in sidebar).

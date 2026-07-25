@@ -555,19 +555,21 @@ Get render status and artifact link.
 
 ### GET `/admin/audit-events`
 
-> **Implemented** as `GET /admin/audit-events` — see §0. Filters are `days`,
-> `eventType` (prefix match), `actor` (email substring), `clientId` and `limit`.
-> There is deliberately no write endpoint.
+> **Implemented.** Filters are `days` (1–730, default 30), `eventType` (prefix
+> match, so `client` finds `client.created` and `client.updated`), `actor` (email
+> substring, case-insensitive), `clientId`, `limit` (1–1000, default 200) and
+> `offset`. There is deliberately no write endpoint.
 
-Query core audit log.
+Returns `{ total, items[] }` — `total` is the count *before* paging, so the
+console can show "100 of 4,812" rather than implying the page is the whole trail.
 
-Filters:
+Each item carries `id`, `occurredAtUtc`, `actorType`, `actorUserId`, `actorEmail`,
+`eventType`, `targetType`, `targetId`, `clientId`, `clientName`, `summary`,
+`details`, `ipAddress` and `userAgent`.
 
-- `actorType`
-- `actorId`
-- `eventType`
-- `clientId`
-- `from` / `to`
+`clientName` is resolved by left join, not by a navigation: `audit_event` has no
+foreign keys on purpose, so a deleted client leaves its `clientId` in place and
+`clientName` simply reads null. Surfaced in the console at `/audit` (admin only).
 
 ### GET `/admin/health`
 

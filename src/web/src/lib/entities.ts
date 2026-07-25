@@ -85,3 +85,32 @@ export type MailboxSyncRun = {
   error: string | null
   createdAtUtc: string
 }
+
+/**
+ * One immutable audit-trail entry. `clientName` resolves to null when the event
+ * has no client, or when that client has since been deleted — the trail keeps
+ * the id either way, since `audit_event` deliberately has no foreign keys.
+ */
+export type AuditEvent = {
+  id: string
+  occurredAtUtc: string
+  /** `user`, `system`, or `anonymous` (a failed sign-in has no actor yet). */
+  actorType: string
+  actorUserId: string | null
+  actorEmail: string
+  /** Dotted name, e.g. `auth.login.succeeded`. */
+  eventType: string
+  targetType: string | null
+  targetId: string | null
+  clientId: string | null
+  clientName: string | null
+  summary: string
+  details: string | null
+  ipAddress: string | null
+  userAgent: string | null
+}
+
+export type AuditEventPage = {
+  total: number
+  items: AuditEvent[]
+}

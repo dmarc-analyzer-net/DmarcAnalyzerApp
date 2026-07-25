@@ -28,6 +28,7 @@ const manageNav: NavItem[] = [
   { to: '/users', label: 'Users', icon: 'users', visibleTo: isAdmin },
   { to: '/mailbox-sources', label: 'Mailbox sources', icon: 'mail', visibleTo: isStaff },
   { to: '/notifications', label: 'Notifications', icon: 'inbox', visibleTo: isStaff },
+  { to: '/audit', label: 'Audit trail', icon: 'file-text', visibleTo: isAdmin },
 ]
 
 function NavItemLink({ item }: { item: NavItem }) {
