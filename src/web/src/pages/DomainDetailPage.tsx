@@ -202,7 +202,9 @@ function buildEnforcementChecks(
   domain: DrilldownDomain,
   totals: DrilldownTotals,
 ): EnforcementCheck[] {
-  const policy = domain.publishedPolicy ?? 'none'
+  // Null when DNS publishes no usable DMARC record. Don't collapse it to 'none' —
+  // that reads as "this domain publishes p=none", which is a different claim.
+  const policy = domain.publishedPolicy
   const atQuarantine = policy === 'quarantine' || policy === 'reject'
   return [
     {
@@ -225,8 +227,14 @@ function buildEnforcementChecks(
     },
     {
       tone: atQuarantine ? 'ok' : 'warn',
-      title: atQuarantine ? 'Policy at quarantine or stronger' : 'Policy still monitoring',
-      detail: `Published p=${policy}`,
+      title: policy === null
+        ? 'No DMARC record published'
+        : atQuarantine
+          ? 'Policy at quarantine or stronger'
+          : 'Policy still monitoring',
+      detail: policy === null
+        ? 'No DMARC record found in DNS for this domain'
+        : `DNS publishes p=${policy}`,
     },
     {
       tone: policy === 'reject' ? 'ok' : 'neutral',

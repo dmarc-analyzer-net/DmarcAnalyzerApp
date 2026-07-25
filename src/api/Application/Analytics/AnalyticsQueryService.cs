@@ -4,10 +4,27 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Analytics;
 
-public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUserContext currentUser) : IAnalyticsQueryService
+public sealed class AnalyticsQueryService(
+    DmarcAnalyzerDbContext db,
+    ICurrentUserContext currentUser,
+    IDnsTxtResolver dns) : IAnalyticsQueryService
 {
     private const double AlignedThreshold = 0.98;
     private const double IssuesThreshold = 0.90;
+
+    /// <summary>
+    /// The policy published in DNS right now. Reports only ever tell us what
+    /// *was* published when they were generated, so a domain that stopped
+    /// reporting keeps asserting a stale policy — one live domain showed p=none
+    /// in the header from a report 20 months old while DNS said p=reject.
+    /// Advice about what to publish has to come from DNS.
+    ///
+    /// IDnsTxtResolver is cache-backed, so this is one lookup per domain per TTL
+    /// rather than one per request. A missing or failed lookup yields nulls, which
+    /// the header renders as "policy unknown" rather than guessing.
+    /// </summary>
+    private async Task<DnsDmarcRecordDto> PublishedDmarcAsync(string domainName, CancellationToken ct)
+        => RecordInspectionService.ParseDmarc(await dns.ResolveAsync($"_dmarc.{domainName}", ct));
 
     public async Task<AnalyticsSummaryDto> GetSummaryAsync(int days, CancellationToken ct)
     {
@@ -284,17 +301,14 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUse
             return null;
         }
 
-        var policy = await db.DmarcReports
-            .AsNoTracking()
-            .Where(x => x.DomainId == domainId)
-            .OrderByDescending(x => x.RangeEndUtc)
-            .ThenByDescending(x => x.IngestedAtUtc)
-            .Select(x => new { x.PublishedPolicy, x.SubdomainPolicy, x.PublishedPct, x.DkimAlignment, x.SpfAlignment })
-            .FirstOrDefaultAsync(ct);
+        // "Published" means published in DNS — the observed values a reporter sent
+        // are surfaced separately by the record-inspection comparison, which is the
+        // only place the two should be shown against each other.
+        var published = await PublishedDmarcAsync(domainRow.Name, ct);
 
         var domain = new DomainDrilldownDomainDto(
             domainRow.Id, domainRow.Name, domainRow.IsActive, domainRow.ClientId, domainRow.ClientName, domainRow.ClientSlug,
-            policy?.PublishedPolicy, policy?.SubdomainPolicy, policy?.PublishedPct, policy?.DkimAlignment, policy?.SpfAlignment);
+            published.Policy, published.SubdomainPolicy, published.Pct, published.DkimAlignment, published.SpfAlignment);
 
         var window = await ResolveWindowAsync(days, ct);
         var records = DomainRecordsInWindow(domainId, window);
@@ -520,13 +534,9 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUse
             return null;
         }
 
-        var policy = await db.DmarcReports
-            .AsNoTracking()
-            .Where(x => x.DomainId == domainId)
-            .OrderByDescending(x => x.RangeEndUtc)
-            .ThenByDescending(x => x.IngestedAtUtc)
-            .Select(x => new { x.PublishedPolicy, x.PublishedPct })
-            .FirstOrDefaultAsync(ct);
+        // Advice about what to publish is only sound against what is published now,
+        // so this reads DNS rather than the newest report.
+        var published = await PublishedDmarcAsync(domainRow.Name, ct);
 
         var window = await ResolveWindowAsync(days, ct);
 
@@ -581,7 +591,7 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUse
             .ThenByDescending(x => x.Messages)
             .ToList();
 
-        var currentPolicy = policy?.PublishedPolicy;
+        var currentPolicy = published.Policy;
         var status = EnforcementStatus.Resolve(messages, rate, currentPolicy);
         var (recommendedPolicy, action, rationale, ready) = RecommendEnforcement(messages, rate, currentPolicy, blocking.Count);
 
@@ -590,7 +600,7 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUse
             domainRow.Name,
             window,
             currentPolicy,
-            policy?.PublishedPct,
+            published.Pct,
             status,
             messages,
             compliant,
@@ -711,20 +721,22 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUse
         if (messages == 0)
         {
             // No traffic *in this window* says nothing about the policy already
-            // published. The caller's policy lookup is deliberately not
-            // window-scoped, so a domain whose newest report is months old still
-            // arrives here with a known policy — and returning "none" told every
-            // such domain to weaken it. On the live instance that was 26 domains,
+            // published. currentPolicy now comes from live DNS rather than from the
+            // newest report, so a domain that stopped reporting months ago still
+            // arrives here with its real policy. Returning "none" told every such
+            // domain to weaken itself — on the live instance that was 26 domains,
             // all of them at p=reject, being advised to publish p=none.
             if (!string.IsNullOrEmpty(currentPolicy))
             {
                 return (currentPolicy, "Collect more data",
-                    $"No DMARC report data in this window. The most recent report for this domain published p={currentPolicy} — keep it in place and let reports accumulate before changing anything.",
+                    $"No DMARC report data in this window. DNS publishes p={currentPolicy} — keep it in place and let reports accumulate before changing anything.",
                     false);
             }
 
+            // Reaching here means DNS has no usable DMARC record, so starting at
+            // p=none is the right first step rather than a weakening.
             return ("none", "Collect more data",
-                "No DMARC reports have arrived for this domain yet — publish a p=none record and let reports accumulate before advancing.",
+                "No DMARC record is published in DNS for this domain — publish a p=none record and let reports accumulate before advancing.",
                 false);
         }
 

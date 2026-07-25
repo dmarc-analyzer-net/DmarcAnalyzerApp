@@ -66,7 +66,7 @@ public sealed class ThreatFeedTests
             ("192.0.2.77", 300, "fail", "fail"));    // bigger threat
         await db.SaveChangesAsync();
 
-        var feed = await new AnalyticsQueryService(db, TestCurrentUserContext.Admin())
+        var feed = await new AnalyticsQueryService(db, TestCurrentUserContext.Admin(), TestDnsTxtResolver.Empty())
             .GetThreatFeedAsync(30, 100, CancellationToken.None);
 
         Assert.Equal(2, feed.TotalSources);
@@ -90,7 +90,7 @@ public sealed class ThreatFeedTests
             ("203.0.113.10", 200, "fail", "fail")); // same ip, partly failing
         await db.SaveChangesAsync();
 
-        var feed = await new AnalyticsQueryService(db, TestCurrentUserContext.Admin())
+        var feed = await new AnalyticsQueryService(db, TestCurrentUserContext.Admin(), TestDnsTxtResolver.Empty())
             .GetThreatFeedAsync(30, 100, CancellationToken.None);
 
         var source = Assert.Single(feed.Sources);
@@ -110,7 +110,7 @@ public sealed class ThreatFeedTests
         AddReport(db, otherDomain.Id, ("192.0.2.99", 999, "fail", "fail"));
         await db.SaveChangesAsync();
 
-        var feed = await new AnalyticsQueryService(db, TestCurrentUserContext.Viewer(granted.Id))
+        var feed = await new AnalyticsQueryService(db, TestCurrentUserContext.Viewer(granted.Id), TestDnsTxtResolver.Empty())
             .GetThreatFeedAsync(30, 100, CancellationToken.None);
 
         var source = Assert.Single(feed.Sources);

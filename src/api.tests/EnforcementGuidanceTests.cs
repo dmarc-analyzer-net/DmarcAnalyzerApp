@@ -53,8 +53,10 @@ public sealed class EnforcementGuidanceTests
         return (client.Id, domain.Id);
     }
 
-    private static AnalyticsQueryService Service(DmarcAnalyzerDbContext db)
-        => new(db, TestCurrentUserContext.Admin());
+    // The guidance reads the current policy from live DNS, not from reports, so
+    // each test states what DNS publishes. No stub means no DMARC record at all.
+    private static AnalyticsQueryService Service(DmarcAnalyzerDbContext db, IDnsTxtResolver? dns = null)
+        => new(db, TestCurrentUserContext.Admin(), dns ?? TestDnsTxtResolver.Empty());
 
     /// <summary>
     /// Places a report for `domain` at `daysAgo`, and a second domain's report
@@ -122,7 +124,8 @@ public sealed class EnforcementGuidanceTests
         await using var db = NewDb();
         var domainId = await SeedStaleDomainAsync(db, published);
 
-        var g = await Service(db).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+        var dns = TestDnsTxtResolver.WithPolicy("stale.example", published);
+        var g = await Service(db, dns).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
 
         Assert.NotNull(g);
         Assert.Equal(0, g!.Messages);
@@ -133,7 +136,7 @@ public sealed class EnforcementGuidanceTests
     }
 
     [Fact]
-    public async Task NoReportsEverForTheDomain_StillAdvisesStartingAtNone()
+    public async Task NoDmarcRecordInDns_AdvisesStartingAtNone()
     {
         await using var db = NewDb();
         var domainId = await SeedStaleDomainAsync(db, publishedPolicy: null);
@@ -144,7 +147,7 @@ public sealed class EnforcementGuidanceTests
         Assert.Equal(0, g!.Messages);
         Assert.Equal("none", g.RecommendedPolicy);
         Assert.False(g.ReadyToAdvance);
-        Assert.Contains("No DMARC reports have arrived", g.Rationale);
+        Assert.Contains("No DMARC record is published in DNS", g.Rationale);
     }
 
     [Fact]
@@ -155,7 +158,7 @@ public sealed class EnforcementGuidanceTests
             ("203.0.113.10", 800, true),   // aligned
             ("198.51.100.24", 200, false)); // failing
 
-        var g = await Service(db).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+        var g = await Service(db, TestDnsTxtResolver.WithPolicy("acme.example", "none")).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
 
         Assert.NotNull(g);
         Assert.Equal("none", g!.CurrentPolicy);
@@ -177,7 +180,7 @@ public sealed class EnforcementGuidanceTests
             ("203.0.113.10", 1000, true),
             ("198.51.100.24", 2, false)); // negligible
 
-        var g = await Service(db).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+        var g = await Service(db, TestDnsTxtResolver.WithPolicy("acme.example", "none")).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
 
         Assert.NotNull(g);
         Assert.True(g!.ReadyToAdvance);
@@ -192,7 +195,7 @@ public sealed class EnforcementGuidanceTests
         await using var db = NewDb();
         var (_, domainId) = await SeedAsync(db, "reject", ("203.0.113.10", 500, true));
 
-        var g = await Service(db).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+        var g = await Service(db, TestDnsTxtResolver.WithPolicy("acme.example", "reject")).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
 
         Assert.NotNull(g);
         Assert.True(g!.ReadyToAdvance);
@@ -208,7 +211,7 @@ public sealed class EnforcementGuidanceTests
         var (clientId, domainId) = await SeedAsync(db, "none", ("203.0.113.10", 10, true));
 
         // A viewer granted a *different* client must not see this domain.
-        var svc = new AnalyticsQueryService(db, TestCurrentUserContext.Viewer(Guid.NewGuid()));
+        var svc = new AnalyticsQueryService(db, TestCurrentUserContext.Viewer(Guid.NewGuid()), TestDnsTxtResolver.Empty());
         var g = await svc.GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
 
         Assert.Null(g);
