@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
@@ -42,8 +42,6 @@ type SourceSortKey =
   | 'compliance'
   | 'dkim'
   | 'spf'
-  | 'quarantined'
-  | 'rejected'
   | 'reporters'
   | 'lastSeen'
 
@@ -55,8 +53,6 @@ const defaultSortDir: Record<SourceSortKey, SortDir> = {
   compliance: 'asc',
   dkim: 'asc',
   spf: 'asc',
-  quarantined: 'desc',
-  rejected: 'desc',
   reporters: 'desc',
   lastSeen: 'desc',
 }
@@ -89,12 +85,6 @@ function compareSources(
       break
     case 'spf':
       cmp = a.spfPassRate - b.spfPassRate
-      break
-    case 'quarantined':
-      cmp = a.quarantined - b.quarantined
-      break
-    case 'rejected':
-      cmp = a.rejected - b.rejected
       break
     case 'reporters':
       cmp = a.reporters - b.reporters
@@ -671,7 +661,48 @@ function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPanelProps)
 
 // --- Page ---
 
-const SOURCE_COLUMN_COUNT = 10
+/**
+ * Renders a source IP, allowing IPv6 to wrap at its colons.
+ *
+ * IPv6 is 38-40 characters and 316px wide in mono, against 119px for IPv4. Once the
+ * hostname moved to its own spanning row, this became the only thing setting the
+ * column's width — worth stating precisely, because the hostname is the intuitive
+ * culprit and it is not the one. Shortening every hostname in the rendered table moved
+ * the column not at all (348px before and after); shortening every IP took it from
+ * 348px to 119px and the table from 1138px to 1038px, exactly its container.
+ *
+ * A <wbr> after each colon lets a long address fold at a group boundary and never
+ * mid-hextet, so nothing is truncated and shorter addresses stay on one line. IPv4 has
+ * no colons and is returned untouched.
+ */
+function SourceIpText({ ip }: { ip: string }) {
+  if (!ip.includes(':')) return <>{ip}</>
+  const groups = ip.split(':')
+  return (
+    <>
+      {groups.map((group, i) => (
+        <span key={i}>
+          {group}
+          {i < groups.length - 1 ? (
+            <>
+              :<wbr />
+            </>
+          ) : null}
+        </span>
+      ))}
+    </>
+  )
+}
+
+// Quarantined and Rejected moved into the expanded row, so 8 remain in the table.
+const SOURCE_COLUMN_COUNT = 8
+
+// The reverse-DNS hostname sits on its own row spanning the first four columns
+// (Source IP, Messages, Failed, Compliance) rather than inside the Source IP cell.
+// A 64-character AWS/Outlook hostname is 375px wide and was forcing that one column
+// to 419px, which is most of why this table needed 1425px in a 1038px container.
+// Spanning four columns gives it ~531px to use without widening anything.
+const SOURCE_HOSTNAME_COLSPAN = 4
 
 export function DomainDetailPage() {
   const { domainId = '' } = useParams()
@@ -1034,7 +1065,9 @@ export function DomainDetailPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead aria-sort={sortKey === 'ip' ? ariaSort : undefined}>
+                      {/* Bounded so a 316px IPv6 address folds at a colon rather than
+                          making this the widest column in the table again. */}
+                      <TableHead className="w-[190px]" aria-sort={sortKey === 'ip' ? ariaSort : undefined}>
                         <SortHeader label="Source IP" column="ip" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                       </TableHead>
                       <TableHead className="text-right" aria-sort={sortKey === 'messages' ? ariaSort : undefined}>
@@ -1052,12 +1085,6 @@ export function DomainDetailPage() {
                       <TableHead className="text-right" aria-sort={sortKey === 'spf' ? ariaSort : undefined}>
                         <SortHeader label="SPF" column="spf" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                       </TableHead>
-                      <TableHead className="text-right" aria-sort={sortKey === 'quarantined' ? ariaSort : undefined}>
-                        <SortHeader label="Quarantined" column="quarantined" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                      </TableHead>
-                      <TableHead className="text-right" aria-sort={sortKey === 'rejected' ? ariaSort : undefined}>
-                        <SortHeader label="Rejected" column="rejected" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                      </TableHead>
                       <TableHead className="text-right" aria-sort={sortKey === 'reporters' ? ariaSort : undefined}>
                         <SortHeader label="Reporters" column="reporters" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                       </TableHead>
@@ -1066,88 +1093,124 @@ export function DomainDetailPage() {
                       </TableHead>
                     </TableRow>
                   </TableHeader>
-                  <TableBody>
-                    {sortedSources.map((source) => {
-                      const expanded = selectedSource === source.sourceIp
-                      return (
-                        <Fragment key={source.sourceIp}>
+                  {/* One tbody per source rather than one for the whole table. A source
+                      occupies up to three rows — the values, the hostname beneath them,
+                      and the expanded panel — and grouping them lets the divider and the
+                      hover highlight belong to the source instead of to each row, which
+                      is what makes the hostname read as part of the row above it. */}
+                  {sortedSources.map((source) => {
+                    const expanded = selectedSource === source.sourceIp
+                    const hostname = hostnames[source.sourceIp]
+                    return (
+                      <tbody
+                        key={source.sourceIp}
+                        className={cn(
+                          'border-b border-[var(--gray-100)] transition-colors duration-[120ms] ease-out hover:bg-gray-50',
+                          expanded && 'bg-gray-50',
+                        )}
+                      >
+                        <TableRow
+                          id={`source-row-${source.sourceIp}`}
+                          // The tbody owns the divider and the hover, so the rows inside
+                          // must not draw their own or the group looks like two rows.
+                          className="border-0 hover:bg-transparent"
+                          onClick={() => toggleSource(source.sourceIp)}
+                        >
+                          <TableCell>
+                            {/* IP only. The hostname used to live here and, at 375px for a
+                                64-character Outlook name, it alone set this column's width. */}
+                            <button
+                              type="button"
+                              aria-expanded={expanded}
+                              onClick={(event) => {
+                                event.stopPropagation()
+                                toggleSource(source.sourceIp)
+                              }}
+                              className="inline-flex items-start gap-1.5 rounded-xs text-left font-mono text-sm font-medium text-body transition-colors hover:text-brand focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none"
+                            >
+                              <Icon
+                                name="chevron-right"
+                                size={14}
+                                className={cn(
+                                  'mt-0.5 shrink-0 text-secondary transition-transform',
+                                  expanded && 'rotate-90',
+                                )}
+                              />
+                              <span>
+                                <SourceIpText ip={source.sourceIp} />
+                              </span>
+                            </button>
+                          </TableCell>
+                          <TableCell align="right" className="tabular-nums">
+                            {formatCompact(source.messages)}
+                          </TableCell>
+                          <TableCell
+                            align="right"
+                            className={cn(
+                              'tabular-nums',
+                              source.failedMessages > 0 && 'font-medium text-[var(--status-danger-fg)]',
+                            )}
+                          >
+                            {formatCompact(source.failedMessages)}
+                          </TableCell>
+                          <TableCell>
+                            <ComplianceBar value={source.complianceRate * 100} width={110} />
+                          </TableCell>
+                          <TableCell align="right" className="tabular-nums">
+                            {formatPercent(source.dkimPassRate)}
+                          </TableCell>
+                          <TableCell align="right" className="tabular-nums">
+                            {formatPercent(source.spfPassRate)}
+                          </TableCell>
+                          <TableCell align="right" className="tabular-nums">
+                            {source.reporters.toLocaleString('en-US')}
+                          </TableCell>
+                          <TableCell className="whitespace-nowrap text-secondary">
+                            {formatRelativeOrDate(source.lastSeenUtc)}
+                          </TableCell>
+                        </TableRow>
+                        {hostname ? (
                           <TableRow
-                            id={`source-row-${source.sourceIp}`}
-                            className={cn(expanded && 'bg-gray-50')}
+                            className="border-0 hover:bg-transparent"
                             onClick={() => toggleSource(source.sourceIp)}
                           >
-                            <TableCell>
-                              <button
-                                type="button"
-                                aria-expanded={expanded}
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  toggleSource(source.sourceIp)
-                                }}
-                                className="inline-flex items-center gap-1.5 rounded-xs font-mono text-sm font-medium text-body transition-colors hover:text-brand focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none"
-                              >
-                                <Icon
-                                  name="chevron-right"
-                                  size={14}
-                                  className={cn('shrink-0 text-secondary transition-transform', expanded && 'rotate-90')}
-                                />
-                                {source.sourceIp}
-                              </button>
-                              {hostnames[source.sourceIp] ? (
-                                <div className="mt-0.5 pl-5 text-xs text-secondary">
-                                  {hostnames[source.sourceIp]}
-                                </div>
-                              ) : null}
-                            </TableCell>
-                            <TableCell align="right" className="tabular-nums">
-                              {formatCompact(source.messages)}
-                            </TableCell>
                             <TableCell
-                              align="right"
-                              className={cn(
-                                'tabular-nums',
-                                source.failedMessages > 0 && 'font-medium text-[var(--status-danger-fg)]',
-                              )}
+                              colSpan={SOURCE_HOSTNAME_COLSPAN}
+                              // pt-0 closes the gap to the IP above; pl-9 lines the hostname
+                              // up under the IP rather than under the chevron.
+                              className="pt-0 pb-3 pl-9 text-xs text-secondary"
                             >
-                              {formatCompact(source.failedMessages)}
-                            </TableCell>
-                            <TableCell>
-                              <ComplianceBar value={source.complianceRate * 100} width={110} />
-                            </TableCell>
-                            <TableCell align="right" className="tabular-nums">
-                              {formatPercent(source.dkimPassRate)}
-                            </TableCell>
-                            <TableCell align="right" className="tabular-nums">
-                              {formatPercent(source.spfPassRate)}
-                            </TableCell>
-                            <TableCell align="right" className="tabular-nums">
-                              {formatCompact(source.quarantined)}
-                            </TableCell>
-                            <TableCell align="right" className="tabular-nums">
-                              {formatCompact(source.rejected)}
-                            </TableCell>
-                            <TableCell align="right" className="tabular-nums">
-                              {source.reporters.toLocaleString('en-US')}
-                            </TableCell>
-                            <TableCell className="whitespace-nowrap text-secondary">
-                              {formatRelativeOrDate(source.lastSeenUtc)}
+                              {hostname}
                             </TableCell>
                           </TableRow>
-                          {expanded ? (
-                            <TableRow className="hover:bg-transparent">
-                              <TableCell colSpan={SOURCE_COLUMN_COUNT} className="bg-gray-50 p-0">
-                                <SourceDetailPanel
-                                  domainId={domainId}
-                                  sourceIp={source.sourceIp}
-                                  days={days}
-                                />
-                              </TableCell>
-                            </TableRow>
-                          ) : null}
-                        </Fragment>
-                      )
-                    })}
-                  </TableBody>
+                        ) : null}
+                        {expanded ? (
+                          <TableRow className="border-0 hover:bg-transparent">
+                            <TableCell colSpan={SOURCE_COLUMN_COUNT} className="bg-gray-50 p-0">
+                              {/* Quarantined and Rejected live here rather than as columns:
+                                  the two of them cost 216px of table width, which is what
+                                  kept this table wider than its container. */}
+                              <dl className="flex gap-6 border-b border-[var(--gray-100)] px-4 py-2.5 text-xs">
+                                <div className="flex gap-1.5">
+                                  <dt className="text-secondary">Quarantined</dt>
+                                  <dd className="tabular-nums text-body">{formatCompact(source.quarantined)}</dd>
+                                </div>
+                                <div className="flex gap-1.5">
+                                  <dt className="text-secondary">Rejected</dt>
+                                  <dd className="tabular-nums text-body">{formatCompact(source.rejected)}</dd>
+                                </div>
+                              </dl>
+                              <SourceDetailPanel
+                                domainId={domainId}
+                                sourceIp={source.sourceIp}
+                                days={days}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ) : null}
+                      </tbody>
+                    )
+                  })}
                 </Table>
               </div>
             )}

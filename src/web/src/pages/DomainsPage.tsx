@@ -72,12 +72,11 @@ type DomainRow = Omit<DomainAnalytics, 'clientName' | 'clientSlug'> & {
   crud: Domain | null
 }
 
-type SortKey = 'name' | 'client' | 'policy' | 'compliance' | 'messages' | 'status'
+type SortKey = 'name' | 'policy' | 'compliance' | 'messages' | 'status'
 
 /** Direction applied when a column first becomes the active sort. */
 const defaultSortDir: Record<SortKey, SortDir> = {
   name: 'asc',
-  client: 'asc',
   policy: 'desc',
   compliance: 'asc',
   messages: 'desc',
@@ -113,13 +112,6 @@ function compareRows(a: DomainRow, b: DomainRow, key: SortKey, dir: SortDir): nu
     case 'name':
       cmp = a.name.localeCompare(b.name)
       break
-    case 'client': {
-      const aName = a.clientName ?? ''
-      const bName = b.clientName ?? ''
-      if (!aName !== !bName) return aName ? -1 : 1
-      cmp = aName.localeCompare(bName)
-      break
-    }
     case 'policy':
       cmp = policyRank[a.publishedPolicy ?? 'none'] - policyRank[b.publishedPolicy ?? 'none']
       break
@@ -412,11 +404,12 @@ export function DomainsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                {/* Domain and client share one column, stacked. Separately they took
+                    446px of a table that only had 1038px to spend; stacked they need the
+                    width of the wider of the two (218px for the longest domain, 137px for
+                    the longest client name) and the table stops overflowing. */}
                 <TableHead aria-sort={sortKey === 'name' ? ariaSort : undefined}>
                   <SortHeader label="Domain" column="name" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
-                </TableHead>
-                <TableHead aria-sort={sortKey === 'client' ? ariaSort : undefined}>
-                  <SortHeader label="Client" column="client" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
                 </TableHead>
                 <TableHead aria-sort={sortKey === 'policy' ? ariaSort : undefined}>
                   <SortHeader label="Policy" column="policy" sortKey={sortKey} sortDir={sortDir} onSort={handleSort} />
@@ -451,13 +444,15 @@ export function DomainsPage() {
                         />
                         <span className="font-mono text-sm text-body">{row.name}</span>
                       </span>
-                    </TableCell>
-                    <TableCell>
-                      {row.clientSlug === 'default' ? (
-                        <Badge variant="warning">Default — needs client</Badge>
-                      ) : (
-                        <span className="text-sm text-secondary">{row.clientName ?? '—'}</span>
-                      )}
+                      {/* pl-[18px] lines the client up under the domain name rather than
+                          under the status dot. */}
+                      <div className="mt-0.5 pl-[18px]">
+                        {row.clientSlug === 'default' ? (
+                          <Badge variant="warning">Default — needs client</Badge>
+                        ) : (
+                          <span className="text-xs text-secondary">{row.clientName ?? '—'}</span>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       {/* The policy is cached from DNS, so it no longer depends on
