@@ -25,10 +25,12 @@ Then open **http://localhost:8080** and create the first admin account
 What you get: the API + console on port 8080, a background worker polling your
 mailboxes for DMARC reports, and PostgreSQL — three containers, one image.
 
-- Image: `ghcr.io/dmarc-analyzer-net/dmarc-analyzer` (`latest`, `sha-…`, or a
-  version tag; `linux/amd64` + `linux/arm64`). The same image is mirrored to
-  Docker Hub as `dmarcanalyzernet/dmarc-analyzer` — GHCR is recommended because
-  it has no anonymous pull rate limits.
+- Image: `ghcr.io/dmarc-analyzer-net/dmarc-analyzer`, for `linux/amd64` +
+  `linux/arm64`. Mirrored to Docker Hub as `dmarcanalyzernet/dmarc-analyzer`;
+  GHCR is recommended because it has no anonymous pull rate limits.
+- Tags: **`latest`** is the most recent release (what the compose file uses), or
+  pin a version such as `0.1.0`. **`edge`** tracks `main` and is unreleased —
+  useful for trying a fix early, not for production.
 - Next steps: add a client, a domain, and a mailbox source (the inbox your
   `rua=` reports arrive in) — see `docs/ops/mailbox-sync.md`.
 - Upgrading: `docker compose pull && docker compose up -d` (schema migrations
