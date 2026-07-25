@@ -109,7 +109,22 @@ if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 {
     using var migrationScope = app.Services.CreateScope();
     var db = migrationScope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>();
+
+    // A schema change shipped by a deploy is the most audit-worthy event there
+    // is, and until now only the manual endpoint recorded one. Capture the
+    // pending list first: after MigrateAsync there is nothing left to report,
+    // and an empty list means this boot changed nothing and warrants no entry.
+    var pending = (await db.Database.GetPendingMigrationsAsync()).ToArray();
     await db.Database.MigrateAsync();
+
+    if (pending.Length > 0)
+    {
+        var audit = migrationScope.ServiceProvider.GetRequiredService<IAuditLog>();
+        await audit.RecordSystemAsync(
+            AuditEvents.DatabaseMigrated,
+            $"Applied {pending.Length} pending database migration{(pending.Length == 1 ? "" : "s")} on startup",
+            details: string.Join(", ", pending));
+    }
 }
 
 if (app.Environment.IsDevelopment())

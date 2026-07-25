@@ -863,7 +863,14 @@ export function DomainDetailPage() {
         </div>
         {domain && enfMeta ? (
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <PolicyBadge policy={domain.publishedPolicy ?? 'none'} />
+            {/* No report has ever named a policy, so asserting p=none beside a
+                "No data" badge would be a claim we cannot support — the domain
+                may well publish p=reject. Matches the Domains list. */}
+            {domain.publishedPolicy ? (
+              <PolicyBadge policy={domain.publishedPolicy} />
+            ) : (
+              <span className="text-xs text-faint">policy unknown</span>
+            )}
             <Badge variant={enfMeta.badge}>{enfMeta.label}</Badge>
             {domain.clientSlug === 'default' ? (
               <Badge variant="warning">Default — needs client</Badge>

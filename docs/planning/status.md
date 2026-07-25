@@ -161,6 +161,10 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     it cannot break the operation it describes
   - read-only over HTTP (`GET /api/v1/admin/audit-events`, filterable by day
     range, event-type prefix, actor and client) — there is no edit or delete
+  - startup migrations are audited too: the API records
+    `admin.database.migrated` as a system actor when a boot actually applies
+    pending migrations, listing them in `Details`, and records nothing when
+    there was nothing to apply
   - surfaced in the console at `/audit` (admin only): the same filters, paged 100
     at a time with the unpaged total shown, and a per-row expander for details,
     target and user agent
