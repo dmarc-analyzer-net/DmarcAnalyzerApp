@@ -86,6 +86,29 @@ design system.) See the categorized lists below for the full inventory.
 - [ ] (todo) Investigate DNS and WHOIS enrichment for sending infrastructure insights.
 - [ ] (todo) Add sending-source enrichment: map sending IPs/hostnames to known ESPs/services (beyond reverse DNS, which exists in HostnameResolver) and add IP geolocation for threat context (site claims sources "resolved to a recognisable service" and shown with "geography").
 - [ ] (todo) Evaluate anomaly detection for sudden DMARC/SPF/DKIM failure spikes.
+- [ ] (todo) **Move the GitHub Actions off the Node 20 runtime.** Every CI run
+      logs `Node 20 is being deprecated. This workflow is running with Node 24 by
+      default.` — the runner already forces Node 24 and runs the node20 actions
+      on it through a compatibility shim, so this is not a pending break but an
+      unsupported combination we are relying on today. It also adds noise to
+      every log, which is how the browser reviewer found it.
+
+      Verified 2026-07-25 — the current majors all declare `using: node24`:
+
+      | Action | Pinned | Declares node24 |
+      |---|---|---|
+      | `actions/checkout` | v4 (×3) | **v7.0.1** |
+      | `actions/setup-dotnet` | v4 | **v6.0.0** |
+      | `actions/setup-node` | v4 | **v7.0.0** |
+
+      The `docker/*` actions (build-push v6, login v3, metadata v5, setup-buildx
+      v3, setup-qemu v3) are already current and not part of this.
+
+      Major bumps, so read each changelog rather than bumping blind — `checkout`
+      v4→v7 crosses three majors. Do it on a branch and confirm the image job
+      still publishes to both registries before merging. The website repo has the
+      same item.
+
 - [ ] (todo) Evaluate optional BIMI support after DMARC MVP.
 - [ ] (todo) **Ingest and store SMTP TLS reports (TLS-RPT, RFC 8460).** Scoped
       2026-07-25. Attachments are already recognised and skipped cleanly, so this
