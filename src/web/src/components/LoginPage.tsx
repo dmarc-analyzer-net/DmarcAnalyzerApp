@@ -126,7 +126,7 @@ export function LoginPage() {
     <div className="flex min-h-screen items-center justify-center px-4 py-6">
       <Card className="w-full max-w-md">
         <CardHeader className="flex-col items-stretch">
-          <BrandLogo className="mb-5 h-auto w-full max-w-[205px]" />
+          <BrandLogo height={40} className="mb-5" />
           <CardTitle>{requiresBootstrap ? 'Welcome' : 'Sign in'}</CardTitle>
           <CardDescription className="mt-1">
             {requiresBootstrap

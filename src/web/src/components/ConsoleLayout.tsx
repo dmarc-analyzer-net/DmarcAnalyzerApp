@@ -65,7 +65,7 @@ export function ConsoleLayout() {
     <div className="flex min-h-screen items-stretch bg-surface-page">
       <aside className="sticky top-0 flex h-screen w-[var(--sidebar-w)] shrink-0 flex-col gap-0.5 border-r border-border bg-surface-card px-3 py-[18px]">
         <div className="mb-4 px-3">
-          <BrandLogo className="h-[30px] w-auto" />
+          <BrandLogo height={30} />
         </div>
 
         <SectionLabel>Overview</SectionLabel>
