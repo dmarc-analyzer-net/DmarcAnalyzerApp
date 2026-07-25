@@ -366,3 +366,6 @@ docker-compose.override.yml
 
 # built SPA staged into the API for host-run dev (image builds its own)
 src/api/wwwroot/
+
+# agent tooling — holds live git worktrees; must never be committed
+.claude/
