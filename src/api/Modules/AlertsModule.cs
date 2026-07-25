@@ -51,6 +51,32 @@ public sealed class AlertsModule : ICarterModule
             return Results.Ok(result);
         }).RequireAgencyAdmin();
 
+        // Renders a client's digest for a period without sending it — lets an
+        // operator see the content before it reaches a customer.
+        app.MapGet("/api/v1/admin/digest/preview", async (
+            Guid clientId,
+            int? monthsAgo,
+            IDigestService digest,
+            CancellationToken ct) =>
+        {
+            var now = DateTime.UtcNow;
+            var start = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc)
+                .AddMonths(-Math.Clamp(monthsAgo ?? 1, 1, 24));
+            var summary = await digest.BuildAsync(clientId, start, start.AddMonths(1), ct);
+            return summary is null
+                ? Results.NotFound()
+                : Results.Ok(new { summary, body = digest.Render(summary) });
+        }).RequireAgencyAdmin();
+
+        // Sends any digest that is due. Idempotent — a period already sent is skipped.
+        app.MapPost("/api/v1/admin/digest/send", async (
+            IDigestService digest,
+            CancellationToken ct) =>
+        {
+            var result = await digest.SendDueAsync(ct);
+            return Results.Ok(result);
+        }).RequireAgencyAdmin();
+
         // Proves the SMTP relay works without waiting for something to go wrong.
         app.MapPost("/api/v1/admin/notifications/test", async (
             string? to,

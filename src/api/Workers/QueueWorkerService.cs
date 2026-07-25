@@ -34,6 +34,7 @@ public sealed class QueueWorkerService(
                 await CloseStaleRunningSyncsAsync(stoppingToken);
                 await RunScheduledSyncPassAsync(stoppingToken);
                 await RunAlertPassIfDueAsync(stoppingToken);
+                await RunDigestPassIfDueAsync(stoppingToken);
                 await RunRetentionPassIfDueAsync(stoppingToken);
                 consecutiveFailures = 0;
             }
@@ -109,6 +110,33 @@ public sealed class QueueWorkerService(
 
         // Only on success, so a failure retries next pass.
         _lastAlertRunUtc = DateTime.UtcNow;
+    }
+
+    private DateTime? _lastDigestCheckUtc;
+
+    /// <summary>
+    /// Checks a few times a day whether the monthly digest is due. The real
+    /// guard against duplicates is the unique (client, period) row the digest
+    /// service writes, so a restart or an extra check is harmless.
+    /// </summary>
+    private async Task RunDigestPassIfDueAsync(CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var options = scope.ServiceProvider.GetRequiredService<IOptions<DigestOptions>>().Value;
+        if (!options.Enabled)
+        {
+            return;
+        }
+
+        var interval = TimeSpan.FromHours(Math.Max(1, options.CheckIntervalHours));
+        if (_lastDigestCheckUtc is { } last && DateTime.UtcNow - last < interval)
+        {
+            return;
+        }
+
+        var digest = scope.ServiceProvider.GetRequiredService<IDigestService>();
+        await digest.SendDueAsync(ct);
+        _lastDigestCheckUtc = DateTime.UtcNow;
     }
 
     private DateTime? _lastRetentionRunUtc;

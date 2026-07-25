@@ -5,11 +5,13 @@ import { ConsoleLayout } from '@/components/ConsoleLayout'
 import { LoginPage } from '@/components/LoginPage'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin, isStaff } from '@/lib/authz'
+import { AlertsPage } from '@/pages/AlertsPage'
 import { ClientsPage } from '@/pages/ClientsPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { DomainDetailPage } from '@/pages/DomainDetailPage'
 import { DomainsPage } from '@/pages/DomainsPage'
 import { MailboxSourcesPage } from '@/pages/MailboxSourcesPage'
+import { NotificationsPage } from '@/pages/NotificationsPage'
 import { ThreatsPage } from '@/pages/ThreatsPage'
 import { UsersPage } from '@/pages/UsersPage'
 
@@ -45,6 +47,8 @@ function App() {
         <Route path="/domains" element={<DomainsPage />} />
         <Route path="/domains/:domainId" element={<DomainDetailPage />} />
         <Route path="/threats" element={<ThreatsPage />} />
+        <Route path="/alerts" element={<AlertsPage />} />
+        <Route path="/notifications" element={staff ? <NotificationsPage /> : fallback} />
         <Route path="/mailbox-sources" element={staff ? <MailboxSourcesPage /> : fallback} />
         <Route path="/users" element={admin ? <UsersPage /> : fallback} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />

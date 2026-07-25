@@ -20,12 +20,14 @@ const primaryNav: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: 'layout-dashboard' },
   { to: '/domains', label: 'Domains', icon: 'globe' },
   { to: '/threats', label: 'Threats', icon: 'triangle-alert' },
+  { to: '/alerts', label: 'Alerts', icon: 'circle-alert' },
 ]
 
 const manageNav: NavItem[] = [
   { to: '/clients', label: 'Clients', icon: 'shield-check', visibleTo: isStaff },
   { to: '/users', label: 'Users', icon: 'users', visibleTo: isAdmin },
   { to: '/mailbox-sources', label: 'Mailbox sources', icon: 'mail', visibleTo: isStaff },
+  { to: '/notifications', label: 'Notifications', icon: 'inbox', visibleTo: isStaff },
 ]
 
 function NavItemLink({ item }: { item: NavItem }) {

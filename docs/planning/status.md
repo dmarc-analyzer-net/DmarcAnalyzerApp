@@ -128,6 +128,24 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     `POST /api/v1/admin/alerts/evaluate`,
     `POST /api/v1/admin/notifications/test`, and recipient CRUD
 
+- Monthly digest:
+  - `DigestService` composes a per-client summary for the **previous whole
+    calendar month**: compliance and its change against the prior month, volume,
+    failing sources, domains at enforcement, alerts raised, and the worst domains
+  - `digest_delivery` has a unique `(ClientId, PeriodStartUtc)`, which is what
+    makes sending idempotent — a restart or extra pass cannot email a month twice.
+    A period is recorded even when delivery fails, so a broken relay doesn't
+    retry forever
+  - worker check pass (`Digest:Enabled`, `DayOfMonth`, `CheckIntervalHours`);
+    `GET /api/v1/admin/digest/preview` renders without sending,
+    `POST /api/v1/admin/digest/send` sends anything due
+
+- Console pages for notifications:
+  - **Alerts** — history with severity, type, per-domain links, whether each was
+    emailed, and an admin "Evaluate now" action
+  - **Notifications** — recipient management (per-client or agency-wide) and a
+    test-send button that surfaces the API's configuration error verbatim
+
 ## Planned Next
 
 - Repository/service pattern hardening and broader indexing strategy.

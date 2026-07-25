@@ -90,6 +90,8 @@ cross-tenant ids return **404**, never 403.
 | GET | `/alerts` | any — alert history (`days`, default 30); client-scoped for viewers |
 | POST | `/admin/alerts/evaluate` | admin — evaluates alert rules now |
 | POST | `/admin/notifications/test` | admin — sends a test email. Requires `to` |
+| GET | `/admin/digest/preview` | admin — renders a client's digest without sending. Requires `clientId`; optional `monthsAgo` |
+| POST | `/admin/digest/send` | admin — sends any due digest; already-sent periods are skipped |
 | GET | `/notification-recipients` | staff |
 | POST | `/notification-recipients` | admin — `clientId` null means agency-wide |
 | DELETE | `/notification-recipients/{id}` | admin |

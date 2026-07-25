@@ -9,11 +9,8 @@ OIDC), worker ingestion, analytics dashboards, and per-source drill-down are
 all shipped. The near-term sequence below turns it from "works" into
 "operable and client-facing", ordered by value and dependencies.
 
-1. **Monthly email digest.** Per-client summary on a schedule. The SMTP relay,
-   recipient model, and email composition all landed with the alert engine, so
-   this is the digest content and schedule only.
-2. **Audit logging.** Login, config change, sync run, and (future) magic-link
-   events. Needed for agency trust and as a prerequisite for #3.
+1. **Audit logging.** Login, config change, sync run, and (future) magic-link
+   events. Needed for agency trust and as a prerequisite for #2.
 3. **Client access: portal polish + magic links.** The `client_viewer` role
    already approximates a read-only portal; add magic-link (single-client,
    read-only, 7-day) sharing for occasional client access without accounts.
@@ -62,7 +59,7 @@ design system.) See the categorized lists below for the full inventory.
 - [x] (done) Redesign the console UI — new "ink-green/teal" design system (tokens + self-hosted fonts), ported primitives, new sidebar shell, all six screens + login rebuilt; Domains/Detail surface published policy + enforcement status.
 - [ ] (todo) Add Kubernetes deployment assets — Helm chart(s) with health checks and stateless service patterns, supporting both self-contained (bundled PostgreSQL, local auth) and bring-your-own deployments (external managed PostgreSQL, external OIDC), toggled via chart values.
 - [ ] (todo) Add branded PDF report generation (server-side HTML to PDF) with agency logo/colors/footer.
-- [~] (in-progress) Add monthly email digest delivery and SMTP relay configuration. SMTP relay (`Email:*`, MailKit `EmailSender`), the `notification_recipient` model with `alert`/`digest`/`both` kinds, and an admin test-send endpoint are shipped; the **monthly digest itself is not built**.
+- [x] (done) Add monthly email digest delivery and SMTP relay configuration (`DigestService`, previous-whole-month period, `digest_delivery` for idempotency, worker check pass, admin preview/send endpoints).
 - [x] (done) Add alert engine for failure spikes and policy regression with per-client thresholds (`AlertEvaluationService`, hourly worker pass, `alert_event` history with cooldown, per-client overrides on `client`, email notification, `GET /alerts` + admin evaluate endpoint).
 - [ ] (todo) Add core audit logging for login events, config changes, sync runs, and magic-link usage.
 - [x] (done) Add guided path to enforcement: per-domain policy recommendation engine surfacing the next safe policy step (none -> quarantine -> reject) and the sources still blocking full enforcement (`/enforcement` endpoint + Domain Detail panel).

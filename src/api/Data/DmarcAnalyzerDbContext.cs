@@ -15,6 +15,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<DmarcReportIngest> DmarcReportIngests => Set<DmarcReportIngest>();
     public DbSet<NotificationRecipient> NotificationRecipients => Set<NotificationRecipient>();
     public DbSet<AlertEvent> AlertEvents => Set<AlertEvent>();
+    public DbSet<DigestDelivery> DigestDeliveries => Set<DigestDelivery>();
     public DbSet<MailboxSyncRun> MailboxSyncRuns => Set<MailboxSyncRun>();
     public DbSet<AgencyUser> AgencyUsers => Set<AgencyUser>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
@@ -252,6 +253,19 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.HasIndex(x => x.ClientId);
             // One row per address per scope; a null ClientId is the agency-wide scope.
             entity.HasIndex(x => new { x.ClientId, x.Email }).IsUnique();
+
+            entity.HasOne(x => x.Client)
+                .WithMany()
+                .HasForeignKey(x => x.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DigestDelivery>(entity =>
+        {
+            entity.ToTable("digest_delivery");
+            entity.HasKey(x => x.Id);
+            // The idempotency guarantee: one digest per client per period.
+            entity.HasIndex(x => new { x.ClientId, x.PeriodStartUtc }).IsUnique();
 
             entity.HasOne(x => x.Client)
                 .WithMany()

@@ -33,7 +33,9 @@ if (mode == "worker")
     workerBuilder.Services.Configure<EmailOptions>(workerBuilder.Configuration.GetSection("Email"));
     workerBuilder.Services.Configure<AlertOptions>(workerBuilder.Configuration.GetSection("Alerts"));
     workerBuilder.Services.AddScoped<IEmailSender, EmailSender>();
+    workerBuilder.Services.Configure<DigestOptions>(workerBuilder.Configuration.GetSection("Digest"));
     workerBuilder.Services.AddScoped<IAlertEvaluationService, AlertEvaluationService>();
+    workerBuilder.Services.AddScoped<IDigestService, DigestService>();
     workerBuilder.Services.Configure<WorkerOptions>(workerBuilder.Configuration.GetSection("Worker"));
     workerBuilder.Services.AddHostedService<QueueWorkerService>();
 
@@ -70,7 +72,9 @@ builder.Services.AddScoped<IRetentionPurgeService, RetentionPurgeService>();
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
 builder.Services.Configure<AlertOptions>(builder.Configuration.GetSection("Alerts"));
 builder.Services.AddScoped<IEmailSender, EmailSender>();
+builder.Services.Configure<DigestOptions>(builder.Configuration.GetSection("Digest"));
 builder.Services.AddScoped<IAlertEvaluationService, AlertEvaluationService>();
+builder.Services.AddScoped<IDigestService, DigestService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IHostnameResolver, HostnameResolver>();
 builder.Services.AddSingleton<IDnsTxtResolver, DnsTxtResolver>();

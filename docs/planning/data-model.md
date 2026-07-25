@@ -267,6 +267,19 @@ can see history.
 | `DetectedAtUtc` | indexed; `(ClientId, RuleType, DetectedAtUtc)` indexed for the cooldown lookup |
 | `NotifiedAtUtc` | nullable — null when no recipient or no relay |
 
+### `digest_delivery`
+One row per client per digest period. The unique index is the idempotency
+guarantee.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK |
+| `ClientId` | FK → `client`, **cascade** |
+| `PeriodStartUtc`, `PeriodEndUtc` | the covered month |
+| `SentAtUtc` | |
+| `RecipientCount` | 0 when recorded but nothing was delivered (no relay) |
+| — | `(ClientId, PeriodStartUtc)` **unique** |
+
 ## A.5.1 What is deliberately *not* a table
 
 - **No pre-aggregated metrics table.** Dashboard figures are computed on demand
@@ -288,7 +301,7 @@ are provisional.
 | Planned table(s) | Purpose | Backlog item |
 |---|---|---|
 | `alert_rule` | Per-client alert *rules* as rows. Shipped instead as threshold columns on `client`, which covers per-client tuning without another CRUD surface | — |
-| `digest_schedule`, `digest_delivery` | Monthly per-client email digests. `notification_recipient` and the SMTP relay already exist | monthly email digest |
+| `digest_schedule` | Per-client digest cadence as rows. Shipped instead as a single global `Digest:DayOfMonth` — per-client schedules had no demand | — |
 | `export_job` | Async CSV/JSON export | analytics export |
 | `pdf_report_job` | Branded PDF summaries | branded PDF reports |
 | `magic_link_nonce` | Signed single-client read-only links (7-day default), revocable via DB nonce | magic link access |

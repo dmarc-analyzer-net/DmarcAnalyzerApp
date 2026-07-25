@@ -360,3 +360,51 @@ export type RecordInspection = {
   observed: ObservedPolicy | null
   comparison: RecordComparison[]
 }
+
+// --- Alerts (GET /api/v1/alerts) ---
+
+export type AlertSeverity = 'info' | 'warning' | 'critical'
+export type AlertRuleType = 'failure_spike' | 'policy_regression'
+
+export type AlertEvent = {
+  id: string
+  clientId: string
+  clientName: string
+  domainId: string | null
+  domainName: string | null
+  ruleType: AlertRuleType
+  severity: AlertSeverity
+  status: string
+  title: string
+  details: string
+  detectedAtUtc: string
+  /** Null when no recipient was configured, or the relay isn't set up. */
+  notifiedAtUtc: string | null
+}
+
+export const ALERT_SEVERITY_META: Record<AlertSeverity, { label: string; badge: 'danger' | 'warning' | 'neutral' }> = {
+  critical: { label: 'Critical', badge: 'danger' },
+  warning: { label: 'Warning', badge: 'warning' },
+  info: { label: 'Info', badge: 'neutral' },
+}
+
+export const ALERT_RULE_LABEL: Record<AlertRuleType, string> = {
+  failure_spike: 'Failure spike',
+  policy_regression: 'Policy regression',
+}
+
+// --- Notification recipients (GET /api/v1/notification-recipients) ---
+
+export type NotificationKind = 'alert' | 'digest' | 'both'
+
+export type NotificationRecipient = {
+  id: string
+  /** Null means agency-wide: this address receives notifications for every client. */
+  clientId: string | null
+  clientName: string | null
+  email: string
+  kind: NotificationKind
+  isActive: boolean
+  createdAtUtc: string
+  updatedAtUtc: string
+}
