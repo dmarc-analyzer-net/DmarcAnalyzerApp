@@ -15,9 +15,13 @@
 
 :root {
   /* Semantic aliases — the source of truth referenced by the Tailwind theme. */
-  --brand: #0e9481;
-  --brand-hover: #0c7568;
-  --brand-active: #0b5d54;
+  /* --brand is teal-700, one step darker than teal-600. White on teal-600 is
+     3.8:1 and fails WCAG AA, and --brand carries white text on every primary
+     button. Do not revert it; teal-600 stays valid for non-text use only
+     (status dots, chart fills, borders — the 3:1 graphics threshold). */
+  --brand: #0c7568;
+  --brand-hover: #0b5d54;
+  --brand-active: #0a4a44;
   --brand-subtle: #effaf7;
   --brand-ring: rgba(14, 148, 129, 0.28);
 
@@ -27,8 +31,10 @@
   --surface-ink: #0b1d18;
 
   --text-body: #101f1c;
-  --text-secondary: #6b807a;
-  --text-faint: #9fb0ab;
+  /* Both cleared 4.5:1 on --surface-card and --surface-page; the previous
+     values were 4.2:1 and 2.3:1. Never lighten these to fix a design nit. */
+  --text-secondary: #54685f;
+  --text-faint: #5c6f67;
   --text-on-brand: #ffffff;
 
   --border-default: #e3eae8;
