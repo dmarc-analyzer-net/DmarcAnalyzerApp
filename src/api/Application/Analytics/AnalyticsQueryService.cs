@@ -236,7 +236,7 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUse
     {
         public Guid DomainId { get; set; }
         public string PublishedPolicy { get; set; } = "none";
-        public string SubdomainPolicy { get; set; } = "none";
+        public string? SubdomainPolicy { get; set; }
         public int PublishedPct { get; set; } = 100;
         public string DkimAlignment { get; set; } = "relaxed";
         public string SpfAlignment { get; set; } = "relaxed";
@@ -693,8 +693,21 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUse
     {
         if (messages == 0)
         {
+            // No traffic *in this window* says nothing about the policy already
+            // published. The caller's policy lookup is deliberately not
+            // window-scoped, so a domain whose newest report is months old still
+            // arrives here with a known policy — and returning "none" told every
+            // such domain to weaken it. On the live instance that was 26 domains,
+            // all of them at p=reject, being advised to publish p=none.
+            if (!string.IsNullOrEmpty(currentPolicy))
+            {
+                return (currentPolicy, "Collect more data",
+                    $"No DMARC report data in this window. The most recent report for this domain published p={currentPolicy} — keep it in place and let reports accumulate before changing anything.",
+                    false);
+            }
+
             return ("none", "Collect more data",
-                "No DMARC report data in this window yet — publish a p=none record and let reports accumulate before advancing.",
+                "No DMARC reports have arrived for this domain yet — publish a p=none record and let reports accumulate before advancing.",
                 false);
         }
 

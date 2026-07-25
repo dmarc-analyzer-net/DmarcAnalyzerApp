@@ -1,4 +1,5 @@
 using DmarcRua;
+using System.Xml;
 using System.Xml.Schema;
 using System.Xml.Linq;
 
@@ -16,6 +17,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         }
 
         using var sourceBuffer = CopyToMemory(xmlStream);
+        var hasSubdomainPolicy = HasSubdomainPolicyTag(sourceBuffer);
         var normalizationMessages = new List<string>();
         using var parserStream = NormalizeReportXml(sourceBuffer, normalizationMessages);
 
@@ -87,7 +89,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             aggregateReport.HasErrors,
             validationMessages,
             MapDisposition(policyPublished.P),
-            MapDisposition(policyPublished.Sp),
+            hasSubdomainPolicy ? MapDisposition(policyPublished.Sp) : null,
             ParsePercent(policyPublished.Percent),
             MapAlignment(policyPublished.Adkim),
             MapAlignment(policyPublished.Aspf));
@@ -105,6 +107,74 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         AlignmentType.Strict => "strict",
         _ => "relaxed",
     };
+
+    /// <summary>
+    /// Whether the reporter actually sent an sp tag.
+    /// <para>
+    /// adkim, aspf and pct all have fixed defaults, so collapsing an absent tag to
+    /// its default is correct for them. sp is the exception: RFC 7489 §6.3 defines
+    /// its default as "whatever p is", which is derived rather than fixed. The XSD
+    /// nonetheless defaults sp to "none", and DmarcRua 2.0.0 exposes no *Specified
+    /// members, so a deserialized absent sp is indistinguishable from an explicit
+    /// sp=none — which reads as a policy regression on a p=reject domain.
+    /// </para>
+    /// <para>
+    /// Presence therefore has to come from the XML. policy_published precedes the
+    /// record list, so this stops as soon as that element closes and never walks
+    /// the (potentially very large) body of the report.
+    /// </para>
+    /// </summary>
+    private static bool HasSubdomainPolicyTag(Stream xmlStream)
+    {
+        try
+        {
+            xmlStream.Position = 0;
+            using var reader = XmlReader.Create(xmlStream, new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null,
+                IgnoreWhitespace = true,
+                IgnoreComments = true,
+                CloseInput = false,
+            });
+
+            var inPolicyPublished = false;
+            while (reader.Read())
+            {
+                if (reader.NodeType == XmlNodeType.Element)
+                {
+                    if (reader.LocalName == "policy_published")
+                    {
+                        inPolicyPublished = true;
+                    }
+                    else if (inPolicyPublished && reader.LocalName == "sp")
+                    {
+                        return true;
+                    }
+                    else if (reader.LocalName == "record")
+                    {
+                        break;
+                    }
+                }
+                else if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName == "policy_published")
+                {
+                    break;
+                }
+            }
+
+            return false;
+        }
+        catch (XmlException)
+        {
+            // Malformed XML: report it as absent and let the DmarcRua pass surface
+            // the parse error, rather than failing ingestion twice for one cause.
+            return false;
+        }
+        finally
+        {
+            xmlStream.Position = 0;
+        }
+    }
 
     private static int ParsePercent(string? percent)
         => int.TryParse(percent, out var value) && value is >= 0 and <= 100 ? value : 100;

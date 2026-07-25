@@ -150,6 +150,28 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     (enable, compliance-drop threshold, minimum messages) are editable in the
     console rather than API-only
 
+- Audit logging:
+  - `audit_event` records who did what: sign-in success and failure, sign-out,
+    first-run registration, client/domain/mailbox-source/user changes, grant
+    changes, manual sync triggers, alert triage, recipient changes, and admin
+    migrations — with IP and user agent
+  - actor email is denormalised and the table has **no foreign keys**, so the
+    trail outlives the rows it refers to
+  - `IAuditLog` never throws: a failed audit write is logged, not propagated, so
+    it cannot break the operation it describes
+  - read-only over HTTP (`GET /api/v1/admin/audit-events`, filterable by day
+    range, event-type prefix, actor and client) — there is no edit or delete
+  - startup migrations are audited too: the API records
+    `admin.database.migrated` as a system actor when a boot actually applies
+    pending migrations, listing them in `Details`, and records nothing when
+    there was nothing to apply
+  - surfaced in the console at `/audit` (admin only): the same filters, paged 100
+    at a time with the unpaged total shown, and a per-row expander for details,
+    target and user agent
+  - aged out by the retention pass on its own 2-year window
+    (`Retention:AuditRetentionDays`), independent of client retention and legal
+    hold
+
 ## Planned Next
 
 - Repository/service pattern hardening and broader indexing strategy.

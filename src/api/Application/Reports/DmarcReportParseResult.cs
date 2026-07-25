@@ -12,7 +12,8 @@ public sealed record DmarcReportParseResult(
     bool HasValidationErrors,
     IReadOnlyList<string> ValidationMessages,
     string PublishedPolicy,
-    string SubdomainPolicy,
+    /// <summary>null when the reporter sent no sp tag — subdomains inherit p.</summary>
+    string? SubdomainPolicy,
     int PublishedPct,
     string DkimAlignment,
     string SpfAlignment);

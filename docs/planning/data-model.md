@@ -185,7 +185,7 @@ A normalized aggregate (RUA) report, resolved to a `domain`.
 | `RecordCount` | |
 | `IngestedAtUtc` | |
 | `PublishedPolicy` | max 16, default `none` — `policy_published.p` |
-| `SubdomainPolicy` | max 16, default `none` — `sp` |
+| `SubdomainPolicy` | max 16, **nullable** — `sp`. NULL means the reporter sent no `sp` tag, so subdomains inherit `p` (RFC 7489 §6.3). Rows ingested before this became nullable store `none` either way. |
 | `PublishedPct` | default 100 — `pct` |
 | `DkimAlignment`, `SpfAlignment` | max 16, default `relaxed` — `adkim` / `aspf` |
 | — | **`(DomainId, ReportId, RangeBeginUtc, RangeEndUtc)` unique — the dedup key** |
@@ -280,6 +280,27 @@ guarantee.
 | `RecipientCount` | 0 when recorded but nothing was delivered (no relay) |
 | — | `(ClientId, PeriodStartUtc)` **unique** |
 
+### `audit_event`
+Who did what. **No foreign keys on purpose** — a trail that loses meaning when a
+user or client row is deleted isn't a trail, so the actor email is copied in at
+write time.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK |
+| `OccurredAtUtc` | indexed; also `(EventType, OccurredAtUtc)` and `(ClientId, OccurredAtUtc)` |
+| `ActorType` | max 16 — `user` \| `system` \| `anonymous` |
+| `ActorUserId` | nullable, **not** an FK |
+| `ActorEmail` | max 320, denormalised |
+| `EventType` | max 64, dotted (`auth.login.failed`, `client.updated`) |
+| `TargetType`, `TargetId` | what was acted on |
+| `ClientId` | nullable, **not** an FK; lets the trail be filtered per tenant |
+| `Summary`, `Details` | max 500 / 4000, truncated rather than rejected |
+| `IpAddress`, `UserAgent` | max 64 / 512 |
+
+Aged out on its own window (`Retention:AuditRetentionDays`, 2 years), not by a
+client's retention setting, and **not protected by legal hold**.
+
 ## A.5.1 What is deliberately *not* a table
 
 - **No pre-aggregated metrics table.** Dashboard figures are computed on demand
@@ -305,7 +326,7 @@ are provisional.
 | `export_job` | Async CSV/JSON export | analytics export |
 | `pdf_report_job` | Branded PDF summaries | branded PDF reports |
 | `magic_link_nonce` | Signed single-client read-only links (7-day default), revocable via DB nonce | magic link access |
-| `audit_event` | Login, config change, sync run, magic-link usage | core audit logging |
+
 | archival before deletion | purging deletes outright; archiving to cold storage first is not implemented | — |
 | daily rollup table | Only if on-demand aggregation stops scaling (see A.5) | — |
 

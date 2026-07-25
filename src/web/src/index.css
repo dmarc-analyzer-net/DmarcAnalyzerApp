@@ -104,6 +104,12 @@
   #root {
     min-height: 100vh;
   }
+
+  /* Native form controls default to the browser's blue; follow the brand instead. */
+  input[type='checkbox'],
+  input[type='radio'] {
+    accent-color: var(--brand);
+  }
 }
 
 @layer utilities {

@@ -4,6 +4,7 @@ using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Application.Ingestion;
+using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Application.Retention;
 using DmarcAnalyzer.Api.Application.MailboxSources;
@@ -29,6 +30,10 @@ if (mode == "worker")
     workerBuilder.Services.AddCredentialProtection(workerBuilder.Configuration);
     workerBuilder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
     workerBuilder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
+    workerBuilder.Services.AddHttpContextAccessor();
+    workerBuilder.Services.AddScoped<ICurrentUserContext, SystemUserContext>();
+    workerBuilder.Services.AddScoped<IAuditLog, AuditLog>();
+    workerBuilder.Services.Configure<RetentionOptions>(workerBuilder.Configuration.GetSection("Retention"));
     workerBuilder.Services.AddScoped<IRetentionPurgeService, RetentionPurgeService>();
     workerBuilder.Services.Configure<EmailOptions>(workerBuilder.Configuration.GetSection("Email"));
     workerBuilder.Services.Configure<AlertOptions>(workerBuilder.Configuration.GetSection("Alerts"));
@@ -68,6 +73,10 @@ builder.Services.AddScoped<IMailboxSyncRunQueryService, MailboxSyncRunQueryServi
 builder.Services.AddScoped<IMailboxHealthQueryService, MailboxHealthQueryService>();
 builder.Services.AddScoped<IAnalyticsQueryService, AnalyticsQueryService>();
 builder.Services.AddScoped<IRecordInspectionService, RecordInspectionService>();
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddScoped<IAuditLog, AuditLog>();
+builder.Services.AddScoped<AuditQueryService>();
+builder.Services.Configure<RetentionOptions>(builder.Configuration.GetSection("Retention"));
 builder.Services.AddScoped<IRetentionPurgeService, RetentionPurgeService>();
 builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email"));
 builder.Services.Configure<AlertOptions>(builder.Configuration.GetSection("Alerts"));
@@ -100,7 +109,22 @@ if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 {
     using var migrationScope = app.Services.CreateScope();
     var db = migrationScope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>();
+
+    // A schema change shipped by a deploy is the most audit-worthy event there
+    // is, and until now only the manual endpoint recorded one. Capture the
+    // pending list first: after MigrateAsync there is nothing left to report,
+    // and an empty list means this boot changed nothing and warrants no entry.
+    var pending = (await db.Database.GetPendingMigrationsAsync()).ToArray();
     await db.Database.MigrateAsync();
+
+    if (pending.Length > 0)
+    {
+        var audit = migrationScope.ServiceProvider.GetRequiredService<IAuditLog>();
+        await audit.RecordSystemAsync(
+            AuditEvents.DatabaseMigrated,
+            $"Applied {pending.Length} pending database migration{(pending.Length == 1 ? "" : "s")} on startup",
+            details: string.Join(", ", pending));
+    }
 }
 
 if (app.Environment.IsDevelopment())

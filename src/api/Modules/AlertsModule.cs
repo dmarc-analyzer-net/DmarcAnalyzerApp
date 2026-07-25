@@ -1,4 +1,5 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Data;
@@ -59,6 +60,7 @@ public sealed class AlertsModule : ICarterModule
             Guid id,
             UpdateAlertStatusRequest request,
             DmarcAnalyzerDbContext db,
+            IAuditLog audit,
             CancellationToken ct) =>
         {
             var status = (request.Status ?? string.Empty).Trim().ToLowerInvariant();
@@ -75,9 +77,12 @@ public sealed class AlertsModule : ICarterModule
                 return Results.NotFound();
             }
 
+            var previous = alert.Status;
             alert.Status = status;
             await db.SaveChangesAsync(ct);
 
+            await audit.RecordAsync(AuditEvents.AlertStatusChanged,
+                $"Alert marked {status} (was {previous})", "alert", alert.Id, alert.ClientId, ct: ct);
             return Results.Ok(new { alert.Id, alert.Status });
         }).RequireAgencyStaff();
 
@@ -130,7 +135,7 @@ public sealed class AlertsModule : ICarterModule
             if (!sender.IsConfigured)
             {
                 return Results.Json(
-                    new { error = "email is not configured; set Email:Host and Email:FromAddress" },
+                    new { error = "Email is not configured; set Email:Host and Email:FromAddress" },
                     statusCode: 400);
             }
 

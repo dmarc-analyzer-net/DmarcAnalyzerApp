@@ -1,4 +1,5 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Contracts.Clients;
@@ -24,7 +25,7 @@ public sealed class ClientsModule : ICarterModule
             return Results.Ok(clients);
         }).AllowClientViewer();
 
-        app.MapPost("/api/v1/clients", async (CreateClientRequest request, IClientService service, CancellationToken ct) =>
+        app.MapPost("/api/v1/clients", async (CreateClientRequest request, IClientService service, IAuditLog audit, CancellationToken ct) =>
         {
             var result = await service.CreateAsync(request, ct);
             if (!result.IsSuccess)
@@ -33,10 +34,12 @@ public sealed class ClientsModule : ICarterModule
             }
 
             var client = result.Value!;
+            await audit.RecordAsync(AuditEvents.ClientCreated, $"Created client {client.Name}",
+                "client", client.Id, client.Id, ct: ct);
             return Results.Created($"/api/v1/clients/{client.Id}", client);
         }).RequireAgencyAdmin();
 
-        app.MapPatch("/api/v1/clients/{id:guid}", async (Guid id, UpdateClientRequest request, IClientService service, CancellationToken ct) =>
+        app.MapPatch("/api/v1/clients/{id:guid}", async (Guid id, UpdateClientRequest request, IClientService service, IAuditLog audit, CancellationToken ct) =>
         {
             var result = await service.UpdateAsync(id, request, ct);
             if (!result.IsSuccess)
@@ -49,7 +52,10 @@ public sealed class ClientsModule : ICarterModule
                 return Results.Json(new { error = result.Error }, statusCode: result.StatusCode);
             }
 
-            return Results.Ok(result.Value);
+            var updated = result.Value!;
+            await audit.RecordAsync(AuditEvents.ClientUpdated, $"Updated client {updated.Name}",
+                "client", updated.Id, updated.Id, ct: ct);
+            return Results.Ok(updated);
         }).RequireAgencyAdmin();
     }
 }

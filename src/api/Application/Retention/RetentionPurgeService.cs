@@ -1,5 +1,6 @@
 using DmarcAnalyzer.Api.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Application.Retention;
 
@@ -20,6 +21,7 @@ public sealed record PurgeRunResult(
     int ClientsOnLegalHold,
     int ReportsDeleted,
     int IngestRowsDeleted,
+    int AuditEventsDeleted,
     IReadOnlyList<ClientPurgeResult> PerClient);
 
 public interface IRetentionPurgeService
@@ -44,6 +46,7 @@ public interface IRetentionPurgeService
 /// </summary>
 public sealed class RetentionPurgeService(
     DmarcAnalyzerDbContext db,
+    IOptions<RetentionOptions> options,
     ILogger<RetentionPurgeService> logger) : IRetentionPurgeService
 {
     public const int DefaultBatchSize = 500;
@@ -99,8 +102,10 @@ public sealed class RetentionPurgeService(
             }
         }
 
+        var auditDeleted = await PurgeAuditTrailAsync(startedAt, dryRun, batchSize, ct);
+
         var result = new PurgeRunResult(
-            dryRun, startedAt, clients.Count, held, totalReports, totalIngest, perClient);
+            dryRun, startedAt, clients.Count, held, totalReports, totalIngest, auditDeleted, perClient);
 
         logger.LogInformation(
             "Retention run complete: {Verb} {Reports} reports, {Ingest} ingest rows across {Clients} clients " +
@@ -108,6 +113,52 @@ public sealed class RetentionPurgeService(
             dryRun ? "would delete" : "deleted", totalReports, totalIngest, clients.Count, held);
 
         return result;
+    }
+
+    /// <summary>
+    /// Ages out the audit trail on its own, much longer window. Deliberately not
+    /// subject to a client's retention setting or legal hold: the trail records who
+    /// did what across the whole install, including to clients that no longer exist.
+    /// </summary>
+    private async Task<int> PurgeAuditTrailAsync(
+        DateTime now, bool dryRun, int batchSize, CancellationToken ct)
+    {
+        var days = options.Value.AuditRetentionDays;
+        if (days <= 0)
+        {
+            return 0;   // 0 or less means keep the trail forever
+        }
+
+        var cutoff = now.AddDays(-days);
+        var expired = db.AuditEvents.Where(e => e.OccurredAtUtc < cutoff);
+
+        if (dryRun)
+        {
+            return await expired.CountAsync(ct);
+        }
+
+        var deleted = 0;
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+            var batch = await expired.OrderBy(e => e.OccurredAtUtc).Take(batchSize).ToListAsync(ct);
+            if (batch.Count == 0)
+            {
+                break;
+            }
+
+            db.AuditEvents.RemoveRange(batch);
+            await db.SaveChangesAsync(ct);
+            db.ChangeTracker.Clear();
+            deleted += batch.Count;
+
+            if (batch.Count < batchSize)
+            {
+                break;
+            }
+        }
+
+        return deleted;
     }
 
     private async Task<int> PurgeReportsAsync(

@@ -24,6 +24,7 @@ import {
   type DrilldownTotals,
   type EnforcementGuidance,
   type EvaluatedCombo,
+  type RecordComparison,
   type RecordInspection,
   type SourceDetail,
   type ValueCount,
@@ -336,7 +337,11 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
     void loadInspection()
   }, [loadInspection])
 
-  const mismatches = inspection?.comparison.filter((c) => !c.match) ?? []
+  // Only 'differs' counts. A tag DNS never published has nothing to disagree with,
+  // and a tag the reporter omitted says nothing about the record either.
+  const mismatches = inspection?.comparison.filter((c) => c.status === 'differs') ?? []
+  // inherited / not_reported carry an explanation; render it as visible text.
+  const annotations = inspection?.comparison.filter((c) => c.note) ?? []
 
   return (
     <Card pad>
@@ -388,38 +393,78 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
                 </span>
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
-                {inspection.comparison.map((row) => (
-                  <div
-                    key={row.field}
-                    className={cn(
-                      'flex items-center gap-2 rounded-md border px-3 py-1.5 font-mono text-xs',
-                      row.match
-                        ? 'border-border bg-surface-card text-secondary'
-                        : 'border-[var(--status-warn-bg)] bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]',
-                    )}
-                    title={
-                      row.match
-                        ? undefined
-                        : 'DNS differs from the last report — a recent change may still be propagating to reporters'
-                    }
-                  >
-                    <span className="font-semibold">{row.field}=</span>
-                    <span>{row.published ?? '—'}</span>
-                    {!row.match ? (
-                      <>
-                        <Icon name="arrow-right" size={12} aria-hidden />
-                        <span>observed {row.observed ?? '—'}</span>
-                      </>
-                    ) : null}
-                  </div>
-                ))}
+                {inspection.comparison.map((row) => {
+                  const differs = row.status === 'differs'
+                  return (
+                    <div
+                      key={row.field}
+                      className={cn(
+                        'flex items-center gap-2 rounded-md border px-3 py-1.5 font-mono text-xs',
+                        differs
+                          ? 'border-[var(--status-warn-bg)] bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]'
+                          : 'border-border bg-surface-card text-secondary',
+                      )}
+                      aria-label={describeComparison(row)}
+                    >
+                      <span className="font-semibold">{row.field}=</span>
+                      {row.status === 'inherited' ? (
+                        <span className="font-sans italic opacity-70">inherits p</span>
+                      ) : (
+                        <>
+                          <span>{row.published ?? '—'}</span>
+                          {differs ? (
+                            <>
+                              <Icon name="arrow-right" size={12} aria-hidden />
+                              <span>observed {row.observed ?? '—'}</span>
+                            </>
+                          ) : null}
+                          {row.status === 'not_reported' ? (
+                            <span className="font-sans italic opacity-70">not reported</span>
+                          ) : null}
+                        </>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
+              {/* Visible prose, not a title= tooltip: these states explain an
+                  *absence*, and a hover-only explanation is unreachable by
+                  keyboard and touch users — and undiscoverable for everyone,
+                  since no other chip is hoverable. */}
+              {annotations.length > 0 ? (
+                <ul className="mt-2 space-y-1">
+                  {annotations.map((row) => (
+                    <li key={row.field} className="text-xs leading-relaxed text-secondary">
+                      <span className="font-mono font-semibold">{row.field}</span>: {row.note}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              {mismatches.length > 0 ? (
+                <p className="mt-2 text-xs leading-relaxed text-secondary">
+                  DNS and the last report disagree — the record may have changed since that report.
+                </p>
+              ) : null}
             </div>
           ) : null}
         </div>
       ) : null}
     </Card>
   )
+}
+
+/** Full sentence for assistive tech: the chips are terse by design. */
+function describeComparison(row: RecordComparison): string {
+  switch (row.status) {
+    case 'inherited':
+      return `${row.field}: ${row.note ?? 'not published'}`
+    case 'not_reported':
+      return `${row.field} published as ${row.published}, but ${row.note ?? 'not reported'}`
+    case 'differs':
+      return `${row.field}: DNS publishes ${row.published ?? 'nothing'}, reporters observed ${row.observed ?? 'nothing'}`
+    default:
+      return `${row.field}: ${row.published ?? 'nothing'}, matching reports`
+  }
 }
 
 // --- Expandable per-source detail panel ---
@@ -818,7 +863,14 @@ export function DomainDetailPage() {
         </div>
         {domain && enfMeta ? (
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            <PolicyBadge policy={domain.publishedPolicy ?? 'none'} />
+            {/* No report has ever named a policy, so asserting p=none beside a
+                "No data" badge would be a claim we cannot support — the domain
+                may well publish p=reject. Matches the Domains list. */}
+            {domain.publishedPolicy ? (
+              <PolicyBadge policy={domain.publishedPolicy} />
+            ) : (
+              <span className="text-xs text-faint">policy unknown</span>
+            )}
             <Badge variant={enfMeta.badge}>{enfMeta.label}</Badge>
             {domain.clientSlug === 'default' ? (
               <Badge variant="warning">Default — needs client</Badge>
@@ -1052,7 +1104,7 @@ export function DomainDetailPage() {
                               {formatCompact(source.failedMessages)}
                             </TableCell>
                             <TableCell>
-                              <ComplianceBar value={+(source.complianceRate * 100).toFixed(1)} width={110} />
+                              <ComplianceBar value={source.complianceRate * 100} width={110} />
                             </TableCell>
                             <TableCell align="right" className="tabular-nums">
                               {formatPercent(source.dkimPassRate)}

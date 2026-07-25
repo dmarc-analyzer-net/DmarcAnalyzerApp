@@ -23,7 +23,11 @@ public sealed class RecordInspectionTests
         Assert.Equal("mailto:dmarc@acme.example", dto.Rua);
         Assert.Equal("s", dto.DkimAlignment);
         Assert.Equal("r", dto.SpfAlignment);
-        Assert.Empty(dto.Issues);
+        // sp=none under p=quarantine leaves subdomains unprotected — see
+        // ParseDmarc_ExplicitlyWeakSp_IsRaisedAsAnIssue.
+        Assert.Equal(
+            "sp=none is weaker than p=quarantine — subdomains are not protected at the same level.",
+            Assert.Single(dto.Issues));
     }
 
     [Fact]
@@ -111,7 +115,8 @@ public sealed class RecordInspectionTests
         return new DmarcAnalyzerDbContext(options);
     }
 
-    private static async Task<Guid> SeedDomainWithReportAsync(DmarcAnalyzerDbContext db, string policy)
+    private static async Task<Guid> SeedDomainWithReportAsync(
+        DmarcAnalyzerDbContext db, string policy, string? subdomainPolicy = null, bool spReported = true)
     {
         var client = new Client
         {
@@ -129,7 +134,9 @@ public sealed class RecordInspectionTests
             OrganizationName = "google.com", ReportId = "r1",
             RangeBeginUtc = DateTime.UtcNow.AddDays(-2), RangeEndUtc = DateTime.UtcNow.AddDays(-1),
             RecordCount = 0, IngestedAtUtc = DateTime.UtcNow,
-            PublishedPolicy = policy, SubdomainPolicy = policy, PublishedPct = 100,
+            PublishedPolicy = policy,
+            SubdomainPolicy = spReported ? subdomainPolicy ?? policy : null,
+            PublishedPct = 100,
         });
         await db.SaveChangesAsync();
         return domain.Id;
@@ -158,9 +165,97 @@ public sealed class RecordInspectionTests
         Assert.Equal("none", dto.Observed!.Policy);
 
         var p = dto.Comparison.Single(c => c.Field == "p");
-        Assert.False(p.Match);
+        Assert.Equal(RecordComparisonStatus.Differs, p.Status);
         var pct = dto.Comparison.Single(c => c.Field == "pct");
-        Assert.True(pct.Match);
+        Assert.Equal(RecordComparisonStatus.Match, pct.Status);
+    }
+
+    /// <summary>
+    /// The regression this guards: a record with no sp used to be compared as if it
+    /// published sp=p, so any reporter echoing the XSD default sp=none read as a
+    /// policy regression on every p=reject domain.
+    /// </summary>
+    [Theory]
+    [InlineData("none")]        // reporter echoed the XSD default
+    [InlineData("reject")]      // reporter resolved the inheritance itself
+    [InlineData(null)]          // reporter sent no sp at all
+    public async Task Inspect_NoSpPublished_IsInheritedNotADifference(string? observedSp)
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(
+            db, policy: "reject", subdomainPolicy: observedSp, spReported: observedSp is not null);
+
+        var dns = new FakeDns(new()
+        {
+            ["_dmarc.acme.example"] = ["v=DMARC1; p=reject; rua=mailto:d@acme.example"],
+            ["acme.example"] = ["v=spf1 -all"],
+        });
+
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns)
+            .InspectAsync(domainId, CancellationToken.None);
+
+        var sp = dto!.Comparison.Single(c => c.Field == "sp");
+        Assert.Equal(RecordComparisonStatus.Inherited, sp.Status);
+        Assert.Null(sp.Published);
+        Assert.Contains("inherit p=reject", sp.Note);
+        Assert.DoesNotContain(dto.Comparison, c => c.Status == RecordComparisonStatus.Differs);
+    }
+
+    [Fact]
+    public async Task Inspect_SpPublishedButNotReported_IsNotADifference()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject", spReported: false);
+
+        var dns = new FakeDns(new()
+        {
+            ["_dmarc.acme.example"] = ["v=DMARC1; p=reject; sp=quarantine; rua=mailto:d@acme.example"],
+            ["acme.example"] = ["v=spf1 -all"],
+        });
+
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns)
+            .InspectAsync(domainId, CancellationToken.None);
+
+        var sp = dto!.Comparison.Single(c => c.Field == "sp");
+        Assert.Equal(RecordComparisonStatus.NotReported, sp.Status);
+        Assert.Equal("quarantine", sp.Published);
+        Assert.Contains("google.com", sp.Note);
+    }
+
+    [Fact]
+    public async Task Inspect_ExplicitSpDisagreeing_IsStillADifference()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject", subdomainPolicy: "none");
+
+        var dns = new FakeDns(new()
+        {
+            ["_dmarc.acme.example"] = ["v=DMARC1; p=reject; sp=quarantine; rua=mailto:d@acme.example"],
+            ["acme.example"] = ["v=spf1 -all"],
+        });
+
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns)
+            .InspectAsync(domainId, CancellationToken.None);
+
+        var sp = dto!.Comparison.Single(c => c.Field == "sp");
+        Assert.Equal(RecordComparisonStatus.Differs, sp.Status);
+        Assert.Equal("quarantine", sp.Published);
+        Assert.Equal("none", sp.Observed);
+    }
+
+    [Fact]
+    public void ParseDmarc_ExplicitlyWeakSp_IsRaisedAsAnIssue()
+    {
+        var weak = RecordInspectionService.ParseDmarc(["v=DMARC1; p=reject; sp=none; rua=mailto:d@acme.example"]);
+        Assert.Contains(weak.Issues, x => x.Contains("sp=none is weaker than p=reject"));
+
+        // Absent sp inherits p, so there is nothing to warn about.
+        var inherited = RecordInspectionService.ParseDmarc(["v=DMARC1; p=reject; rua=mailto:d@acme.example"]);
+        Assert.DoesNotContain(inherited.Issues, x => x.Contains("weaker than"));
+
+        // Stronger subdomain policy is unusual but not a gap.
+        var stronger = RecordInspectionService.ParseDmarc(["v=DMARC1; p=none; sp=reject; rua=mailto:d@acme.example"]);
+        Assert.DoesNotContain(stronger.Issues, x => x.Contains("weaker than"));
     }
 
     [Fact]

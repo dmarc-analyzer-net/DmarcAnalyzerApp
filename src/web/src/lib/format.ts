@@ -10,10 +10,22 @@ export function formatCompact(value: number): string {
   return value.toLocaleString('en-US')
 }
 
-/** Formats a 0..1 fraction as "89.1%". */
+/** Formats an already-scaled 0..100 percent as "89.1%". Never rounds up to
+ * "100.0%" while any mail still fails, so a domain at 99.96% doesn't read as
+ * fully compliant next to a "below target" label.
+ *
+ * Pass the *unrounded* value: pre-rounding with `toFixed(1)` destroys the
+ * precision this guard depends on, which is how the Domains list and the
+ * dashboard ended up disagreeing about the same domain. */
+export function formatPercentValue(percent: number | null | undefined): string {
+  if (percent == null || !Number.isFinite(percent)) return '—'
+  return `${(percent < 100 ? Math.min(percent, 99.9) : percent).toFixed(1)}%`
+}
+
+/** Formats a 0..1 fraction as "89.1%". See {@link formatPercentValue}. */
 export function formatPercent(fraction: number | null | undefined): string {
   if (fraction == null || !Number.isFinite(fraction)) return '—'
-  return `${(fraction * 100).toFixed(1)}%`
+  return formatPercentValue(fraction * 100)
 }
 
 /** Short UTC date without year, e.g. "Aug 20". Accepts "yyyy-MM-dd" or ISO timestamps. */

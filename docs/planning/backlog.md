@@ -9,8 +9,9 @@ OIDC), worker ingestion, analytics dashboards, and per-source drill-down are
 all shipped. The near-term sequence below turns it from "works" into
 "operable and client-facing", ordered by value and dependencies.
 
-1. **Audit logging.** Login, config change, sync run, and (future) magic-link
-   events. Needed for agency trust and as a prerequisite for #2.
+1. ~~**Surface the audit trail in the console.**~~ (done) `/audit`, admin only —
+   day range, event-type, actor and client filters, paged 100 at a time with the
+   unpaged total, and a per-row expander for details, target and user agent.
 3. **Client access: portal polish + magic links.** The `client_viewer` role
    already approximates a read-only portal; add magic-link (single-client,
    read-only, 7-day) sharing for occasional client access without accounts.
@@ -41,7 +42,6 @@ design system.) See the categorized lists below for the full inventory.
 - [x] (done) Add support for ZIP and GZIP attachment extraction in ingestion pipeline (magic-byte detection; SharpCompress codecs incl. deflate64/bzip2/lzma/zstd).
 - [x] (done) Implement unlimited initial mailbox backfill (oldest-to-newest) with durable checkpoints.
 - [ ] (todo) Add magic link access model (single-client, read-only, 7-day default expiry).
-- [ ] (todo) Fix the per-group correlated subqueries in `GetEnforcementGuidanceAsync` and `GetThreatFeedAsync` (`AnalyticsQueryService.cs:553` and `:631`). EF translates `g.Min`/`g.Max` over the flattened navigation into two correlated subqueries per output group, each re-joining `dmarc_report_record` to `dmarc_report` twice. Measured against live data (5.3M records): `/enforcement` 7.7s and `/threats` 4.1s, scaling linearly with distinct source count. `GetSourceAnalyticsAsync` already solved exactly this with a single-pass hand-written `GROUP BY` — see the comment above its `SqlQuery` at `:350` recording 33s to ~75ms — so apply the same shape. Note the comment at `:534` claims flattening avoids the correlated subqueries; it does not.
 
 ## Medium Priority
 
@@ -62,7 +62,7 @@ design system.) See the categorized lists below for the full inventory.
 - [ ] (todo) Add branded PDF report generation (server-side HTML to PDF) with agency logo/colors/footer.
 - [x] (done) Add monthly email digest delivery and SMTP relay configuration (`DigestService`, previous-whole-month period, `digest_delivery` for idempotency, worker check pass, admin preview/send endpoints).
 - [x] (done) Add alert engine for failure spikes and policy regression with per-client thresholds (`AlertEvaluationService`, hourly worker pass, `alert_event` history with cooldown, per-client overrides on `client`, email notification, `GET /alerts` + admin evaluate endpoint).
-- [ ] (todo) Add core audit logging for login events, config changes, sync runs, and magic-link usage.
+- [x] (done) Add core audit logging for login events, config changes, and manual sync triggers (`audit_event`, `IAuditLog`, admin query endpoint, `/audit` console page, 2-year retention). Scheduled sync runs are covered by `mailbox_sync_run` rather than duplicated; magic-link events will be added with magic links.
 - [ ] (todo) Instrument the API and worker with OpenTelemetry — traces, metrics and logs to a collector — delivering the OTEL-ready pipeline ADR 0006 already accepts. Motivating case: an `/enforcement` request measured 7.7s wall clock against 70ms of process CPU and ~1s of logged SQL; finding the missing ~6.6s took hand-diffing container logs and running `EXPLAIN ANALYZE`. Per-request spans around EF/Npgsql commands, DNS resolution and handler time would have shown it immediately. Worth pairing with a slow-request log threshold, since EF's `Executed DbCommand` duration excludes row streaming and so hides this whole class of problem.
 - [ ] (todo) Add analytics indexes matching the actual query shapes: `dmarc_report (DomainId, RangeBeginUtc)` and `(RangeEndUtc)`. The window anchor (`MAX(RangeEndUtc)` across all reports) and every window filter currently fall back to sequential scans — the domain-detail aggregation reads all 15.6k reports for a domain and discards 14.8k of them by date.
 - [ ] (todo) Fix horizontal overflow in the two widest tables. Domains needs 1110px inside a 1038px container (72px over); Domain Detail's sending-sources table needs 1425px (387px over), because the Source IP column alone takes 419px to fit an untruncated reverse-DNS hostname beneath the IP. Both scroll inside their own container rather than the page, so nothing is unreachable, but the compliance value clips mid-number. Options: truncate long hostnames with a `title`, narrow the compliance meter, or move low-value columns into the expanded row.

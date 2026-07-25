@@ -16,6 +16,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<NotificationRecipient> NotificationRecipients => Set<NotificationRecipient>();
     public DbSet<AlertEvent> AlertEvents => Set<AlertEvent>();
     public DbSet<DigestDelivery> DigestDeliveries => Set<DigestDelivery>();
+    public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
     public DbSet<MailboxSyncRun> MailboxSyncRuns => Set<MailboxSyncRun>();
     public DbSet<AgencyUser> AgencyUsers => Set<AgencyUser>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
@@ -189,7 +190,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.OrganizationName).HasMaxLength(255).IsRequired();
             entity.Property(x => x.ReportId).HasMaxLength(255).IsRequired();
             entity.Property(x => x.PublishedPolicy).HasMaxLength(16).IsRequired().HasDefaultValue("none");
-            entity.Property(x => x.SubdomainPolicy).HasMaxLength(16).IsRequired().HasDefaultValue("none");
+            entity.Property(x => x.SubdomainPolicy).HasMaxLength(16);
             entity.Property(x => x.PublishedPct).HasDefaultValue(100);
             entity.Property(x => x.DkimAlignment).HasMaxLength(16).IsRequired().HasDefaultValue("relaxed");
             entity.Property(x => x.SpfAlignment).HasMaxLength(16).IsRequired().HasDefaultValue("relaxed");
@@ -258,6 +259,25 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .WithMany()
                 .HasForeignKey(x => x.ClientId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AuditEvent>(entity =>
+        {
+            entity.ToTable("audit_event");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ActorType).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.ActorEmail).HasMaxLength(320).IsRequired();
+            entity.Property(x => x.EventType).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.TargetType).HasMaxLength(48);
+            entity.Property(x => x.Summary).HasMaxLength(500).IsRequired();
+            entity.Property(x => x.Details).HasMaxLength(4000);
+            entity.Property(x => x.IpAddress).HasMaxLength(64);
+            entity.Property(x => x.UserAgent).HasMaxLength(512);
+            entity.HasIndex(x => x.OccurredAtUtc);
+            entity.HasIndex(x => new { x.EventType, x.OccurredAtUtc });
+            entity.HasIndex(x => new { x.ClientId, x.OccurredAtUtc });
+            // Deliberately no FK to agency_user or client: the trail must outlive
+            // the rows it refers to, which is why the actor email is copied in.
         });
 
         modelBuilder.Entity<DigestDelivery>(entity =>

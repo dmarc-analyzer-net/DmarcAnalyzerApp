@@ -85,6 +85,7 @@ cross-tenant ids return **404**, never 403.
 |---|---|---|
 | GET | `/system/status` | staff |
 | POST | `/admin/database/migrate` | admin — applies pending EF migrations |
+| GET | `/admin/audit-events` | admin — audit trail (`days`, `eventType` prefix, `actor`, `clientId`, `limit`). Read-only by design |
 | GET | `/admin/retention/preview` | admin — what the next purge would delete, per client; deletes nothing |
 | POST | `/admin/retention/purge` | admin — runs the purge now. Optional `batchSize` |
 | GET | `/alerts` | any — alert history (`days`, default 30); client-scoped for viewers |
@@ -386,6 +387,14 @@ missing record), the raw record, parsed tags, and an `issues[]` list. When
 report data exists, `observed` plus a field-by-field `comparison[]` shows where
 DNS and the reported policy disagree.
 
+Each `comparison[]` entry carries a `status` of `match`, `differs`, `inherited`,
+or `not_reported`, plus an optional `note`. **Only `differs` is a finding.**
+`inherited` means DNS publishes no such tag and RFC 7489 derives it — this is
+how an absent `sp` is reported, since a subdomain policy that is not published
+cannot disagree with anything. `not_reported` means the tag is published but the
+reporter sent no value for it. A published `sp` weaker than `p` is a genuine gap
+and surfaces in `dmarc.issues[]` rather than as a comparison difference.
+
 ### GET `/analytics/threats?days=30&limit=100`
 
 `totalFailedMessages`, `totalSources`, and `sources[]` of `(sourceIp, domain)`
@@ -546,18 +555,21 @@ Get render status and artifact link.
 
 ### GET `/admin/audit-events`
 
-> **Not implemented** — no audit log exists yet (see the *core audit logging*
-> backlog item). The implemented admin route is `POST /admin/database/migrate`.
+> **Implemented.** Filters are `days` (1–730, default 30), `eventType` (prefix
+> match, so `client` finds `client.created` and `client.updated`), `actor` (email
+> substring, case-insensitive), `clientId`, `limit` (1–1000, default 200) and
+> `offset`. There is deliberately no write endpoint.
 
-Query core audit log.
+Returns `{ total, items[] }` — `total` is the count *before* paging, so the
+console can show "100 of 4,812" rather than implying the page is the whole trail.
 
-Filters:
+Each item carries `id`, `occurredAtUtc`, `actorType`, `actorUserId`, `actorEmail`,
+`eventType`, `targetType`, `targetId`, `clientId`, `clientName`, `summary`,
+`details`, `ipAddress` and `userAgent`.
 
-- `actorType`
-- `actorId`
-- `eventType`
-- `clientId`
-- `from` / `to`
+`clientName` is resolved by left join, not by a navigation: `audit_event` has no
+foreign keys on purpose, so a deleted client leaves its `clientId` in place and
+`clientName` simply reads null. Surfaced in the console at `/audit` (admin only).
 
 ### GET `/admin/health`
 

@@ -337,7 +337,8 @@ export type DnsSpfRecord = {
 /** The DMARC policy reporters most recently observed (policy_published). */
 export type ObservedPolicy = {
   policy: string
-  subdomainPolicy: string
+  /** null when the reporter sent no sp tag — subdomains inherit p. */
+  subdomainPolicy: string | null
   pct: number
   dkimAlignment: string
   spfAlignment: string
@@ -345,11 +346,18 @@ export type ObservedPolicy = {
   reportedBy: string
 }
 
+/**
+ * Only 'differs' is a finding. 'inherited' means the tag is absent from DNS and
+ * RFC 7489 derives it; 'not_reported' means the reporter sent no value for it.
+ */
+export type RecordComparisonStatus = 'match' | 'differs' | 'inherited' | 'not_reported'
+
 export type RecordComparison = {
   field: string
   published: string | null
   observed: string | null
-  match: boolean
+  status: RecordComparisonStatus
+  note: string | null
 }
 
 export type RecordInspection = {

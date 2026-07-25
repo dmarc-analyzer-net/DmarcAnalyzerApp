@@ -440,13 +440,17 @@ export function DomainsPage() {
                       )}
                     </TableCell>
                     <TableCell>
-                      <PolicyBadge policy={row.publishedPolicy ?? 'none'} />
+                      {noData ? (
+                        <span className="text-faint">—</span>
+                      ) : (
+                        <PolicyBadge policy={row.publishedPolicy ?? 'none'} />
+                      )}
                     </TableCell>
                     <TableCell>
                       {noData ? (
                         <span className="text-faint">—</span>
                       ) : (
-                        <ComplianceBar value={+(row.complianceRate * 100).toFixed(1)} width={130} />
+                        <ComplianceBar value={row.complianceRate * 100} width={130} />
                       )}
                     </TableCell>
                     <TableCell mono align="right">

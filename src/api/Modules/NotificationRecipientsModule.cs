@@ -1,4 +1,5 @@
 using Carter;
+using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
@@ -31,7 +32,7 @@ public sealed class NotificationRecipientsModule : ICarterModule
         }).RequireAgencyStaff();
 
         app.MapPost("/api/v1/notification-recipients", async (
-            UpsertRecipientRequest request, DmarcAnalyzerDbContext db, CancellationToken ct) =>
+            UpsertRecipientRequest request, DmarcAnalyzerDbContext db, IAuditLog audit, CancellationToken ct) =>
         {
             var email = (request.Email ?? string.Empty).Trim();
             if (email.Length == 0 || !email.Contains('@'))
@@ -68,6 +69,10 @@ public sealed class NotificationRecipientsModule : ICarterModule
             db.NotificationRecipients.Add(recipient);
             await db.SaveChangesAsync(ct);
 
+            await audit.RecordAsync(AuditEvents.NotificationRecipientAdded,
+                $"Added notification recipient {recipient.Email} ({recipient.Kind})",
+                "notification_recipient", recipient.Id, recipient.ClientId, ct: ct);
+
             return Results.Created($"/api/v1/notification-recipients/{recipient.Id}", new
             {
                 recipient.Id, recipient.ClientId, recipient.Email, recipient.Kind, recipient.IsActive,
@@ -75,7 +80,7 @@ public sealed class NotificationRecipientsModule : ICarterModule
         }).RequireAgencyAdmin();
 
         app.MapDelete("/api/v1/notification-recipients/{id:guid}", async (
-            Guid id, DmarcAnalyzerDbContext db, CancellationToken ct) =>
+            Guid id, DmarcAnalyzerDbContext db, IAuditLog audit, CancellationToken ct) =>
         {
             var recipient = await db.NotificationRecipients.FirstOrDefaultAsync(r => r.Id == id, ct);
             if (recipient is null)
@@ -85,6 +90,10 @@ public sealed class NotificationRecipientsModule : ICarterModule
 
             db.NotificationRecipients.Remove(recipient);
             await db.SaveChangesAsync(ct);
+
+            await audit.RecordAsync(AuditEvents.NotificationRecipientRemoved,
+                $"Removed notification recipient {recipient.Email}",
+                "notification_recipient", id, recipient.ClientId, ct: ct);
             return Results.NoContent();
         }).RequireAgencyAdmin();
     }
