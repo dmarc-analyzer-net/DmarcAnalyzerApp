@@ -387,6 +387,14 @@ missing record), the raw record, parsed tags, and an `issues[]` list. When
 report data exists, `observed` plus a field-by-field `comparison[]` shows where
 DNS and the reported policy disagree.
 
+Each `comparison[]` entry carries a `status` of `match`, `differs`, `inherited`,
+or `not_reported`, plus an optional `note`. **Only `differs` is a finding.**
+`inherited` means DNS publishes no such tag and RFC 7489 derives it — this is
+how an absent `sp` is reported, since a subdomain policy that is not published
+cannot disagree with anything. `not_reported` means the tag is published but the
+reporter sent no value for it. A published `sp` weaker than `p` is a genuine gap
+and surfaces in `dmarc.issues[]` rather than as a comparison difference.
+
 ### GET `/analytics/threats?days=30&limit=100`
 
 `totalFailedMessages`, `totalSources`, and `sources[]` of `(sourceIp, domain)`

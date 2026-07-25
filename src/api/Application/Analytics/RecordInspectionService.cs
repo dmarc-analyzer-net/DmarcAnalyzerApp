@@ -124,11 +124,23 @@ public sealed class RecordInspectionService(
             }
         }
 
+        var subdomainPolicy = tags.GetValueOrDefault("sp");
+        // A published sp weaker than p is a real gap, not a reporting artifact:
+        // subdomains are enforced at the weaker level while the org domain is not.
+        // The comparison panel deliberately never flags this, so it is raised here.
+        if (PolicyStrength(subdomainPolicy) is { } spStrength
+            && PolicyStrength(policy) is { } pStrength
+            && spStrength < pStrength)
+        {
+            issues.Add(
+                $"sp={subdomainPolicy} is weaker than p={policy} — subdomains are not protected at the same level.");
+        }
+
         return new DnsDmarcRecordDto(
             RecordLookupStatus.Found,
             raw,
             policy,
-            tags.GetValueOrDefault("sp"),
+            subdomainPolicy,
             pct,
             rua,
             tags.GetValueOrDefault("ruf"),
@@ -136,6 +148,15 @@ public sealed class RecordInspectionService(
             tags.GetValueOrDefault("aspf"),
             issues);
     }
+
+    /// <summary>none &lt; quarantine &lt; reject; null for anything unrecognized.</summary>
+    private static int? PolicyStrength(string? policy) => policy?.Trim().ToLowerInvariant() switch
+    {
+        "none" => 0,
+        "quarantine" => 1,
+        "reject" => 2,
+        _ => null,
+    };
 
     private static Dictionary<string, string> ParseTags(string record)
     {
@@ -230,24 +251,53 @@ public sealed class RecordInspectionService(
             return [];
         }
 
-        // Reports omit sp= to mean "same as p"; DNS omitting sp= means the same.
-        var publishedSp = dmarc.SubdomainPolicy ?? dmarc.Policy;
         var publishedPct = dmarc.Pct ?? 100;
 
         return
         [
             new RecordComparisonDto("p", dmarc.Policy, observed.Policy,
-                string.Equals(dmarc.Policy, observed.Policy, StringComparison.OrdinalIgnoreCase)),
-            new RecordComparisonDto("sp", publishedSp, observed.SubdomainPolicy,
-                string.Equals(publishedSp, observed.SubdomainPolicy, StringComparison.OrdinalIgnoreCase)),
+                Verdict(string.Equals(dmarc.Policy, observed.Policy, StringComparison.OrdinalIgnoreCase))),
+            CompareSubdomainPolicy(dmarc, observed),
             new RecordComparisonDto("pct", publishedPct.ToString(), observed.Pct.ToString(),
-                publishedPct == observed.Pct),
+                Verdict(publishedPct == observed.Pct)),
             new RecordComparisonDto("adkim", dmarc.DkimAlignment ?? "r", NormalizeAlignment(observed.DkimAlignment),
-                AlignmentMatches(dmarc.DkimAlignment, observed.DkimAlignment)),
+                Verdict(AlignmentMatches(dmarc.DkimAlignment, observed.DkimAlignment))),
             new RecordComparisonDto("aspf", dmarc.SpfAlignment ?? "r", NormalizeAlignment(observed.SpfAlignment),
-                AlignmentMatches(dmarc.SpfAlignment, observed.SpfAlignment)),
+                Verdict(AlignmentMatches(dmarc.SpfAlignment, observed.SpfAlignment))),
         ];
     }
+
+    /// <summary>
+    /// sp cannot be compared like the other tags. When DNS publishes no sp, RFC 7489
+    /// §6.3 makes the subdomain policy p by derivation — the published record is
+    /// authoritative and there is nothing a reporter can contradict. Reporters
+    /// disagree here anyway: for one domain we see eight orgs echo sp=reject and six
+    /// echo sp=none for the same record, because the aggregate-report XSD defaults sp
+    /// to "none". Flagging that as a difference blames the customer for a reporter's
+    /// quirk, so only an explicitly published sp is ever compared.
+    /// </summary>
+    private static RecordComparisonDto CompareSubdomainPolicy(DnsDmarcRecordDto dmarc, ObservedPolicyDto observed)
+    {
+        if (dmarc.SubdomainPolicy is null)
+        {
+            return new RecordComparisonDto("sp", null, observed.SubdomainPolicy,
+                RecordComparisonStatus.Inherited,
+                $"Not published — subdomains inherit p={dmarc.Policy ?? "none"}.");
+        }
+
+        if (observed.SubdomainPolicy is null)
+        {
+            return new RecordComparisonDto("sp", dmarc.SubdomainPolicy, null,
+                RecordComparisonStatus.NotReported,
+                $"{observed.ReportedBy} sent no sp value in its last report.");
+        }
+
+        return new RecordComparisonDto("sp", dmarc.SubdomainPolicy, observed.SubdomainPolicy,
+            Verdict(string.Equals(dmarc.SubdomainPolicy, observed.SubdomainPolicy, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private static string Verdict(bool matches)
+        => matches ? RecordComparisonStatus.Match : RecordComparisonStatus.Differs;
 
     // DNS uses r/s; reports store relaxed/strict. Compare on the single-letter form.
     private static string NormalizeAlignment(string value)

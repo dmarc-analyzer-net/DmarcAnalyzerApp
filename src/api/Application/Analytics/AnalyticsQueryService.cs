@@ -236,7 +236,7 @@ public sealed class AnalyticsQueryService(DmarcAnalyzerDbContext db, ICurrentUse
     {
         public Guid DomainId { get; set; }
         public string PublishedPolicy { get; set; } = "none";
-        public string SubdomainPolicy { get; set; } = "none";
+        public string? SubdomainPolicy { get; set; }
         public int PublishedPct { get; set; } = 100;
         public string DkimAlignment { get; set; } = "relaxed";
         public string SpfAlignment { get; set; } = "relaxed";

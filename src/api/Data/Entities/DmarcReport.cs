@@ -14,7 +14,8 @@ public sealed class DmarcReport
 
     // Published DMARC policy from this report's policy_published block.
     public string PublishedPolicy { get; set; } = "none";
-    public string SubdomainPolicy { get; set; } = "none";
+    /// <summary>null when the reporter sent no sp tag — subdomains inherit p.</summary>
+    public string? SubdomainPolicy { get; set; }
     public int PublishedPct { get; set; } = 100;
     public string DkimAlignment { get; set; } = "relaxed";
     public string SpfAlignment { get; set; } = "relaxed";
