@@ -157,6 +157,12 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   marks a mailbox source unhealthy. They are now classified by content and
   logged. Ingesting them is a backlog item.
 
+- Client addresses behind a proxy: `Network:UseForwardedHeaders` (off by
+  default) makes the audit trail record the real caller instead of the proxy,
+  but only from hops listed in `Network:TrustedProxies` / `TrustedNetworks`.
+  Enabling it with an empty trust list is refused and logged, because that would
+  let any caller forge the address on its own audit entries.
+
 - Audit logging:
   - `audit_event` records who did what: sign-in success and failure, sign-out,
     first-run registration, client/domain/mailbox-source/user changes, grant

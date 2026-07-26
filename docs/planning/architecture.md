@@ -237,6 +237,31 @@ Configured via `Worker__*` settings:
 
 ## 8) Security Model
 
+### Client Addresses Behind a Proxy
+
+The audit trail records `Connection.RemoteIpAddress`. Behind a reverse proxy
+that is the proxy, not the caller — on the default Compose stack every entry
+reads as Docker's bridge gateway.
+
+`Network:UseForwardedHeaders` turns on `X-Forwarded-For` / `X-Forwarded-Proto`
+handling, but **only from hops named in `Network:TrustedProxies` (addresses) or
+`Network:TrustedNetworks` (CIDR)**. Enabling it with neither is refused and
+logged as an error rather than applied: an empty trust list means any caller can
+set the address recorded against its own audit entries, which is worse than
+recording the gateway honestly. `Network:ForwardLimit` (default 1) bounds how
+many hops are walked back.
+
+Off by default, so an install that has not thought about its proxy keeps the
+current behaviour.
+
+```jsonc
+"Network": {
+  "UseForwardedHeaders": true,
+  "TrustedNetworks": ["172.16.0.0/12"],   // the Docker bridge, say
+  "ForwardLimit": 1
+}
+```
+
 ### Agency Authentication
 
 - **Authorization is always in-app; authentication is pluggable** (ADR 0007).

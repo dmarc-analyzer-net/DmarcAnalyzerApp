@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -364,8 +364,24 @@ function AuditRow({
                 <>
                   <dt className="font-medium text-secondary">Target</dt>
                   <dd className="font-mono text-body">
-                    {event.targetType}
-                    {event.targetId ? ` · ${event.targetId}` : ''}
+                    {/* The summary already says what happened, so the id earns its
+                        place only by being actionable or exact. Domains are the one
+                        entity with a detail route, so those link; everything else
+                        keeps the id verbatim for correlating against other records,
+                        de-emphasised because it is a reference, not the content. */}
+                    {event.targetType === 'domain' && event.targetId ? (
+                      <Link
+                        to={`/domains/${event.targetId}`}
+                        className="text-body underline decoration-dotted underline-offset-2 hover:text-brand"
+                      >
+                        {event.targetType} · {event.targetId}
+                      </Link>
+                    ) : (
+                      <>
+                        {event.targetType}
+                        {event.targetId ? <span className="text-faint"> · {event.targetId}</span> : null}
+                      </>
+                    )}
                   </dd>
                 </>
               ) : null}

@@ -15,6 +15,7 @@ using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Middleware;
 using DmarcAnalyzer.Api.Modules;
 using DmarcAnalyzer.Api.Workers;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 
 var mode = Environment.GetEnvironmentVariable("APP_MODE")?.Trim().ToLowerInvariant() ?? "api";
@@ -96,6 +97,7 @@ builder.Services.AddSingleton<IDnsTxtResolver, DnsTxtResolver>();
 builder.Services.Configure<DnsOptions>(builder.Configuration.GetSection("Dns"));
 builder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
+builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection("Network"));
 
 if (builder.Environment.IsDevelopment())
 {
@@ -111,7 +113,22 @@ if (builder.Environment.IsDevelopment())
     });
 }
 
+// Configured before Build so the middleware sees the trust list. Must also run
+// before anything that reads Connection.RemoteIpAddress — the audit trail and
+// the sign-in paths both do.
+var networkOptions = builder.Configuration.GetSection("Network").Get<NetworkOptions>() ?? new NetworkOptions();
+var forwardedHeaders = new ForwardedHeadersOptions();
+var useForwardedHeaders = ForwardedHeadersSetup.TryConfigure(
+    networkOptions,
+    forwardedHeaders,
+    LoggerFactory.Create(b => b.AddConsole()).CreateLogger(nameof(ForwardedHeadersSetup)));
+
 var app = builder.Build();
+
+if (useForwardedHeaders)
+{
+    app.UseForwardedHeaders(forwardedHeaders);
+}
 
 if (app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
 {
