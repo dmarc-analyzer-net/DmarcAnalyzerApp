@@ -8,10 +8,21 @@ single list of settings for both.
 ## Install
 
 ```bash
-helm install dmarc ./deploy/helm/dmarc-analyzer \
+helm install dmarc oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer \
+  --version 0.1.0 \
   --namespace dmarc --create-namespace \
   --set auth.encryptionKey="$(openssl rand -base64 32)"
 ```
+
+Or from a clone, which is the same chart without the version pin:
+
+```bash
+helm install dmarc ./deploy/helm/dmarc-analyzer -n dmarc --create-namespace \
+  --set auth.encryptionKey="$(openssl rand -base64 32)"
+```
+
+A published chart's `version` and `appVersion` are equal and come from the release
+tag, so the chart version alone determines which application version you get.
 
 Then reach the console and create the first admin account:
 
@@ -85,15 +96,20 @@ is hard to attribute. The chart fails at template time instead, with the reason:
 | Configuration | Why it is refused |
 |---|---|
 | `mode=combined` with `app.replicas > 1` | Every app pod runs its own ingestion loop, so N replicas are N schedulers claiming the same mailboxes — duplicate IMAP sessions and duplicate sync runs. Use `mode=split` to scale the console. |
-| `worker.replicas != 1` | Whether two workers can claim from the queue concurrently is **unverified**. The chart will not imply a guarantee the queue may not make. |
+| `worker.replicas != 1` | There is no claim mechanism in the queue. Two loops duplicate every sync pass and can send duplicate alert and digest email. The application refuses it too, with a Postgres advisory lock, so extra replicas crash-loop. |
 | `migrations.strategy=startup` with `app.replicas > 1` | Replicas race to apply the same migration. |
 | `postgres.enabled=false` with no `externalDatabase.host` | Nowhere to connect. |
 | No `auth.encryptionKey` and no `auth.existingSecret` | Mailbox credentials would be stored in plaintext. |
 
 ## Scaling
 
-`app.replicas` scales the console freely in `mode=split`. The worker is pinned to
-one replica; that is a deliberate limit and not a property of Kubernetes.
+`app.replicas` scales the console freely in `mode=split` — `APP_MODE=api` takes no
+lock and runs no loop.
+
+The worker is pinned to one replica. That is a property of the application, not of
+Kubernetes: it holds a Postgres advisory lock for the life of the process and a
+second worker exits rather than starting. `docs/planning/backlog.md` lists what
+lifting the limit would take.
 
 ## Notes on the internals
 

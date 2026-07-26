@@ -121,7 +121,7 @@ template time instead.
 {{- end -}}
 
 {{- if ne (int .Values.worker.replicas) 1 -}}
-{{- fail (printf "worker.replicas must be 1 (got %d). Whether two workers can claim from the queue concurrently is unverified, so the chart will not imply a guarantee the queue may not make." (int .Values.worker.replicas)) -}}
+{{- fail (printf "worker.replicas must be 1 (got %d). Two ingestion loops against one database duplicate every sync pass and can send duplicate alert and digest email — there is no claim mechanism in the queue. The application also refuses this at runtime via a Postgres advisory lock, so extra replicas would crash-loop rather than work." (int .Values.worker.replicas)) -}}
 {{- end -}}
 
 {{- if and (not .Values.postgres.enabled) (not .Values.externalDatabase.host) (not .Values.externalDatabase.connectionString) -}}

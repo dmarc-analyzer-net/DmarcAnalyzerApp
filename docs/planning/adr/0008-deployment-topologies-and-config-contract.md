@@ -144,8 +144,32 @@ the build.
   host, so a failing worker degrades ingestion without taking the console down.
   That was written for worker mode; combined mode inherits it.
 
-### Open
+### Resolved: exactly one worker, enforced in the database
 
-- **Whether two workers may run concurrently** is unverified. It decides whether
-  the chart permits `worker.replicas > 1` or pins it to 1. Settle it before
-  publishing the chart rather than implying safety the queue may not provide.
+The open question here — whether two workers may run concurrently — has been
+answered by reading the claim path. **There is no claim path.** The worker reads
+every active mailbox source and iterates; there is no lease, no ownership column,
+and no `FOR UPDATE`, `SKIP LOCKED` or advisory lock anywhere in the codebase.
+
+Reports survive a second worker: every insert is `ON CONFLICT DO NOTHING` against
+a real unique index, and the loser is detected by affected-row count rather than
+an exception. What does not survive is everything around them — duplicate alert
+email, a duplicate digest sent before the unique index rejects the second row,
+`DbUpdateConcurrencyException` from the retention purge, and a checkpoint that can
+move backwards. Every "is it due" gate is an in-memory field, so two processes
+share no timer state at all.
+
+So the pin stays, and it moves from the chart into the application:
+`WorkerSingleInstanceLock` takes a Postgres advisory lock at startup and the
+process exits if another holds it. That matters because the chart's
+`worker.replicas` guard only ever covered Kubernetes — nothing in Compose prevents
+`--scale worker=2`, or a worker container beside an `APP_MODE=all` one, and both
+of those reach exactly the same failure. A lock in the shared database is the only
+guard that covers every way of getting there.
+
+The cost is a restart delay: an abruptly killed worker's lock is released only
+once Postgres notices the dead connection. A replacement crash-loops until then
+and its log says why.
+
+`docs/planning/backlog.md` records what lifting the limit would require, in order
+of how much each part buys.

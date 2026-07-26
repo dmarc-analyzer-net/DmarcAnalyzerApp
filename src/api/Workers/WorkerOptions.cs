@@ -16,5 +16,16 @@ public sealed class WorkerOptions
     public int RetentionIntervalHours { get; set; } = 24;
 
     /// <summary>Reports deleted per transaction, so a large backlog doesn't hold locks across the table.</summary>
+    /// <summary>
+    /// Refuse to start when another worker already holds the ingestion lock.
+    /// <para>
+    /// On by default. Two ingestion loops duplicate every sync pass and can send
+    /// duplicate alert and digest email — see <see cref="WorkerSingleInstanceLock"/>
+    /// for what exactly goes wrong. Turn it off only if you have a reason and know
+    /// the consequences.
+    /// </para>
+    /// </summary>
+    public bool EnforceSingleInstance { get; set; } = true;
+
     public int RetentionBatchSize { get; set; } = 500;
 }

@@ -154,6 +154,8 @@ Ops runbook:
 
 - `docs/ops/configuration.md` — every environment variable, and the same set in
   every deployment shape. Kept true by `ConfigurationContractTests`.
+- `docs/ops/live-migration-handover.md` — bringing a running instance up to `main`,
+  including why a green healthcheck does not prove the schema is current.
 - `docs/ops/mailbox-sync.md`
 - `docs/ops/oidc-zitadel.md`
 - `docs/ops/release.md`

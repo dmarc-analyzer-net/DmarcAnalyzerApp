@@ -88,12 +88,58 @@ Sequenced; each step is independently shippable.
       `depends_on: service_healthy`), and the pre-install migration Job named a
       ServiceAccount that hooks create *after* hooks run, so it never made a pod.
       Both topologies then came up clean, plus an upgrade verified as a no-op.
-- [ ] (open) **Decide whether two workers may run concurrently.** Still
-      unverified. The chart pins `worker.replicas` to 1 and *refuses* any other
-      value, so the limit is explicit rather than implied — but it is a limit, and
-      lifting it needs someone to read the claim path in `MailboxSyncService` and
-      the queue and decide. Compose has no equivalent guard: `docker compose up
-      --scale worker=2` is not prevented.
+- [x] (done) **Decided: two workers is not safe, and the limit is now enforced in
+      code.** Read the claim path rather than guessing. There is no claim mechanism
+      at all — `QueueWorkerService.cs:213` reads every active source with
+      `AsNoTracking()` and iterates, no lease, no ownership column, and repo-wide
+      there is no `FOR UPDATE`, `SKIP LOCKED`, advisory lock or CAS anywhere.
+      Reports themselves are safe (every insert is `ON CONFLICT DO NOTHING` on a
+      real unique index, and the loser is detected by affected-row count), but four
+      things break: duplicate alert email (`AlertEvaluationService.cs:267` cooldown
+      is read-then-write with only non-unique indexes behind it), a duplicate
+      digest sent at `DigestService.cs:287` *before* the unique index rejects the
+      second row at `:291`, `DbUpdateConcurrencyException` from
+      `RetentionPurgeService.cs:183` deleting a batch another worker already
+      deleted, and a checkpoint that can move *backwards* because
+      `MailboxSyncService.cs:209` writes unconditionally with no concurrency token.
+      Every "is it due" gate is an in-memory field (`QueueWorkerService.cs:85`,
+      `:117`, `:150`, `:177`), so two processes share no timer state.
+
+      Also found: `20260402150000_AddMailboxSyncActiveRunUnique` added exactly the
+      partial unique index that would guard this, and
+      `20260403143000_RemoveMailboxSyncActiveRunUnique` dropped it a day later with
+      no rationale. It guarded nothing, because no code ever writes a `running`
+      row — `MailboxSyncRun` is only ever constructed with `success`
+      (`MailboxSyncService.cs:222`) or `failed` (`:259`), after the sync finishes.
+      That also makes `CloseStaleRunningSyncsAsync` dead code against current
+      writers.
+
+      `WorkerSingleInstanceLock` now takes a Postgres advisory lock at startup and
+      the process exits if another holds it, so the limit holds however you deploy
+      — the chart's `worker.replicas` guard only covered Kubernetes, and nothing in
+      Compose prevents `--scale worker=2` or a worker beside an `APP_MODE=all`
+      container. `Worker__EnforceSingleInstance` can turn it off.
+
+- [ ] (todo) **Lifting the one-worker limit**, if it is ever wanted. Needs, in
+      order of how much each buys: a real claim on `mailbox_source`
+      (`SELECT … FOR UPDATE SKIP LOCKED`, or reinstate the `running` row *and* the
+      partial unique index and write it before the IMAP connect); a unique
+      constraint on `alert_event` over client/domain/rule/cooldown-bucket with the
+      insert committed before the send; the digest `SendAsync` moved to after a
+      successful `DigestDelivery` insert; the retention purge switched to
+      `ExecuteDeleteAsync` on a bounded subquery so a 0-row delete is not an error;
+      and a conditional checkpoint write (`WHERE "LastProcessedUid" < @new`) so it
+      can only move forward. Nothing here is needed for a single worker.
+
+- [ ] (todo) **A report can be left with zero records, permanently.**
+      `MailboxSyncService.cs:162` inserts the parent `dmarc_report` row and commits
+      it *before* `BeginTransactionAsync` at `:180` opens the transaction that
+      inserts the records. If the records insert fails, the report row survives with
+      no children — and because dedupe is keyed on that row, every later sync sees a
+      duplicate and skips it, so the records are never backfilled. Single-worker
+      bug, unrelated to concurrency; found while answering the concurrency
+      question. Fix is to insert the report inside the same transaction as its
+      records, keeping the `ON CONFLICT DO NOTHING` semantics.
 
 - [ ] (todo) Implement API endpoints for report upload, mailbox sync trigger, and report/query retrieval.
 - [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, mailbox sources).
@@ -122,6 +168,28 @@ Sequenced; each step is independently shippable.
 - [x] (done) Add guided path to enforcement: per-domain policy recommendation engine surfacing the next safe policy step (none -> quarantine -> reject) and the sources still blocking full enforcement (`/enforcement` endpoint + Domain Detail panel).
 - [x] (done) Persist published DMARC policy (`policy_published` from reports) and add a record-inspection view comparing published DMARC/SPF records (live DNS via host resolver) against observed report data (`/records` endpoint + Domain Detail card).
 - [x] (done) Add a threat feed view: dedicated list of unauthenticated/failing sending sources with IP, volume, and first/last-seen for spoofing investigation (`/threats` endpoint + Threats page in sidebar).
+
+
+### Deployment follow-ups
+
+- [x] (done) **Live-instance migration brief.** `docs/ops/live-migration-handover.md`,
+      dry-run against a local replica of the Omarchy stack rather than written from
+      code-as-intended. Found that `docker compose up -d api worker` does **not**
+      apply a pending migration when the image is unchanged — Compose recreates on
+      config change and a pending migration is invisible to it — while
+      `/api/v1/auth/setup` still returns 200, so a green healthcheck proves nothing
+      about the schema. The brief leads with `run --rm -e APP_MODE=migrate api`
+      instead, which needs no container recreation and keeps the instance serving.
+      Still needs someone on that machine to run it; it is unreachable from
+      `hermes-agent` (the mesh peer exists but is offline).
+
+- [x] (done) **Publish the chart.** A release tag pushes it to
+      `oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer`, with `version` and
+      `appVersion` both taken from the tag so the chart version alone determines the
+      application version. CI renders all six supported value combinations and
+      asserts every guardrail still refuses, on every run — the combinations do not
+      share a code path, which is how a migration Job that could never create a pod
+      reached a real cluster.
 
 ## Low Priority
 

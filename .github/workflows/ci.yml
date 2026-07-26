@@ -33,6 +33,8 @@ on:
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/dmarc-analyzer
   DOCKERHUB_IMAGE: dmarcanalyzernet/dmarc-analyzer
+  CHART_REGISTRY: oci://ghcr.io/${{ github.repository_owner }}/charts
+  CHART_DIR: deploy/helm/dmarc-analyzer
 
 jobs:
   test:
@@ -61,6 +63,92 @@ jobs:
           npm ci
           npx tsc --noEmit
           npm run build
+
+
+  # The chart is checked on every run and published only on a release tag. The
+  # checks matter more than the publish: a chart is templating, so nothing but
+  # rendering it proves it still works, and a broken one fails at `helm install`
+  # in someone else's cluster rather than here.
+  chart:
+    needs: [test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: azure/setup-helm@v4
+
+      - name: Lint
+        run: helm lint "$CHART_DIR" --set auth.encryptionKey=dummy
+
+      # Every supported combination, because they do not share a code path: the
+      # migration Job renders only without bundled Postgres, and the worker
+      # Deployment only in split mode. A single render would have shipped a Job
+      # that could never create a pod.
+      - name: Render every supported combination
+        run: |
+          set -euo pipefail
+          fail=0
+          render() {
+            local label="$1"; shift
+            if out=$(helm template t "$CHART_DIR" --set auth.encryptionKey=dummy "$@" 2>&1); then
+              printf '  ok       %s (%s resources)\n' "$label" "$(printf '%s' "$out" | grep -c '^kind:')"
+            else
+              printf '  FAILED   %s\n%s\n' "$label" "$out"; fail=1
+            fi
+          }
+          render "bundled + combined"
+          render "bundled + split"   --set mode=split
+          render "external + combined" --set postgres.enabled=false --set externalDatabase.host=db.example
+          render "external + split"    --set postgres.enabled=false --set externalDatabase.host=db.example --set mode=split
+          render "ingress enabled"     --set ingress.enabled=true
+          render "existingSecret"      --set auth.existingSecret=creds
+          exit $fail
+
+      # The guardrails are the chart's main safety feature, so a change that
+      # quietly stops them refusing has to fail here rather than be discovered by
+      # someone running two schedulers against one mailbox.
+      - name: Guardrails must refuse
+        run: |
+          set -euo pipefail
+          fail=0
+          refuses() {
+            local label="$1"; shift
+            if helm template t "$CHART_DIR" "$@" >/dev/null 2>&1; then
+              printf '  NOT REFUSED  %s\n' "$label"; fail=1
+            else
+              printf '  refused      %s\n' "$label"
+            fi
+          }
+          refuses "combined with 2 app replicas" --set auth.encryptionKey=d --set app.replicas=2
+          refuses "worker.replicas=2"            --set auth.encryptionKey=d --set mode=split --set worker.replicas=2
+          refuses "startup migrations, 3 app replicas" --set auth.encryptionKey=d --set mode=split --set app.replicas=3 --set migrations.strategy=startup
+          refuses "external db without a host"   --set auth.encryptionKey=d --set postgres.enabled=false
+          refuses "no encryption key"            --set mode=combined
+          refuses "unknown mode"                 --set auth.encryptionKey=d --set mode=hybrid
+          exit $fail
+
+      - name: Log in to GHCR
+        if: github.ref_type == 'tag'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Chart version and appVersion both come from the tag. Keeping them equal
+      # means "which app does chart 1.2.3 deploy" has one answer, and the image tag
+      # needs no separate bump — values.image.tag defaults to appVersion.
+      - name: Package and push
+        if: github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          helm package "$CHART_DIR" --version "$version" --app-version "$version" -d dist
+          helm push "dist/dmarc-analyzer-${version}.tgz" "$CHART_REGISTRY"
+          echo "::notice::Published chart $version to ${CHART_REGISTRY}/dmarc-analyzer"
 
   changes:
     runs-on: ubuntu-latest

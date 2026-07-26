@@ -22,6 +22,30 @@ dmarcanalyzernet/dmarc-analyzer
 Documentation-only pushes to `main` skip the image build entirely. Release tags
 and pull requests always build it.
 
+## The Helm chart
+
+A release tag also publishes the chart as an OCI artifact:
+
+```
+oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer
+```
+
+**Chart `version` and `appVersion` are both set from the tag** and are not read
+from the committed `Chart.yaml`, so "which application does chart 1.2.3 deploy"
+has exactly one answer, and `values.image.tag` — which defaults to `appVersion` —
+needs no separate bump. The values committed in `Chart.yaml` are only a default
+for someone installing from a working tree.
+
+There is no `edge` chart. A chart is cheap to install from the repository
+directory, and an unversioned moving chart is the kind of thing that makes a
+rollback ambiguous.
+
+On every run, tag or not, CI **renders all six supported value combinations and
+asserts every guardrail still refuses**. That is not ceremony: the migration Job
+renders only without bundled Postgres and the worker Deployment only in split
+mode, so a single render leaves most of the chart unexercised — which is exactly
+how a Job that could never create a pod got as far as a real cluster once.
+
 ## Versioning
 
 Semantic versioning. While on `0.x`:

@@ -36,10 +36,11 @@ app:
   podAnnotations: {}
 
 worker:
-  # Pinned to 1 deliberately. Whether two workers can safely claim from the queue
-  # concurrently has not been verified, and a chart that allows replicas: 2
-  # implies a guarantee the queue may not make. The chart refuses any other value
-  # until that is settled.
+  # Pinned to 1, and any other value is refused. There is no claim mechanism in
+  # the queue: two loops duplicate every sync pass, can send duplicate alert and
+  # digest email, and can move a mailbox checkpoint backwards. The application
+  # enforces this itself with a Postgres advisory lock, so extra replicas would
+  # crash-loop rather than do useful work.
   replicas: 1
   resources: {}
   nodeSelector: {}

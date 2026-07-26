@@ -50,6 +50,14 @@ being healthy.
 
 Read in `worker` and `all` modes.
 
+Exactly one worker may run against a database. The process takes a Postgres
+advisory lock at startup and exits if another holds it, so the limit applies
+however you deploy — the Helm chart's `worker.replicas` guard only covers
+Kubernetes, and nothing in Compose prevents `--scale worker=2`. If a worker is
+killed abruptly its lock is released once Postgres notices the dead connection,
+which can take a couple of minutes; a replacement container will crash-loop until
+then and its log says so.
+
 | Variable | Default | Meaning |
 |---|---|---|
 | `Worker__ScheduleIntervalSeconds` | `3600` | Gap between polling passes. Floored at 15s. |
@@ -61,6 +69,7 @@ Read in `worker` and `all` modes.
 | `Worker__RetentionEnabled` | `true` | Run the retention purge pass. |
 | `Worker__RetentionIntervalHours` | `24` | Gap between purge passes. |
 | `Worker__RetentionBatchSize` | `500` | Rows deleted per purge batch. Smaller batches hold locks for less time. |
+| `Worker__EnforceSingleInstance` | `true` | Refuse to start when another worker already holds the ingestion lock (a Postgres advisory lock). Two loops duplicate every sync pass, inflate the sync-run counts, and can send duplicate alert and digest email. Turning this off removes the only guard that works on every platform. |
 
 ## Retention (`Retention`)
 
