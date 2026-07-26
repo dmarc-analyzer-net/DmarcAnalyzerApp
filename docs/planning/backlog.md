@@ -59,13 +59,13 @@ Sequenced; each step is independently shippable.
       plus mode parsing. Also make an unrecognised `APP_MODE` fail startup instead
       of silently defaulting to `api` — a typo that serves traffic but ingests
       nothing is the worst outcome available.
-- [ ] (step 2) **Compose overlays.** Replace the single quick-start file with
-      `compose.yml` (app in `all` mode, external DB) + `compose.postgres.yml` +
-      `compose.split.yml`, giving four topologies from three files. The split
-      overlay must set `APP_MODE: api` in the same file that adds the worker, so
-      "combined app *plus* a worker container" — two schedulers claiming the same
-      mailboxes — cannot be expressed. Keep the published
-      `deploy/compose.yml` URL working; it is in the wild.
+- [x] (step 2, done) **Compose overlays.** `deploy/compose.yml` (app in `all`
+      mode + bundled Postgres, complete on its own) plus `compose.external-db.yml`
+      and `compose.split.yml`, giving four topologies from three files. Shipped
+      inverted from the sketch above: the overlays *subtract*, because `!reset`
+      turns out to remove services, so the published quick-start URL keeps
+      producing a working stack with no overlay at all. All four combinations
+      booted and verified to run exactly one worker.
 - [ ] (step 3) **`docs/ops/configuration.md` + drift check.** The env-var contract
       documented once, and a CI check asserting every key in `appsettings.json` is
       either documented or explicitly excluded. The check is the point: without it

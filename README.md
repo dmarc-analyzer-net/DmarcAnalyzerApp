@@ -22,8 +22,22 @@ docker compose up -d
 Then open **http://localhost:8080** and create the first admin account
 (registration is locked after this first-run bootstrap).
 
-What you get: the API + console on port 8080, a background worker polling your
-mailboxes for DMARC reports, and PostgreSQL — three containers, one image.
+What you get: the console on port 8080 and a background loop polling your
+mailboxes for DMARC reports, both in one container (`APP_MODE=all`), plus
+PostgreSQL. Two containers.
+
+Two overlays sit next to that file if the defaults do not fit — they need
+Compose v2.24 or newer:
+
+| Instead of the bundled database or the single container | |
+|---|---|
+| Use a Postgres you already run | `-f compose.yml -f compose.external-db.yml` |
+| Run the worker separately | `-f compose.yml -f compose.split.yml` |
+| Both | add both `-f` flags |
+
+Set `COMPOSE_FILE=compose.yml:compose.split.yml` in `.env` and day-to-day use
+stays `docker compose up -d`. Every combination reads the same environment
+variables.
 
 - Image: `ghcr.io/dmarc-analyzer-net/dmarc-analyzer`, for `linux/amd64` +
   `linux/arm64`. Mirrored to Docker Hub as `dmarcanalyzernet/dmarc-analyzer`;

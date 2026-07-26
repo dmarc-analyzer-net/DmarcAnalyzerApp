@@ -1,0 +1,31 @@
+# Overlay: use a Postgres you already run, instead of the bundled one.
+#
+#   docker compose -f compose.yml -f compose.external-db.yml up -d
+#
+# Point the app at your server in .env:
+#
+#   DMARC_DB_HOST=db.internal
+#   DMARC_DB_PORT=5432
+#   DMARC_DB_NAME=dmarc_analyzer
+#   DMARC_DB_USER=dmarc
+#   DMARC_DB_PASSWORD=...
+#
+# The database must exist and the user must own it — the app creates tables on
+# first boot but not the database itself. Nothing else changes: the same app
+# container, the same variables, the same migration behaviour.
+#
+# Needs Compose v2.24 or newer for `!reset`. On older versions this file parses
+# but leaves the bundled Postgres running, which is confusing rather than broken
+# — check `docker compose version` if you see an unexpected postgres container.
+
+services:
+  app:
+    # The dependency has to go with the service. Left in place, Compose refuses
+    # to start: the app waits on a service this file just removed.
+    depends_on: !reset null
+
+  postgres: !reset null
+
+# The named volume is deliberately left declared. Removing it here would make
+# `docker compose down -v` on this overlay silently skip the bundled volume if
+# one exists from an earlier run, stranding the data instead of deleting it.

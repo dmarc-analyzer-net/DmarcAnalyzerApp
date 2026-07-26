@@ -1,0 +1,38 @@
+# Overlay: run the console and the ingestion worker as separate containers.
+#
+#   docker compose -f compose.yml -f compose.split.yml up -d
+#
+# Worth doing when ingestion is heavy enough to compete with the console for CPU,
+# when you want to restart one without the other, or when the two need different
+# resource limits. Below that, the single container in compose.yml is simpler to
+# run and to reason about.
+#
+# Needs Compose v2.24 or newer, same as the other overlay.
+
+services:
+  app:
+    # Demoted from `all` to `api` in the same file that adds the worker, and this
+    # is the point of using an overlay rather than a profile. Leave the app in
+    # `all` mode with a worker container alongside it and two schedulers claim the
+    # same mailboxes on the same interval: duplicate IMAP sessions, duplicate sync
+    # runs, and two processes racing to mark the same messages seen. Keeping the
+    # mode change and the new container in one file means that state cannot be
+    # reached by picking the wrong combination.
+    environment:
+      APP_MODE: api
+
+  worker:
+    image: ghcr.io/dmarc-analyzer-net/dmarc-analyzer:latest
+    restart: unless-stopped
+    environment:
+      APP_MODE: worker
+      ConnectionStrings__Default: >-
+        Host=${DMARC_DB_HOST:-postgres};Port=${DMARC_DB_PORT:-5432};Database=${DMARC_DB_NAME:-dmarc_analyzer};Username=${DMARC_DB_USER:-postgres};Password=${DMARC_DB_PASSWORD:-${POSTGRES_PASSWORD:-postgres}}
+      Security__CredentialEncryptionKey: "${DMARC_ENCRYPTION_KEY:?DMARC_ENCRYPTION_KEY missing - generate one into .env (see compose.yml header)}"
+    depends_on:
+      # Worker mode does not apply migrations — only the web host reads
+      # Database:MigrateOnStartup. Gating on the app being healthy is what keeps
+      # the worker away from an un-migrated schema, so this condition is load
+      # bearing rather than tidiness.
+      app:
+        condition: service_healthy

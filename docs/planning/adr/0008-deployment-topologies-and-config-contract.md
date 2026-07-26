@@ -59,25 +59,44 @@ nothing is the worst available outcome.
 
 Three files compose into four topologies:
 
-| File | Adds |
+| File | Effect |
 |---|---|
-| `compose.yml` | the app in `all` mode, external database |
-| `compose.postgres.yml` | Postgres service, volume, healthcheck |
-| `compose.split.yml` | the worker service **and** `APP_MODE: api` on the app |
+| `compose.yml` | the app in `all` mode **and** bundled Postgres — complete on its own |
+| `compose.external-db.yml` | removes Postgres and its `depends_on` |
+| `compose.split.yml` | adds the worker service **and** sets `APP_MODE: api` on the app |
 
 `COMPOSE_FILE` in `.env` records the choice so day-to-day use stays
 `docker compose up -d`.
 
-**Profiles were considered and rejected.** They read better, but they leave
-`APP_MODE=all` plus a worker container reachable — two schedulers claiming the
-same mailboxes. Because the overlay flips the mode in the same file that adds the
-worker, that state cannot be expressed.
+The base file being the complete quick start — rather than a skeleton that every
+user has to overlay — matters for a reason outside the design: the raw URL of
+`deploy/compose.yml` is published and in the wild. A `curl` of it has to keep
+producing a working stack.
+
+**This reverses the direction first sketched here.** The original plan had the
+base file carry no database and an overlay add one, on the assumption that
+Compose overrides can only add. They cannot only add: `!reset` (Compose v2.24+)
+removes a key, and a service set to `!reset null` disappears from the project.
+Verified before building on it. Subtraction being available is what allows the
+default to be the useful stack instead of the minimal one.
+
+**Profiles were considered and rejected for the topology axis.** They read
+better, but they leave `APP_MODE=all` plus a worker container reachable — two
+schedulers claiming the same mailboxes, duplicate IMAP sessions, two processes
+racing to mark the same messages seen. Because the overlay flips the mode in the
+same file that adds the worker, that state cannot be expressed. The database axis
+has no equivalent footgun, but is done the same way for consistency.
+
+The cost of `!reset` is a floor of Compose v2.24 (January 2024) for the overlays.
+The base file has no such requirement.
 
 ### Kubernetes: a Helm chart
 
-The bundled-database axis is a conditional *resource*, which is what Compose
-cannot express and Helm can. Values mirror the Compose axes one-for-one:
-`postgres.enabled` and `mode: combined | split`.
+Values mirror the Compose axes one-for-one: `postgres.enabled` and
+`mode: combined | split`. Templating earns its place here for the reasons plain
+manifests struggle with — conditional resources, a values schema, and
+upgrade/rollback as one operation — not because Compose lacks the same
+expressiveness, which the `!reset` finding above shows it does not.
 
 Bundled Postgres is a minimal in-chart StatefulSet, not a Bitnami dependency —
 their distribution terms changed in 2025 and a self-hosted product should not

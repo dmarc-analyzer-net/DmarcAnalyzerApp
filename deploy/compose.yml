@@ -1,4 +1,4 @@
-# Quick-start stack for DMARC Analyzer using the prebuilt image.
+# DMARC Analyzer — self-hosted stack.
 #
 #   curl -fsSL -o compose.yml https://raw.githubusercontent.com/dmarc-analyzer-net/DmarcAnalyzerApp/main/deploy/compose.yml
 #   echo "DMARC_ENCRYPTION_KEY=$(openssl rand -base64 32)" > .env
@@ -6,52 +6,56 @@
 #
 # Open http://localhost:8080 and create the first admin account.
 #
-# This file is for getting started on a single host. For development (local
-# build, dev Zitadel for OIDC), use docker-compose.yml in the repo root.
+# On its own this file is the whole product on one host: the app and its
+# database, one container each. Two optional overlays change that — see
+# "Other shapes" at the bottom. For development (local build, dev Zitadel for
+# OIDC), use docker-compose.yml in the repo root instead.
 
 services:
-  api:
+  app:
     image: ghcr.io/dmarc-analyzer-net/dmarc-analyzer:latest
     restart: unless-stopped
     environment:
-      APP_MODE: api
-      ConnectionStrings__Default: Host=postgres;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}
+      # Serves the console and runs the ingestion loop in one process. Use
+      # compose.split.yml to run them as separate containers instead.
+      APP_MODE: all
+      ConnectionStrings__Default: >-
+        Host=${DMARC_DB_HOST:-postgres};Port=${DMARC_DB_PORT:-5432};Database=${DMARC_DB_NAME:-dmarc_analyzer};Username=${DMARC_DB_USER:-postgres};Password=${DMARC_DB_PASSWORD:-${POSTGRES_PASSWORD:-postgres}}
       Database__MigrateOnStartup: "true"
       # Encrypts mailbox credentials at rest (AES-256-GCM). Set in .env:
       #   echo "DMARC_ENCRYPTION_KEY=$(openssl rand -base64 32)" > .env
+      # Keep it safe. Lose or change it and every stored mailbox credential
+      # becomes undecryptable — each source has to be entered again.
       Security__CredentialEncryptionKey: "${DMARC_ENCRYPTION_KEY:?DMARC_ENCRYPTION_KEY missing - generate one into .env (see header)}"
     ports:
-      - "8080:8080"
-    # Unauthenticated and DB-backed: a 200 means migrations have been applied,
-    # which is what the worker waits for below.
+      - "${DMARC_HTTP_PORT:-8080}:8080"
+    # Unauthenticated and DB-backed: a 200 means migrations have been applied.
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8080/api/v1/auth/setup > /dev/null"]
       interval: 3s
       timeout: 3s
       retries: 20
+      # Kestrel does not listen until migrations finish, and a migration can carry
+      # a multi-minute backfill — AddDmarcReportRecordRangeBegin rewrites 5.3M rows
+      # in ~94s on a production-sized database. Without a start period the retries
+      # expire first and the container reports unhealthy in the middle of an
+      # entirely normal upgrade.
+      start_period: 150s
     depends_on:
       postgres:
-        condition: service_healthy
-
-  worker:
-    image: ghcr.io/dmarc-analyzer-net/dmarc-analyzer:latest
-    restart: unless-stopped
-    environment:
-      APP_MODE: worker
-      ConnectionStrings__Default: Host=postgres;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=${POSTGRES_PASSWORD:-postgres}
-      Security__CredentialEncryptionKey: "${DMARC_ENCRYPTION_KEY:?DMARC_ENCRYPTION_KEY missing - generate one into .env (see header)}"
-    depends_on:
-      api:
         condition: service_healthy
 
   postgres:
     image: postgres:17-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: dmarc_analyzer
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${DMARC_DB_NAME:-dmarc_analyzer}
+      POSTGRES_USER: ${DMARC_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DMARC_DB_PASSWORD:-${POSTGRES_PASSWORD:-postgres}}
+    # The app migrates on boot, so gate it on Postgres actually accepting
+    # connections — without this the first `up` races and the app exits.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d dmarc_analyzer"]
+      test: ["CMD-SHELL", "pg_isready -U ${DMARC_DB_USER:-postgres} -d ${DMARC_DB_NAME:-dmarc_analyzer}"]
       interval: 3s
       timeout: 3s
       retries: 10
@@ -60,3 +64,18 @@ services:
 
 volumes:
   dmarc-pgdata:
+
+# Other shapes
+# ------------
+# Both overlays need Compose v2.24 or newer (`docker compose version`).
+#
+#   Use your own Postgres     -f compose.yml -f compose.external-db.yml
+#   Separate app and worker   -f compose.yml -f compose.split.yml
+#   Both                      -f compose.yml -f compose.external-db.yml -f compose.split.yml
+#
+# Record the choice once in .env so day-to-day use stays `docker compose up -d`:
+#
+#   COMPOSE_FILE=compose.yml:compose.split.yml
+#
+# Every shape reads the same environment variables, and so does the Kubernetes
+# chart. They are listed in docs/ops/configuration.md.
