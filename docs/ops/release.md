@@ -120,6 +120,25 @@ Semantic versioning. While on `0.x`:
    and must be updated in the same release — especially `configuration.md`.
 5. **`docs/planning/status.md` reflects reality**, since that's what people read
    to know what exists.
+6. **Version references point at the release you are about to cut**, not the last
+   one. Bump `deploy/helm/dmarc-analyzer/Chart.yaml` — both `version` and
+   `appVersion` — *before* tagging.
+
+   This is not cosmetic. `values.image.tag` defaults to the chart's `appVersion`,
+   so a stale `Chart.yaml` means `helm install ./deploy/helm/dmarc-analyzer` from a
+   clone silently deploys the **previous** release, schema and all. It happened
+   between 0.1.0 and 0.2.0.
+
+   `VersionReferenceTests` now fails the build for anything in *this* repo. It
+   cannot see the website, so those stay manual — two files, four references:
+
+   | File | What |
+   |---|---|
+   | `src/content/docs/install.md` | the pinning example and the `helm install --version` |
+   | `src/content/docs/kubernetes.md` | `--version` in the install and production examples |
+
+   Both live in the [website repo](https://github.com/dmarc-analyzer-net/dmarc-analyzer-net.github.io/tree/main/src/content/docs)
+   and should ship in the same release as step 4.
 
 ## Tagging
 
