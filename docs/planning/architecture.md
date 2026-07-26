@@ -237,6 +237,25 @@ Configured via `Worker__*` settings:
 
 ## 8) Security Model
 
+### Applying Migrations
+
+Three paths apply migrations, and all three allow the same 10-minute command
+timeout because a pending migration may carry a multi-minute backfill —
+`AddDmarcReportRecordRangeBegin` rewrites every `dmarc_report_record` row and
+takes over two minutes at ~5M rows. Npgsql's default is 30 seconds, which is not
+enough:
+
+| Path | Where the timeout is set |
+|---|---|
+| Startup, `Database:MigrateOnStartup` | `Program.cs` |
+| `POST /api/v1/admin/database/migrate` | `DatabaseModule` |
+| `dotnet ef database update` | `DmarcAnalyzerDbContextFactory` |
+
+A migration that times out rolls back cleanly — EF wraps each one in a
+transaction — so the failure mode is "nothing applied", not a half-migrated
+schema. It is still a failure, and one that only shows up against production
+data volumes.
+
 ### Client Addresses Behind a Proxy
 
 The audit trail records `Connection.RemoteIpAddress`. Behind a reverse proxy
