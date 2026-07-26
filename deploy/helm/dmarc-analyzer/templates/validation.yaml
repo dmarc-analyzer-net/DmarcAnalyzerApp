@@ -1,0 +1,6 @@
+{{/*
+Nothing is rendered here. This file exists so that a refused configuration
+reports "validation.yaml" rather than whichever template happened to be
+evaluated first, which is neither where the problem is nor where the fix goes.
+*/}}
+{{- include "dmarc.validate" . -}}

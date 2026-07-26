@@ -73,19 +73,27 @@ Sequenced; each step is independently shippable.
       bound, every `*Options` class registered, every `appsettings.json` leaf
       covered — and each direction was verified by injecting the drift and watching
       it fail. Runs in `dotnet test`, so it needed no CI change.
-- [ ] (step 4) **Helm chart.** `postgres.enabled` and `mode: combined|split`
-      mirroring the Compose axes; migrations as a pre-install/pre-upgrade `Job`
-      with `MigrateOnStartup=false`; `existingSecret` for the encryption key,
-      DB password, OIDC secret and SMTP password. Bundled Postgres is a minimal
-      in-chart StatefulSet, not a Bitnami dependency (their terms changed in 2025),
-      documented as evaluation-grade.
-- [ ] (step 5) **Install the chart for real** against the k3d cluster on
-      `hermes-agent`, not just `helm template`. Note `helm` is not installed there
-      yet; `kubectl` and `k3d` are.
-- [ ] (blocks step 4) **Decide whether two workers may run concurrently.**
-      Unverified today. It decides whether the chart allows `worker.replicas > 1`
-      or pins it to 1 with a comment. Publishing a chart that implies safety the
-      queue may not provide is worse than pinning it.
+- [x] (step 4, done) **Helm chart.** `deploy/helm/dmarc-analyzer`.
+      `postgres.enabled` and `mode: combined|split` mirror the Compose axes;
+      `existingSecret` for the encryption key and DB password; bundled Postgres is
+      a minimal in-chart StatefulSet documented as evaluation-grade. Needed a new
+      `APP_MODE=migrate` (apply pending migrations and exit) — without it there was
+      no way to migrate *before* an app pod, which is what the Job requires.
+      Guardrails refuse `combined` with `app.replicas>1`, `worker.replicas!=1`,
+      `startup` migrations with multiple replicas, and a missing encryption key.
+- [x] (step 5, done) **Installed for real** against the k3d cluster on
+      `hermes-agent`, not just `helm template`. Two chart bugs only a real install
+      surfaced: the app raced Postgres DNS and crash-looped until it was up (fixed
+      with a `wait-for-database` init container, since Kubernetes has no
+      `depends_on: service_healthy`), and the pre-install migration Job named a
+      ServiceAccount that hooks create *after* hooks run, so it never made a pod.
+      Both topologies then came up clean, plus an upgrade verified as a no-op.
+- [ ] (open) **Decide whether two workers may run concurrently.** Still
+      unverified. The chart pins `worker.replicas` to 1 and *refuses* any other
+      value, so the limit is explicit rather than implied — but it is a limit, and
+      lifting it needs someone to read the claim path in `MailboxSyncService` and
+      the queue and decide. Compose has no equivalent guard: `docker compose up
+      --scale worker=2` is not prevented.
 
 - [ ] (todo) Implement API endpoints for report upload, mailbox sync trigger, and report/query retrieval.
 - [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, mailbox sources).

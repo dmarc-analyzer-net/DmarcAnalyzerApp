@@ -1,0 +1,34 @@
+{{ include "dmarc.fullname" . }} installed — mode: {{ .Values.mode }}, database: {{ ternary "bundled" "external" .Values.postgres.enabled }}, migrations: {{ include "dmarc.migrationStrategy" . }}
+
+Reach the console:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+  kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "dmarc.fullname" . }} 8080:{{ .Values.service.port }}
+  open http://localhost:8080
+{{- end }}
+
+Create the first admin account there; registration closes after that.
+
+{{ if eq (include "dmarc.migrationStrategy" .) "startup" -}}
+The app applies migrations as it boots, so the first pod can take a few minutes
+to become ready on a large database. That is the migration running, not a hang:
+
+  kubectl -n {{ .Release.Namespace }} logs -f deploy/{{ include "dmarc.fullname" . }}
+{{- else -}}
+Migrations ran in a Job before this release started:
+
+  kubectl -n {{ .Release.Namespace }} logs job/{{ include "dmarc.fullname" . }}-migrate-{{ .Release.Revision }}
+{{- end }}
+
+{{ if and .Values.postgres.enabled (not .Values.auth.existingSecret) -}}
+Two things to change before this is anything but a trial:
+
+  * The bundled PostgreSQL has no replication and no backups. Set
+    postgres.enabled=false and point externalDatabase at a managed instance.
+  * The encryption key is in your values file. Move it to a Secret and set
+    auth.existingSecret. Losing or changing that key makes every stored mailbox
+    credential undecryptable.
+{{- end }}

@@ -1,0 +1,56 @@
+{{- if eq (include "dmarc.migrationStrategy" .) "job" }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Suffixed with the revision so each upgrade gets its own Job rather than
+  # colliding with the previous one, which is immutable once created.
+  name: {{ include "dmarc.fullname" . }}-migrate-{{ .Release.Revision }}
+  labels:
+    {{- include "dmarc.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    # Kept on failure so the logs survive for diagnosis; the previous Job is
+    # cleared on the next run.
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 1
+  activeDeadlineSeconds: {{ .Values.migrations.activeDeadlineSeconds }}
+  template:
+    metadata:
+      labels:
+        {{- include "dmarc.labels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "dmarc.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "dmarc.waitForDatabase" . | nindent 6 }}
+      containers:
+        - name: migrate
+          image: {{ include "dmarc.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            # Applies pending migrations and exits. Nothing is served and nothing
+            # is ingested, so this can complete before any application pod starts
+            # — which is the whole reason the mode exists.
+            - name: APP_MODE
+              value: migrate
+            {{- include "dmarc.env" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            {{- toYaml .Values.migrations.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

@@ -1,0 +1,75 @@
+{{- if eq .Values.mode "split" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dmarc.fullname" . }}-worker
+  labels:
+    {{- include "dmarc.labels" . | nindent 4 }}
+    app.kubernetes.io/component: worker
+spec:
+  # Pinned to 1 by the guardrail in _helpers.tpl. Two workers claiming from the
+  # same queue is unverified, not known-safe.
+  replicas: {{ .Values.worker.replicas }}
+  # Recreate, not RollingUpdate: a rolling update briefly runs the old and new
+  # worker together, which is the very overlap the replica pin exists to avoid.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "dmarc.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: worker
+  template:
+    metadata:
+      labels:
+        {{- include "dmarc.labels" . | nindent 8 }}
+        app.kubernetes.io/component: worker
+      {{- with .Values.worker.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "dmarc.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "dmarc.waitForDatabase" . | nindent 6 }}
+      containers:
+        - name: worker
+          image: {{ include "dmarc.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: APP_MODE
+              value: worker
+            {{- include "dmarc.env" . | nindent 12 }}
+          # No probes: worker mode has no HTTP listener. The loop already catches
+          # every exception in a pass and retries with backoff, so a failing pass
+          # degrades ingestion rather than crash-looping the pod. There is nothing
+          # useful for a liveness probe to test that the restart policy does not
+          # already handle.
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.worker.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.worker.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

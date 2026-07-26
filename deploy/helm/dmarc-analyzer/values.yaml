@@ -1,0 +1,157 @@
+# DMARC Analyzer — Helm values.
+#
+# The two choices that shape the deployment are `mode` and `postgres.enabled`.
+# They are the same two axes the Compose files expose, so a deployment can move
+# between Compose and Kubernetes without relearning anything.
+
+image:
+  repository: ghcr.io/dmarc-analyzer-net/dmarc-analyzer
+  # Empty means the chart's appVersion. Pin a version for production; `latest`
+  # and `edge` make a rollback ambiguous.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# combined — one Deployment serving the console and running ingestion (APP_MODE=all)
+# split    — two Deployments: app (APP_MODE=api) and worker (APP_MODE=worker)
+#
+# Combined is simpler to run and to read logs from. Split lets ingestion and the
+# console have separate resource limits and restart independently, which starts
+# to matter once a sync pass is heavy enough to slow the UI.
+mode: combined
+
+app:
+  # In combined mode this must stay 1: each replica runs its own ingestion loop,
+  # so two replicas means two schedulers claiming the same mailboxes. The chart
+  # refuses the combination rather than letting it happen quietly. To scale the
+  # console, use mode: split.
+  replicas: 1
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+
+worker:
+  # Pinned to 1 deliberately. Whether two workers can safely claim from the queue
+  # concurrently has not been verified, and a chart that allows replicas: 2
+  # implies a guarantee the queue may not make. The chart refuses any other value
+  # until that is settled.
+  replicas: 1
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  podAnnotations: {}
+
+# Bundled PostgreSQL.
+#
+# Evaluation-grade: a single StatefulSet, no replication, no backups, no
+# connection pooling. Good for a trial or a small internal deployment. For
+# anything you would be upset to lose, set enabled: false and point
+# externalDatabase at a managed instance or a Postgres operator.
+postgres:
+  enabled: true
+  image: postgres:17-alpine
+  database: dmarc_analyzer
+  username: postgres
+  # Ignored when auth.existingSecret is set.
+  password: postgres
+  persistence:
+    enabled: true
+    size: 10Gi
+    # Empty uses the cluster's default StorageClass.
+    storageClass: ""
+  resources: {}
+
+# Used when postgres.enabled is false.
+externalDatabase:
+  host: ""
+  port: 5432
+  database: dmarc_analyzer
+  username: dmarc
+  # Ignored when auth.existingSecret is set.
+  password: ""
+  # Set this to bypass the fields above entirely — useful for sslmode, pooling
+  # parameters, or a connection string your platform already issues.
+  connectionString: ""
+
+auth:
+  # AES-256-GCM key protecting stored mailbox passwords.
+  #   openssl rand -base64 32
+  # Back it up. Lose or change it and every stored mailbox credential becomes
+  # undecryptable; each source has to be entered again.
+  encryptionKey: ""
+  # Supply your own Secret instead of letting the chart create one. Expected
+  # keys: encryption-key, db-password. Recommended — it keeps the key out of
+  # values files, CI logs and `helm get values`.
+  existingSecret: ""
+
+migrations:
+  # "job"     — a pre-install/pre-upgrade Job applies migrations and exits before
+  #             any application pod starts. The only safe option above one replica.
+  # "startup" — the app migrates as it boots.
+  # ""        — pick automatically, explained below.
+  #
+  # The automatic choice is "startup" with bundled Postgres and "job" without,
+  # and the reason is ordering rather than preference: on a first install the
+  # pre-install hook runs before the bundled StatefulSet exists, so a Job would
+  # sit waiting for a database that is not there yet. With an external database
+  # there is nothing to wait for and the Job is strictly better.
+  strategy: ""
+  # Seconds the Job waits for the database before giving up. The largest shipped
+  # migration rewrites ~5.3M rows in about 94s; the app itself allows 10 minutes.
+  activeDeadlineSeconds: 900
+  resources: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: dmarc.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Anything from docs/ops/configuration.md that has no typed value above.
+# Same names, same meanings as the Compose deployment.
+#   extraEnv:
+#     Email__Host: smtp.example.com
+#     Alerts__ComplianceDropPercent: "20"
+extraEnv: {}
+
+# Keys pulled from existing Secrets, for values that should not sit in a values
+# file — SMTP and OIDC credentials in particular.
+#   extraEnvFromSecret:
+#     Email__Password:
+#       name: smtp-credentials
+#       key: password
+extraEnvFromSecret: {}
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 64198
+  fsGroup: 64198
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]

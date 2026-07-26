@@ -47,6 +47,13 @@ A single container image runs either half of the system, or both, selected by th
 - `APP_MODE=all` — the web host with `QueueWorkerService` registered as a hosted
   service. One process, one log stream. See ADR 0008; this is the intended shape
   for a single-host deployment.
+- `APP_MODE=migrate` — applies pending migrations and exits. The smallest host
+  that can do it: a DbContext and the audit trail, nothing that serves or
+  ingests. It exists because neither other migration path can run *before* an
+  application pod — startup migration races across replicas, and the admin
+  endpoint needs the very instance being waited for. The Kubernetes chart runs it
+  as a pre-install/pre-upgrade Job. Re-running with nothing pending is a logged
+  no-op, so an unchanged upgrade does not need a human to interpret it.
 
 `Program.cs` branches on this before building anything, so worker mode never
 constructs the web pipeline. Combined mode costs one `AddHostedService` call

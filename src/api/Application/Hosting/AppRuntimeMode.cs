@@ -14,6 +14,18 @@ public enum AppMode
     /// one container, one log stream, no healthcheck gate between services.
     /// </summary>
     All,
+
+    /// <summary>
+    /// Apply pending migrations and exit. Serves nothing and ingests nothing.
+    /// <para>
+    /// Exists for orchestrators that need schema changes to complete before any
+    /// application pod starts — the Kubernetes chart runs it as a pre-upgrade
+    /// Job. The other two migration paths cannot do that job: startup migration
+    /// races when there is more than one replica, and the admin endpoint needs a
+    /// running instance, which is the thing being waited for.
+    /// </para>
+    /// </summary>
+    Migrate,
 }
 
 public static class AppRuntimeMode
@@ -21,7 +33,7 @@ public static class AppRuntimeMode
     public const string EnvironmentVariable = "APP_MODE";
 
     /// <summary>Mode names accepted for <c>APP_MODE</c>, in the order they are documented.</summary>
-    public static readonly string[] Names = ["api", "worker", "all"];
+    public static readonly string[] Names = ["api", "worker", "all", "migrate"];
 
     /// <summary>
     /// Parses <c>APP_MODE</c>. Unset or blank means <see cref="AppMode.Api"/> —
@@ -45,6 +57,7 @@ public static class AppRuntimeMode
             "api" => AppMode.Api,
             "worker" => AppMode.Worker,
             "all" => AppMode.All,
+            "migrate" => AppMode.Migrate,
             _ => throw new InvalidOperationException(
                 $"{EnvironmentVariable}='{value}' is not a valid runtime mode. " +
                 $"Expected one of: {string.Join(", ", Names)}."),
@@ -60,4 +73,7 @@ public static class AppRuntimeMode
 
     /// <summary>Whether this mode serves HTTP.</summary>
     public static bool RunsHttp(this AppMode mode) => mode is AppMode.Api or AppMode.All;
+
+    /// <summary>Whether this mode runs to completion rather than staying up.</summary>
+    public static bool IsOneShot(this AppMode mode) => mode is AppMode.Migrate;
 }

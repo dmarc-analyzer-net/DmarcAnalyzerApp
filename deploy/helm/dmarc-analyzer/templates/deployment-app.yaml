@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dmarc.fullname" . }}
+  labels:
+    {{- include "dmarc.labels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+spec:
+  replicas: {{ .Values.app.replicas }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "dmarc.name" . }}
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: app
+  template:
+    metadata:
+      labels:
+        {{- include "dmarc.labels" . | nindent 8 }}
+        app.kubernetes.io/component: app
+      {{- with .Values.app.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "dmarc.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- include "dmarc.waitForDatabase" . | nindent 6 }}
+      containers:
+        - name: app
+          image: {{ include "dmarc.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            # combined runs the ingestion loop in this same process; split leaves
+            # it to the worker Deployment.
+            - name: APP_MODE
+              value: {{ ternary "all" "api" (eq .Values.mode "combined") | quote }}
+            - name: Database__MigrateOnStartup
+              value: {{ eq (include "dmarc.migrationStrategy" .) "startup" | quote }}
+            {{- include "dmarc.env" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          # Unauthenticated and DB-backed: a 200 means migrations have been
+          # applied and the database is reachable.
+          readinessProbe:
+            httpGet:
+              path: /api/v1/auth/setup
+              port: http
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 20
+            failureThreshold: 3
+          # Kestrel does not listen until startup work finishes. With
+          # migrations.strategy=startup that includes the migrations themselves,
+          # and the largest shipped one rewrites ~5.3M rows in about 94s. The
+          # startup probe is what stops the liveness probe killing the pod
+          # mid-migration and looping forever.
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: http
+            periodSeconds: 5
+            failureThreshold: 120
+          volumeMounts:
+            # readOnlyRootFilesystem is on; .NET still needs somewhere to write.
+            - name: tmp
+              mountPath: /tmp
+          resources:
+            {{- toYaml .Values.app.resources | nindent 12 }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      {{- with .Values.app.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.app.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.app.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

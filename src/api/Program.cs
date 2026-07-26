@@ -22,6 +22,60 @@ using Microsoft.EntityFrameworkCore;
 // Throws on an unrecognised value rather than defaulting to api — see AppRuntimeMode.
 var mode = AppRuntimeMode.FromEnvironment();
 
+if (mode == AppMode.Migrate)
+{
+    // Deliberately the smallest host that can migrate: a DbContext and the audit
+    // trail, nothing that serves or ingests. It runs to completion and exits, so
+    // an orchestrator can order schema changes ahead of every application pod.
+    var migrateBuilder = Host.CreateApplicationBuilder(args);
+    var migrateConnectionString = migrateBuilder.Configuration.GetConnectionString("Default")
+        ?? throw new InvalidOperationException(
+            "ConnectionStrings:Default is required in migrate mode.");
+
+    migrateBuilder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
+        options.UseNpgsql(migrateConnectionString));
+    migrateBuilder.Services.AddHttpContextAccessor();
+    migrateBuilder.Services.AddScoped<ICurrentUserContext, SystemUserContext>();
+    migrateBuilder.Services.AddScoped<IAuditLog, AuditLog>();
+
+    using var migrateHost = migrateBuilder.Build();
+    using var scope = migrateHost.Services.CreateScope();
+    var migrateDb = scope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>();
+    var migrateLogger = scope.ServiceProvider
+        .GetRequiredService<ILoggerFactory>().CreateLogger("Migrate");
+
+    // The same budget the other two paths use. AddDmarcReportRecordRangeBegin
+    // rewrites 5.3M rows in ~94s on a production-sized database, well past
+    // Npgsql's 30s default.
+    migrateDb.Database.SetCommandTimeout(TimeSpan.FromMinutes(10));
+
+    var pendingMigrations = (await migrateDb.Database.GetPendingMigrationsAsync()).ToArray();
+
+    if (pendingMigrations.Length == 0)
+    {
+        // Not an error. Re-running an unchanged release must be a no-op, or every
+        // upgrade would need a human to decide whether the Job was meant to fail.
+        migrateLogger.LogInformation("No pending migrations; nothing to do.");
+        return;
+    }
+
+    migrateLogger.LogInformation(
+        "Applying {Count} pending migration(s): {Migrations}",
+        pendingMigrations.Length,
+        string.Join(", ", pendingMigrations));
+
+    await migrateDb.Database.MigrateAsync();
+
+    await scope.ServiceProvider.GetRequiredService<IAuditLog>().RecordSystemAsync(
+        AuditEvents.DatabaseMigrated,
+        $"Applied {pendingMigrations.Length} pending database migration" +
+        $"{(pendingMigrations.Length == 1 ? "" : "s")} via migrate mode",
+        details: string.Join(", ", pendingMigrations));
+
+    migrateLogger.LogInformation("Migrations applied.");
+    return;
+}
+
 if (mode == AppMode.Worker)
 {
     var workerBuilder = Host.CreateApplicationBuilder(args);

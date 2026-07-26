@@ -115,6 +115,8 @@ The same container image (`dmarc-analyzer-net:dev`) runs in three modes:
 - `APP_MODE=worker` - runs background worker host
 - `APP_MODE=all` - both in one process; the simplest way to self-host on a
   single machine
+- `APP_MODE=migrate` - applies pending migrations and exits; for orchestrators
+  that need the schema settled before any app pod starts
 
 Any other value fails startup rather than falling back to `api`, so a typo
 cannot leave you with a container that serves the console and ingests nothing.

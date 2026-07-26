@@ -38,7 +38,7 @@ Two settings have no usable default.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `APP_MODE` | `api` | `api` (console + HTTP), `worker` (ingestion loop only), or `all` (both in one process). Any other value fails startup rather than falling back. |
+| `APP_MODE` | `api` | `api` (console + HTTP), `worker` (ingestion loop only), `all` (both in one process), or `migrate` (apply pending migrations and exit). Any other value fails startup rather than falling back. |
 | `Database__MigrateOnStartup` | `false` | Apply pending EF migrations at boot. The Compose files set it true. On Kubernetes leave it false and use the migration Job — with more than one replica, startup migration races. |
 | `ASPNETCORE_URLS` | `http://+:8080` | Set in the image; override only for an unusual port inside the container. |
 
