@@ -40,6 +40,32 @@ There is no `edge` chart. A chart is cheap to install from the repository
 directory, and an unversioned moving chart is the kind of thing that makes a
 rollback ambiguous.
 
+### Listing it on Artifact Hub
+
+The chart carries `artifacthub.io/*` annotations in `Chart.yaml`, so a listing
+picks up links, category and screenshots automatically once the repository is
+registered. Registration is a one-off and needs a browser — it cannot be done
+from CI:
+
+1. **Add the repository** at artifacthub.io → Control Panel → Repositories → Add,
+   kind *Helm charts*, URL `oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer`.
+2. **Claim ownership**, which turns an unclaimed listing into a verified one. Copy
+   the repository ID from that same screen into
+   `deploy/helm/artifacthub-repo.yml`, set the owner email to the Artifact Hub
+   account's address, then push the file to the same OCI namespace:
+
+   ```bash
+   oras push ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer:artifacthub.io \
+     --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
+     deploy/helm/artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
+   ```
+
+   The ID and the email both have to match the account or the claim silently
+   stays unverified.
+
+Worth doing: a search for "dmarc" on Artifact Hub returns two packages, both
+`dmarc2logstash`, both at zero stars. The category is effectively empty.
+
 On every run, tag or not, CI **renders all six supported value combinations and
 asserts every guardrail still refuses**. That is not ceremony: the migration Job
 renders only without bundled Postgres and the worker Deployment only in split

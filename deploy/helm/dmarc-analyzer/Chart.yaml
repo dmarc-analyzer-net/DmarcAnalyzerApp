@@ -15,3 +15,31 @@ keywords:
 maintainers:
   - name: dmarc-analyzer-net
     url: https://github.com/dmarc-analyzer-net
+
+# Artifact Hub reads these from the chart itself for OCI-hosted repositories,
+# so they travel with `helm push` and need no separate manifest.
+#
+# The category matters more than it looks: "dmarc" currently returns two
+# packages there, both dmarc2logstash, both at zero stars, so the listing is
+# uncontested — but only if it lands somewhere people browse.
+annotations:
+  artifacthub.io/category: security
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/prerelease: "false"
+  artifacthub.io/containsSecurityUpdates: "false"
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://dmarc-analyzer.net/docs/kubernetes/
+    - name: Configuration reference
+      url: https://dmarc-analyzer.net/docs/configuration/
+    - name: Source
+      url: https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp
+    - name: Container image
+      url: https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp/pkgs/container/dmarc-analyzer
+  artifacthub.io/maintainers: |
+    - name: dmarc-analyzer-net
+      url: https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp/issues
+  artifacthub.io/alternativeName: dmarc
+  artifacthub.io/screenshots: |
+    - title: DMARC Analyzer
+      url: https://dmarc-analyzer.net/og.png

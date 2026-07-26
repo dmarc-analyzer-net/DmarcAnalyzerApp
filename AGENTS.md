@@ -63,6 +63,7 @@ docker compose up -d --build
 7. [Authorization & pluggable authentication](docs/planning/adr/0007-authorization-and-pluggable-authentication.md)
 
 ### Operations runbooks — [`docs/ops/`](docs/ops/)
+- [Directory listings](docs/ops/directory-listings.md) — Artifact Hub and awesome-selfhosted, and why the second is blocked on a category decision
 - [Configuration reference](docs/ops/configuration.md) — **every** setting, and the same set on Compose and Kubernetes. `ConfigurationContractTests` fails the build if a setting exists in code and is missing here, so treat it as canonical; the website's configuration page links to it rather than copying it.
 - [Cutting a release](docs/ops/release.md) — tag-driven; merging to `main` does not publish a release. A tag also publishes the Helm chart to `oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer`.
 - [Migrating a running instance](docs/ops/live-migration-handover.md) — and why a green healthcheck does not prove the schema is current.

@@ -1,0 +1,16 @@
+# Artifact Hub repository metadata.
+#
+# This file claims ownership of the chart repository on Artifact Hub, which gets
+# the listing a "Verified Publisher" badge instead of showing as unclaimed.
+#
+# It is NOT read from this git repository. For an OCI-hosted chart repo it has to
+# be pushed as an artifact to the same OCI namespace, and the repositoryID below
+# only exists once the repo has been added on artifacthub.io. See
+# docs/ops/release.md for the two steps in order.
+
+repositoryID: ""   # fill from artifacthub.io → Control Panel → Repositories → ⋮ → Get ID
+owners:
+  - name: dmarc-analyzer-net
+    email: ""      # the address on the Artifact Hub account; must match, or the claim fails
+
+ignore: []
