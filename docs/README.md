@@ -19,7 +19,7 @@ docker compose up -d
 
 | Path | Audience | Contents |
 |---|---|---|
-| [`ops/`](ops/) | operators & maintainers | Runbooks: [cutting a release](ops/release.md), [mailbox sync](ops/mailbox-sync.md), [OIDC with Zitadel](ops/oidc-zitadel.md) |
+| [`ops/`](ops/) | operators & maintainers | Runbooks: [configuration reference](ops/configuration.md) (canonical — `ConfigurationContractTests` fails the build if it drifts), [cutting a release](ops/release.md), [migrating a running instance](ops/migrating-a-running-instance.md), [mailbox sync](ops/mailbox-sync.md), [OIDC with Zitadel](ops/oidc-zitadel.md), [directory listings](ops/directory-listings.md) |
 | [`planning/`](planning/) | contributors | **Internal design artifacts** — architecture, data model, API contract, roadmap, backlog, ADRs |
 
 > **`planning/` is not product documentation.** It is where we work out what to

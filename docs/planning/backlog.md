@@ -187,9 +187,9 @@ Sequenced; each step is independently shippable.
 
 ### Deployment follow-ups
 
-- [x] (done) **Live-instance migration brief.** `docs/ops/live-migration-handover.md`,
-      dry-run against a local replica of the Omarchy stack rather than written from
-      code-as-intended. Found that `docker compose up -d api worker` does **not**
+- [x] (done) **Live-instance migration brief.** `docs/ops/migrating-a-running-instance.md`,
+      dry-run against a local replica of a split api/worker stack rather than written
+      from code-as-intended. Found that `docker compose up -d api worker` does **not**
       apply a pending migration when the image is unchanged — Compose recreates on
       config change and a pending migration is invisible to it — while
       `/api/v1/auth/setup` still returns 200, so a green healthcheck proves nothing
