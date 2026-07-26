@@ -66,10 +66,13 @@ Sequenced; each step is independently shippable.
       turns out to remove services, so the published quick-start URL keeps
       producing a working stack with no overlay at all. All four combinations
       booted and verified to run exactly one worker.
-- [ ] (step 3) **`docs/ops/configuration.md` + drift check.** The env-var contract
-      documented once, and a CI check asserting every key in `appsettings.json` is
-      either documented or explicitly excluded. The check is the point: without it
-      the doc is accurate for a fortnight.
+- [x] (step 3, done) **`docs/ops/configuration.md` + drift check.** Every setting
+      documented once — 42 bound properties across eight sections, plus the
+      settings read straight from `IConfiguration` and the Compose-side variables. `ConfigurationContractTests` asserts the contract from four
+      directions — every bound property documented, every documented variable still
+      bound, every `*Options` class registered, every `appsettings.json` leaf
+      covered — and each direction was verified by injecting the drift and watching
+      it fail. Runs in `dotnet test`, so it needed no CI change.
 - [ ] (step 4) **Helm chart.** `postgres.enabled` and `mode: combined|split`
       mirroring the Compose axes; migrations as a pre-install/pre-upgrade `Job`
       with `MigrateOnStartup=false`; `existingSecret` for the encryption key,
