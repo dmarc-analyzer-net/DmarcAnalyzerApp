@@ -38,7 +38,7 @@ mailboxes for DMARC reports, and PostgreSQL — three containers, one image.
 
 ## Repository Layout
 
-- `src/api` - backend app (API mode + worker mode via `APP_MODE`)
+- `src/api` - backend app (api / worker / all modes via `APP_MODE`)
 - `src/web` - frontend app
 - `docs/planning` - roadmap, backlog, architecture, API contract, and data model
 - `docs/planning/adr` - architecture decision records
@@ -95,10 +95,15 @@ docker compose down
 
 ## Single-Image Runtime Model
 
-The same container image (`dmarc-analyzer-net:dev`) runs in two modes:
+The same container image (`dmarc-analyzer-net:dev`) runs in three modes:
 
 - `APP_MODE=api` - serves API + static React build (`wwwroot`)
 - `APP_MODE=worker` - runs background worker host
+- `APP_MODE=all` - both in one process; the simplest way to self-host on a
+  single machine
+
+Any other value fails startup rather than falling back to `api`, so a typo
+cannot leave you with a container that serves the console and ingests nothing.
 
 ## Useful Commands
 

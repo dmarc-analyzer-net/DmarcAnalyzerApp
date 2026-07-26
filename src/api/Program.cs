@@ -3,6 +3,7 @@ using DmarcAnalyzer.Api.Application.Analytics;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Domains;
+using DmarcAnalyzer.Api.Application.Hosting;
 using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Notifications;
@@ -18,9 +19,10 @@ using DmarcAnalyzer.Api.Workers;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 
-var mode = Environment.GetEnvironmentVariable("APP_MODE")?.Trim().ToLowerInvariant() ?? "api";
+// Throws on an unrecognised value rather than defaulting to api — see AppRuntimeMode.
+var mode = AppRuntimeMode.FromEnvironment();
 
-if (mode == "worker")
+if (mode == AppMode.Worker)
 {
     var workerBuilder = Host.CreateApplicationBuilder(args);
     var workerConnectionString = workerBuilder.Configuration.GetConnectionString("Default")
@@ -68,7 +70,14 @@ builder.Services.AddCredentialProtection(builder.Configuration);
 builder.Services.AddOidcAuthentication(builder.Configuration);
 builder.Services.AddScoped<IOidcSignInService, OidcSignInService>();
 builder.Services.AddScoped<CurrentUserContext>();
-builder.Services.AddScoped<ICurrentUserContext>(sp => sp.GetRequiredService<CurrentUserContext>());
+// Request scopes get the HTTP-backed context; scopes with no request — the startup
+// migration, and every worker pass in combined mode — get the system identity, the
+// same one worker mode uses. Without this the loop would run under an
+// unauthenticated request context that nothing ever populated.
+builder.Services.AddScoped<ICurrentUserContext>(sp =>
+    sp.GetRequiredService<IHttpContextAccessor>().HttpContext is null
+        ? new SystemUserContext()
+        : sp.GetRequiredService<CurrentUserContext>());
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserAdminService, UserAdminService>();
 builder.Services.AddScoped<IClientService, ClientService>();
@@ -98,6 +107,14 @@ builder.Services.Configure<DnsOptions>(builder.Configuration.GetSection("Dns"));
 builder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
 builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection("Network"));
+
+if (mode == AppMode.All)
+{
+    // Everything the loop needs is already registered above — the API host resolves
+    // the same sync, alert, digest, retention and DNS services. Combined mode is
+    // this one line plus the identity handling below, not a second wiring path.
+    builder.Services.AddHostedService<QueueWorkerService>();
+}
 
 if (builder.Environment.IsDevelopment())
 {

@@ -16,3 +16,5 @@ This folder captures key technical and product architecture decisions for `Dmarc
 - `0004-deployment-compose-and-kubernetes.md`
 - `0005-report-routing-dedup-and-retention.md`
 - `0006-observability-and-operations-baseline.md`
+- `0007-authorization-and-pluggable-authentication.md`
+- `0008-deployment-topologies-and-config-contract.md`

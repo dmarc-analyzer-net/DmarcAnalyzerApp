@@ -16,10 +16,14 @@ all shipped. The near-term sequence below turns it from "works" into
    already approximates a read-only portal; add magic-link (single-client,
    read-only, 7-day) sharing for occasional client access without accounts.
 
+2. **Deployment topologies.** In progress — see the block under Medium Priority
+   and ADR 0008. Bundled-or-external Postgres × combined-or-split × Compose-or-K8s,
+   packaged so the combinations stay in step instead of drifting.
+
 Smaller, independent items to slot in opportunistically: **POP3 ingestion**, the
 **report upload/query API endpoints** (which would also make seeding test data
-far easier), and **CSV/JSON export**. Larger, deferred until a deployment calls for them: **Helm/K8s
-charts**, **branded PDF reports**, and **M365/Google Workspace connectors**.
+far easier), and **CSV/JSON export**. Larger, deferred until a deployment calls
+for them: **branded PDF reports** and **M365/Google Workspace connectors**.
 (The console **visual redesign** is done — shipped as the new ink-green/teal
 design system.) See the categorized lists below for the full inventory.
 
@@ -44,6 +48,41 @@ design system.) See the categorized lists below for the full inventory.
 - [ ] (todo) Add magic link access model (single-client, read-only, 7-day default expiry).
 
 ## Medium Priority
+
+### Deployment topologies (ADR 0008)
+
+Sequenced; each step is independently shippable.
+
+- [ ] (step 1) **`APP_MODE=all` — combined runtime mode.** One container running
+      the API and the worker loop in-process. The web host already registers every
+      service the worker needs, so this is `AddHostedService<QueueWorkerService>()`
+      plus mode parsing. Also make an unrecognised `APP_MODE` fail startup instead
+      of silently defaulting to `api` — a typo that serves traffic but ingests
+      nothing is the worst outcome available.
+- [ ] (step 2) **Compose overlays.** Replace the single quick-start file with
+      `compose.yml` (app in `all` mode, external DB) + `compose.postgres.yml` +
+      `compose.split.yml`, giving four topologies from three files. The split
+      overlay must set `APP_MODE: api` in the same file that adds the worker, so
+      "combined app *plus* a worker container" — two schedulers claiming the same
+      mailboxes — cannot be expressed. Keep the published
+      `deploy/compose.yml` URL working; it is in the wild.
+- [ ] (step 3) **`docs/ops/configuration.md` + drift check.** The env-var contract
+      documented once, and a CI check asserting every key in `appsettings.json` is
+      either documented or explicitly excluded. The check is the point: without it
+      the doc is accurate for a fortnight.
+- [ ] (step 4) **Helm chart.** `postgres.enabled` and `mode: combined|split`
+      mirroring the Compose axes; migrations as a pre-install/pre-upgrade `Job`
+      with `MigrateOnStartup=false`; `existingSecret` for the encryption key,
+      DB password, OIDC secret and SMTP password. Bundled Postgres is a minimal
+      in-chart StatefulSet, not a Bitnami dependency (their terms changed in 2025),
+      documented as evaluation-grade.
+- [ ] (step 5) **Install the chart for real** against the k3d cluster on
+      `hermes-agent`, not just `helm template`. Note `helm` is not installed there
+      yet; `kubectl` and `k3d` are.
+- [ ] (blocks step 4) **Decide whether two workers may run concurrently.**
+      Unverified today. It decides whether the chart allows `worker.replicas > 1`
+      or pins it to 1 with a comment. Publishing a chart that implies safety the
+      queue may not provide is worse than pinning it.
 
 - [ ] (todo) Implement API endpoints for report upload, mailbox sync trigger, and report/query retrieval.
 - [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, mailbox sources).

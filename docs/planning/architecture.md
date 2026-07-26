@@ -37,19 +37,41 @@ Technical architecture for `DmarcAnalyzerApp` MVP and near-term post-MVP evoluti
 
 ### Runtime modes (one image, `APP_MODE`)
 
-A single container image runs either half of the system, selected by the
+A single container image runs either half of the system, or both, selected by the
 `APP_MODE` environment variable (default `api`):
 
 - `APP_MODE=api` — the ASP.NET web host: HTTP API plus the built React app served
-  from `wwwroot`.
+  from `wwwroot`. No background loop.
 - `APP_MODE=worker` — a plain `Host` with no HTTP listener, running
   `QueueWorkerService` only.
+- `APP_MODE=all` — the web host with `QueueWorkerService` registered as a hosted
+  service. One process, one log stream. See ADR 0008; this is the intended shape
+  for a single-host deployment.
 
 `Program.cs` branches on this before building anything, so worker mode never
-constructs the web pipeline. Consequence worth knowing: **only API mode applies
-EF migrations** (`Database:MigrateOnStartup`), so the worker must not be started
-against an un-migrated database — the shipped compose files gate it on the API
-reporting healthy.
+constructs the web pipeline. Combined mode costs one `AddHostedService` call
+because the web host already registers every service the loop needs — sync,
+alerts, digest, retention, the DNS cache and `WorkerOptions` are all there for
+the endpoints that share them.
+
+**An unrecognised `APP_MODE` fails startup** rather than defaulting to `api`
+(`AppRuntimeMode.Parse`). A typo that silently produced an API-only container
+would be close to undiagnosable: the container is up, the console loads, the
+healthcheck passes, and the only symptom is reports not arriving.
+
+Two consequences worth knowing:
+
+- **Worker mode does not apply EF migrations** (`Database:MigrateOnStartup` is
+  read only by the web host), so it must not be started against an un-migrated
+  database — the shipped compose files gate it on the API reporting healthy.
+  Combined mode migrates before the host starts, so the loop never sees an
+  un-migrated schema.
+- **Identity in non-request scopes.** `ICurrentUserContext` resolves to
+  `SystemUserContext` when there is no `HttpContext` and the HTTP-backed
+  `CurrentUserContext` when there is. That keeps the startup-migration audit
+  entry and every combined-mode worker pass on the same system identity that
+  worker mode uses, instead of an unauthenticated request context that nothing
+  populated.
 
 ### API Service (C# ASP.NET + Carter)
 
