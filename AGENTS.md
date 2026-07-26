@@ -12,7 +12,7 @@ One agency workspace monitors DMARC aggregate (RUA) reports for many clients acr
 
 ## Repository layout
 
-- `src/api` — backend. Runs in two modes selected by the `APP_MODE` env var: `api` (serves the REST API + the built React app from `wwwroot`) and `worker` (background mailbox-sync host). Same image, one entrypoint (`Program.cs`). Backend notes: [`src/api/README.md`](src/api/README.md).
+- `src/api` — backend. One image and one entrypoint (`Program.cs`), running in the mode `APP_MODE` selects: `api` (REST API + the built React app from `wwwroot`), `worker` (mailbox-sync host), `all` (both in one process), or `migrate` (apply migrations and exit). Backend notes: [`src/api/README.md`](src/api/README.md).
   - `Application/` — service layer (Auth, Analytics, Clients, Domains, MailboxSources, Ingestion, Reports, Security, Users). Carter modules in `Modules/` are thin and delegate here.
   - `Data/` — EF Core `DmarcAnalyzerDbContext`, entities, and `Migrations/`. A design-time factory (`DmarcAnalyzerDbContextFactory`) lets `dotnet ef` run without building the web host.
   - `Middleware/` — `SessionAuthMiddleware` (cookie session → `ICurrentUserContext`) then `RoleAuthorizationMiddleware` (endpoint role enforcement).
@@ -37,7 +37,9 @@ npm run dev       # Vite dev server, proxies /api to the local API
 # EF Core migrations (from repo root)
 dotnet ef migrations add <Name> --project src/api/DmarcAnalyzer.Api.csproj
 
-# Full stack in Docker (api + worker + postgres)
+# Full dev stack in Docker (api + worker + postgres + dev Zitadel)
+# Note: the repo-root compose file is the *development* stack and keeps api and
+# worker separate. deploy/compose.yml is the shipped one and runs APP_MODE=all.
 docker compose up -d --build
 ```
 
@@ -61,7 +63,9 @@ docker compose up -d --build
 7. [Authorization & pluggable authentication](docs/planning/adr/0007-authorization-and-pluggable-authentication.md)
 
 ### Operations runbooks — [`docs/ops/`](docs/ops/)
-- [Cutting a release](docs/ops/release.md) — tag-driven; merging to `main` does not publish a release
+- [Configuration reference](docs/ops/configuration.md) — **every** setting, and the same set on Compose and Kubernetes. `ConfigurationContractTests` fails the build if a setting exists in code and is missing here, so treat it as canonical; the website's configuration page links to it rather than copying it.
+- [Cutting a release](docs/ops/release.md) — tag-driven; merging to `main` does not publish a release. A tag also publishes the Helm chart to `oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer`.
+- [Migrating a running instance](docs/ops/live-migration-handover.md) — and why a green healthcheck does not prove the schema is current.
 - [Mailbox sync operations](docs/ops/mailbox-sync.md)
 - [OIDC login with Zitadel (dev setup)](docs/ops/oidc-zitadel.md)
 
@@ -71,21 +75,26 @@ docker compose up -d --build
 - **AuthN is pluggable, authZ is always in-app** (ADR 0007). Local password or OIDC both mint the same `dmarc_session` cookie; roles + per-client grants are decided in the app, never by the IdP. Roles: `agency_admin` (all), `agency_analyst` (all clients, read + ops), `client_viewer` (granted clients only, read-only). Endpoints are **deny-by-default for client_viewer** — new endpoints must opt in via `.AllowClientViewer()`.
 - **Enforcement status** (Domains/Detail): derived from published DMARC policy + compliance — `enforced` (p=reject) / `ramping` (p=quarantine) / `spoofing` (unprotected + failing) / `monitoring` / `no_data`.
 - **Analytics windows** anchor to the newest report date, not wall-clock (data is often backfilled).
+- **Exactly one ingestion worker per database.** There is no claim mechanism in the queue — `QueueWorkerService` reads every active source and iterates. Reports survive a second worker (`ON CONFLICT DO NOTHING` on real unique indexes), but alert and digest email duplicate, the retention purge throws, and the mailbox checkpoint can move *backwards*. `WorkerSingleInstanceLock` takes a Postgres advisory lock so a second worker exits instead of starting. Lifting the limit is scoped in the backlog; do not assume it is only a Kubernetes concern.
 
 ## Configuration (env vars / appsettings)
 
-- `APP_MODE` — `api` or `worker`.
+- `APP_MODE` — `api`, `worker`, `all` (both in one process — what the shipped compose file uses), or `migrate` (apply pending migrations and exit). **Any other value fails startup** rather than defaulting, because a typo that serves the console while ingesting nothing passes every check an operator makes.
 - `ConnectionStrings__Default` — Postgres connection.
 - `Database__MigrateOnStartup` — `true` applies EF migrations on API start (enabled in compose).
 - `Security__CredentialEncryptionKey` — base64 32-byte key; AES-256-GCM at rest for mailbox passwords. Absent ⇒ plaintext passthrough + startup warning (dev only).
 - `Auth__Oidc__*` — optional OIDC front door (`Enabled`, `Authority`, `ClientId`, `ClientSecret`, `Scopes`, `DisplayName`, `DefaultRole`, `AutoProvision`, `RequireHttpsMetadata`). Off by default. See the [Zitadel guide](docs/ops/oidc-zitadel.md).
-- `Worker__*` — polling interval, batch sizes, retry/timeout controls.
+- `Worker__*` — polling interval, batch sizes, retry/timeout controls, and `EnforceSingleInstance`.
+- `Network__*` — forwarded headers behind a proxy. Off by default, and **refused if turned on with an empty trust list**; without it every audit entry records the proxy's address.
+
+The full list with defaults is in [`docs/ops/configuration.md`](docs/ops/configuration.md), which is build-enforced. Add a setting there in the same PR that adds it to the code, or the build fails.
 
 ## Working agreements
 
 - **`main` is protected**: no direct pushes. Branch → implement → verify → open a PR (`gh pr create`). Merges happen via PR.
 - **Verify before shipping**: build + tests + lint, and for user-facing changes run the stack (`docker compose up -d --build`) and check the real app. `docs/planning/status.md` and `backlog.md` should be updated as part of feature PRs.
 - **Backend**: modules stay thin; put logic in `Application/` services. Prefer EF LINQ; when a query needs raw SQL (e.g. `DISTINCT ON`, per-group aggregates), keep it tenant-scoped and remember InMemory tests can't execute it.
+- **Ingestion changes need a real database.** Every test uses `UseInMemoryDatabase`, which supports neither the raw SQL nor the transactions `MailboxSyncService` depends on — two real bugs there were invisible to the suite and had to be found by hand against Postgres. Until the integration harness in the backlog exists, verify changes to that file against a real database and say so in the PR.
 - **Frontend**: TypeScript strict, sentence-case copy, no emoji, mono font for technical values (domains, IPs, policies). Use the design tokens (CSS vars + Tailwind theme) and existing primitives — the old shadcn light-blue tokens are gone.
 - **Tone/content**: plain, technical, no hype (see the design/content notes referenced from the planning docs).
 
