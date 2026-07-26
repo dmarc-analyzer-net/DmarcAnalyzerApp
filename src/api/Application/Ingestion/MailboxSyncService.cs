@@ -154,10 +154,25 @@ public sealed class MailboxSyncService(
                                 var normalizedPolicyDomain = result.PolicyDomain.Trim().ToLowerInvariant();
                                 var normalizedReportId = result.ReportId.Trim();
 
+                                // Left outside the transaction below on purpose: a domain
+                                // is shared by every report for it, not owned by this
+                                // one, so rolling it back with a failed report would be
+                                // wrong. A domain with no reports yet is a state the
+                                // console already handles.
                                 var domainId = await ResolveOrCreateDomainIdAsync(
                                     mailboxSource.DefaultClientId,
                                     normalizedPolicyDomain,
                                     operationToken);
+
+                                // The report row and its records must commit together.
+                                // Inserted before this transaction opened, the report
+                                // auto-committed on its own; if the records insert then
+                                // failed, the report survived with no children — and
+                                // because deduplication keys on that row, every later
+                                // sync saw a duplicate and skipped it, so the records
+                                // were never backfilled. A single bad record left a
+                                // report permanently empty and silently wrong.
+                                await using var transaction = await db.Database.BeginTransactionAsync(operationToken);
 
                                 var reportId = await TryInsertDmarcReportAsync(
                                     domainId,
@@ -172,12 +187,13 @@ public sealed class MailboxSyncService(
 
                                 if (!reportId.HasValue)
                                 {
+                                    // Already ingested. Disposing the transaction on the
+                                    // way out rolls back the no-op insert.
                                     reportsSkippedAsDuplicate++;
                                     continue;
                                 }
 
                                 var reportEntityId = reportId.Value;
-                                await using var transaction = await db.Database.BeginTransactionAsync(operationToken);
                                 await InsertDmarcReportRecordsAsync(
                                     reportEntityId, result.RangeBeginUtc, result.Records, operationToken);
 

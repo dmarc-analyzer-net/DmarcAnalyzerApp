@@ -131,15 +131,30 @@ Sequenced; each step is independently shippable.
       and a conditional checkpoint write (`WHERE "LastProcessedUid" < @new`) so it
       can only move forward. Nothing here is needed for a single worker.
 
-- [ ] (todo) **A report can be left with zero records, permanently.**
-      `MailboxSyncService.cs:162` inserts the parent `dmarc_report` row and commits
-      it *before* `BeginTransactionAsync` at `:180` opens the transaction that
-      inserts the records. If the records insert fails, the report row survives with
-      no children — and because dedupe is keyed on that row, every later sync sees a
-      duplicate and skips it, so the records are never backfilled. Single-worker
-      bug, unrelated to concurrency; found while answering the concurrency
-      question. Fix is to insert the report inside the same transaction as its
-      records, keeping the `ON CONFLICT DO NOTHING` semantics.
+- [x] (done) **A report could be left with zero records, permanently.**
+      `MailboxSyncService` inserted the parent `dmarc_report` row *before* opening the
+      transaction that inserts its records, so the report auto-committed on its own.
+      A failed records insert left the report with no children — and because dedupe
+      keys on that row, every later sync saw a duplicate and skipped it, so the
+      records were never backfilled. One bad record made a report permanently empty
+      and silently wrong. Fixed by moving the report insert inside the same
+      transaction. Domain resolution deliberately stays outside: a domain is shared
+      by every report for it, not owned by one.
+
+      Proven against real Postgres by forcing a NOT NULL violation on the records
+      insert: the old statement order leaves 1 report / 0 records and a retry
+      inserts nothing; the new order leaves 0 / 0, so a retry can succeed. Happy
+      path and duplicate path both re-verified.
+
+- [ ] (todo) **An integration-test harness for the ingestion path.** This is the
+      second real bug in `MailboxSyncService` that the current test suite cannot
+      reach, and the reason is structural: every test uses `UseInMemoryDatabase`,
+      which supports neither the raw SQL nor the transactions this code depends on,
+      and the service needs an IMAP connection. Both fixes were verified by hand
+      against real Postgres, which is honest but not repeatable. Options are
+      Testcontainers for Postgres plus an `IMailStore` seam over MailKit, or a
+      narrower seam that lets the report-and-records write be driven directly.
+      Worth doing before the next change to this file.
 
 - [ ] (todo) Implement API endpoints for report upload, mailbox sync trigger, and report/query retrieval.
 - [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, mailbox sources).
