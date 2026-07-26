@@ -87,8 +87,17 @@ Semantic versioning. While on `0.x`:
 
 1. **CI is green on `main`.** Tests and the frontend build both pass.
 2. **Migrations apply from the previous release**, not just from an empty
-   database. Start the *previous* image against a fresh volume, let it migrate,
-   then upgrade to the candidate and confirm it starts clean.
+   database. Start the *previous* image against a fresh volume, put a row or two
+   in it, then upgrade in place and confirm the count moved, the data survived and
+   nothing restarted:
+
+   ```bash
+   docker compose exec -T postgres psql -U postgres -d dmarc_analyzer -tAc \
+     'select count(*) from "__EFMigrationsHistory"'
+   ```
+
+   Empty-database migration proves far less — it never exercises the ordering
+   between an old schema and a new one.
 3. **The quick-start works.** In a scratch directory:
    ```bash
    curl -fsSL -o compose.yml https://raw.githubusercontent.com/dmarc-analyzer-net/DmarcAnalyzerApp/main/deploy/compose.yml
@@ -96,7 +105,15 @@ Semantic versioning. While on `0.x`:
    docker compose up -d
    curl -s localhost:8080/api/v1/auth/setup   # expect {"requiresBootstrap":true}
    ```
-   Check `docker compose ps` shows all three containers up with **zero restarts**.
+   Check `docker compose ps` shows **both** containers — `app` and `postgres` —
+   up with **zero restarts**. (It was three before the combined container; the
+   shipped file now runs `APP_MODE=all`.)
+
+   Then the overlays, which do not share a code path with the default and so are
+   not covered by the check above:
+   ```bash
+   docker compose -f compose.yml -f compose.split.yml up -d   # expect app+worker+postgres
+   ```
 4. **Docs match the code.** If configuration keys, endpoints, or setup steps
    changed, the [docs site](https://dmarc-analyzer.net/docs) lives in the
    [website repo](https://github.com/dmarc-analyzer-net/dmarc-analyzer-net.github.io/tree/main/src/content/docs)
@@ -132,6 +149,15 @@ docker manifest inspect dmarcanalyzernet/dmarc-analyzer:0.2.0 > /dev/null && ech
 Then re-run the quick-start from step 3 above with the **published** image rather
 than a local build. That is the only check that proves what users will actually
 get.
+
+**And the chart**, which is published by the same tag and is easy to forget
+because nothing else references it:
+
+```bash
+helm show chart oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer --version 0.2.0
+# version and appVersion should both be 0.2.0 — they are set from the tag, not
+# from the committed Chart.yaml
+```
 
 > If GHCR denies an anonymous pull, the package visibility reverted to private.
 > Fix it at *org → Packages → dmarc-analyzer → Package settings → Change

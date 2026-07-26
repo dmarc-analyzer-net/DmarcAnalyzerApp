@@ -6,7 +6,14 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
 
 - Repository structure and planning docs baseline under `docs/planning`.
 - Single image runtime model for API and worker (`APP_MODE=api|worker`).
-- Docker Compose baseline with API, worker, and PostgreSQL.
+- **Deployment**: one image, four `APP_MODE` values (`api`, `worker`, `all`,
+  `migrate`). Docker Compose ships as a single combined container plus PostgreSQL,
+  with overlays for an external database and for splitting console from worker.
+  A Helm chart (`deploy/helm/dmarc-analyzer`) exposes the same two axes, applies
+  migrations via a pre-install Job, and is published to
+  `oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer` on a release tag.
+  Exactly one ingestion worker may run per database, enforced by a Postgres
+  advisory lock.
 - ASP.NET Core API with Carter modules and EF Core + PostgreSQL integration.
 - Core and ingestion/report schema migrations in place for:
   - `client`
