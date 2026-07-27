@@ -11,4 +11,11 @@ public sealed class CreateMailboxSourceRequest
     public string Password { get; set; } = string.Empty;
     public Guid DefaultClientId { get; set; }
     public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// Delete report mail from this mailbox once it is older than the retention window.
+    /// Defaults to false: a new source must not start deleting a customer's mail because
+    /// somebody left a field out of the request.
+    /// </summary>
+    public bool DeleteAfterRetention { get; set; }
 }

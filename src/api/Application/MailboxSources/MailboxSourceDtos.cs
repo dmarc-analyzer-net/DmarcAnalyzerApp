@@ -11,6 +11,8 @@ public sealed record MailboxSourceDto(
     Guid DefaultClientId,
     string? DefaultClientName,
     bool IsActive,
+    bool DeleteAfterRetention,
+    DateTime? OldestMessageAtUtc,
     DateTime? LastSuccessSyncAtUtc,
     long? LastProcessedUid,
     long? LastProcessedUidValidity,

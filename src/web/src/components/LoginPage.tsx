@@ -1,6 +1,7 @@
 import { Loader2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 import { BrandLogo } from '@/components/BrandLogo'
 import { Button } from '@/components/ui/button'
@@ -25,6 +26,7 @@ const OIDC_ERROR_MESSAGES: Record<string, string> = {
 
 export function LoginPage() {
   const { login } = useAuth()
+  const navigate = useNavigate()
 
   // null = setup check in flight; falls back to the login form if it fails.
   const [requiresBootstrap, setRequiresBootstrap] = useState<boolean | null>(null)
@@ -99,6 +101,16 @@ export function LoginPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password, displayName }),
       })
+
+      // Hand off to the first-run import step, and do it *before* signing in.
+      // `login()` flips the auth status, at which point App.tsx stops rendering
+      // this page entirely — anything hosted inside the bootstrap card would be
+      // unmounted mid-flow. Setting the URL first uses the mechanism this page
+      // already depends on: it renders in place without redirecting, so whichever
+      // URL is current is where the router lands once authentication succeeds.
+      // `replace` because a Back into a bootstrap form that can no longer be
+      // submitted is a dead end.
+      navigate('/setup/import', { replace: true })
       await login(email, password)
     } catch (bootstrapError) {
       if (bootstrapError instanceof ApiError && bootstrapError.status === 403) {

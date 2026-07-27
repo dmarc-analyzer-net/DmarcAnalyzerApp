@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Application.Analytics;
+using DmarcAnalyzer.Api.Application.Backup;
 using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Application.Retention;
@@ -12,9 +13,11 @@ namespace DmarcAnalyzer.Api.Workers;
 public sealed class QueueWorkerService(
     IServiceScopeFactory scopeFactory,
     IOptions<WorkerOptions> options,
+    IOptions<BackupOptions> backupOptions,
     ILogger<QueueWorkerService> logger) : BackgroundService
 {
     private readonly WorkerOptions _options = options.Value;
+    private readonly BackupOptions _backupOptions = backupOptions.Value;
 
     private const int MinDelaySeconds = 15;
 
@@ -38,6 +41,8 @@ public sealed class QueueWorkerService(
                 await RunDigestPassIfDueAsync(stoppingToken);
                 await RunRetentionPassIfDueAsync(stoppingToken);
                 await RunDnsRefreshPassIfDueAsync(stoppingToken);
+                await RunBackupOffloadPassIfDueAsync(stoppingToken);
+                await RunMailboxRetentionPassIfDueAsync(stoppingToken);
                 consecutiveFailures = 0;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -203,6 +208,96 @@ public sealed class QueueWorkerService(
         // Only mark it done on success, so a failure retries on the next pass
         // instead of waiting out the whole interval.
         _lastRetentionRunUtc = DateTime.UtcNow;
+    }
+
+    private DateTime? _lastBackupOffloadUtc;
+
+    /// <summary>
+    /// Ships the configuration snapshot and any new history rows to object storage.
+    /// <para>
+    /// Runs last, and swallows its own exceptions, for a structural reason: all six passes
+    /// share one try/catch in the loop above, so a pass that throws skips every pass after
+    /// it. Backup depends on a third party being reachable — a bucket, over the network —
+    /// which makes it the pass most likely to fail, and the least acceptable one to let
+    /// stop ingestion. Its own failures are recorded in <c>backup_stream_state</c> and
+    /// surfaced in the console instead.
+    /// </para>
+    /// <para>
+    /// Interval resolution is <c>Worker:ScheduleIntervalSeconds</c>, like every other gate
+    /// here: with the shipped hourly schedule, a 30-minute backup interval means roughly
+    /// hourly. Not floored to an hour, though, because a shortened schedule interval should
+    /// actually deliver the configured cadence.
+    /// </para>
+    /// </summary>
+    private async Task RunBackupOffloadPassIfDueAsync(CancellationToken ct)
+    {
+        var interval = TimeSpan.FromMinutes(Math.Max(1, _backupOptions.IntervalMinutes));
+        if (_lastBackupOffloadUtc is { } last && DateTime.UtcNow - last < interval)
+        {
+            return;
+        }
+
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var offload = scope.ServiceProvider.GetRequiredService<IBackupOffloadService>();
+            var result = await offload.RunAsync(ct);
+
+            // A pass that did nothing because no bucket is configured must not start the
+            // clock, or enabling offload later would wait out a whole interval.
+            if (result.Ran)
+            {
+                _lastBackupOffloadUtc = DateTime.UtcNow;
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Backup offload pass failed; ingestion is unaffected");
+            _lastBackupOffloadUtc = DateTime.UtcNow;
+        }
+    }
+
+    private DateTime? _lastMailboxRetentionUtc;
+
+    /// <summary>
+    /// Deletes report mail that has aged past the retention window, so the mailbox stops
+    /// being an unbounded second copy of data the database has already purged.
+    /// <para>
+    /// Runs last and swallows its own exceptions, like the offload pass above and for the
+    /// same structural reason. Every source is opt-in, so on a default install this pass
+    /// connects to nothing at all — the planner suspends each source before any mailbox is
+    /// opened.
+    /// </para>
+    /// </summary>
+    private async Task RunMailboxRetentionPassIfDueAsync(CancellationToken ct)
+    {
+        var interval = TimeSpan.FromHours(Math.Max(1, _options.MailboxRetentionIntervalHours));
+        if (_lastMailboxRetentionUtc is { } last && DateTime.UtcNow - last < interval)
+        {
+            return;
+        }
+
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var retention = scope.ServiceProvider.GetRequiredService<IMailboxRetentionService>();
+            await retention.RunAsync(dryRun: false, ct);
+
+            _lastMailboxRetentionUtc = DateTime.UtcNow;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Mailbox retention pass failed; ingestion is unaffected");
+            _lastMailboxRetentionUtc = DateTime.UtcNow;
+        }
     }
 
     private async Task RunScheduledSyncPassAsync(CancellationToken ct)

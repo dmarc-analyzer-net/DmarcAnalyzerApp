@@ -88,6 +88,13 @@ cross-tenant ids return **404**, never 403.
 | GET | `/admin/audit-events` | admin — audit trail (`days`, `eventType` prefix, `actor`, `clientId`, `limit`). Read-only by design |
 | GET | `/admin/retention/preview` | admin — what the next purge would delete, per client; deletes nothing |
 | POST | `/admin/retention/purge` | admin — runs the purge now. Optional `batchSize` |
+| GET | `/admin/config/export` | admin — the configuration artifact, as a JSON download. Refused with 409 when no credential encryption key is set, because the mailbox passwords in it would be plaintext; `allowPlaintextCredentials=true` overrides |
+| GET | `/admin/config/import/preview` | admin — what an import would change; writes nothing |
+| POST | `/admin/config/import` | admin — `mode` of `restore` (empty install only) or `merge`. Additive: never deletes a row |
+| GET | `/admin/backup/status` | admin — offload destination, last success, bucket versioning, whether credentials are protected |
+| POST | `/admin/backup/offload` | admin — runs an offload pass now rather than waiting for the worker |
+| GET | `/admin/mailbox-retention/preview` | admin — per source: cutoff, eligible messages, and which rule is suspending it; deletes nothing |
+| POST | `/admin/mailbox-retention/purge` | admin — **irreversible**: expunges report mail past retention from the mailbox. Opt-in per source, suspended for any source serving a client under legal hold |
 | GET | `/alerts` | any — alert history (`days`, default 30); client-scoped for viewers |
 | PATCH | `/alerts/{id}` | staff — triage: `status` of `open`, `acknowledged` or `closed` |
 | POST | `/admin/alerts/evaluate` | admin — evaluates alert rules now |

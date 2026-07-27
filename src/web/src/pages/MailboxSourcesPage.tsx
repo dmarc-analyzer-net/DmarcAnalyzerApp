@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 
+import { Notice } from '@/components/Notice'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
@@ -39,6 +40,7 @@ const initialMailboxForm = {
   password: '',
   defaultClientId: '',
   isActive: true,
+  deleteAfterRetention: false,
 }
 
 /** Status pill in the sources table: healthy/running/failing (health-driven). */
@@ -47,6 +49,7 @@ const getHealthBadge = (
 ): { label: string; variant: 'success' | 'warning' | 'danger' | 'neutral' } => {
   if (status === 'success') return { label: 'Healthy', variant: 'success' }
   if (status === 'running') return { label: 'Running', variant: 'warning' }
+  if (status === 'partial') return { label: 'Catching up', variant: 'warning' }
   if (status === 'failed') return { label: 'Failing', variant: 'danger' }
   return { label: 'No data', variant: 'neutral' }
 }
@@ -55,7 +58,7 @@ const getHealthBadge = (
 const getStatusBadgeVariant = (status: SyncRunStatus | null) => {
   if (status === 'success') return 'success' as const
   if (status === 'failed') return 'danger' as const
-  if (status === 'running') return 'warning' as const
+  if (status === 'running' || status === 'partial') return 'warning' as const
   return 'neutral' as const
 }
 
@@ -217,6 +220,7 @@ export function MailboxSourcesPage() {
         password: '',
         defaultClientId: source.defaultClientId,
         isActive: source.isActive,
+        deleteAfterRetention: source.deleteAfterRetention,
       })
     } else {
       setEditingMailboxId(null)
@@ -662,6 +666,29 @@ export function MailboxSourcesPage() {
               />
               Active
             </label>
+            <label className="flex items-center gap-2 text-sm text-secondary">
+              <input
+                type="checkbox"
+                checked={mailboxForm.deleteAfterRetention}
+                onChange={(e) =>
+                  setMailboxForm((x) => ({ ...x, deleteAfterRetention: e.target.checked }))
+                }
+              />
+              Delete mail past the retention window
+            </label>
+            {mailboxForm.deleteAfterRetention ? (
+              <Notice tone="warn" title="This deletes mail from the mailbox.">
+                Report mail older than the widest retention window of the clients this source
+                serves, plus a grace margin, is expunged on a daily pass. It gives the system
+                one retention window instead of two — without it, reports purged from the
+                database return on the next sync — but the mailbox is also what a report
+                replay reads from, so anything deleted is gone unless the object-storage
+                archive is on. Deletion is suspended entirely while any client this source
+                serves is under legal hold. Check{' '}
+                <span className="font-mono text-xs">/api/v1/admin/mailbox-retention/preview</span>{' '}
+                to see the cutoff before the pass runs.
+              </Notice>
+            ) : null}
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="secondary" onClick={resetDialog}>
                 Cancel

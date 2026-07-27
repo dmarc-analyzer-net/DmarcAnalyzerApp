@@ -7,10 +7,12 @@ import { useAuth } from '@/lib/auth-context'
 import { isAdmin, isStaff } from '@/lib/authz'
 import { AuditPage } from '@/pages/AuditPage'
 import { AlertsPage } from '@/pages/AlertsPage'
+import { BackupPage } from '@/pages/BackupPage'
 import { ClientsPage } from '@/pages/ClientsPage'
 import { DashboardPage } from '@/pages/DashboardPage'
 import { DomainDetailPage } from '@/pages/DomainDetailPage'
 import { DomainsPage } from '@/pages/DomainsPage'
+import { FirstRunImportPage } from '@/pages/FirstRunImportPage'
 import { MailboxSourcesPage } from '@/pages/MailboxSourcesPage'
 import { NotificationsPage } from '@/pages/NotificationsPage'
 import { ThreatsPage } from '@/pages/ThreatsPage'
@@ -53,6 +55,12 @@ function App() {
         <Route path="/mailbox-sources" element={staff ? <MailboxSourcesPage /> : fallback} />
         <Route path="/users" element={admin ? <UsersPage /> : fallback} />
         <Route path="/audit" element={admin ? <AuditPage /> : fallback} />
+        <Route path="/backup" element={admin ? <BackupPage /> : fallback} />
+        {/* Where LoginPage hands off after creating the first administrator. It is
+            a normal route, not a special mode, so a reload or a bookmark lands on
+            something that still works — the page asks the server whether the
+            install is empty rather than trusting how it was reached. */}
+        <Route path="/setup/import" element={admin ? <FirstRunImportPage /> : fallback} />
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Route>
     </Routes>

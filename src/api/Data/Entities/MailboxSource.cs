@@ -12,6 +12,33 @@ public sealed class MailboxSource
     public string PasswordEncrypted { get; set; } = string.Empty;
     public Guid DefaultClientId { get; set; }
     public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// Delete report mail from this mailbox once it is older than the retention window the
+    /// app enforces on itself.
+    /// <para>
+    /// Off by default, because deleting a customer's mail is not a default behaviour and
+    /// some operators poll a shared mailbox that other tooling also reads. Turning it on
+    /// is what gives the system one retention window instead of two: without it, the same
+    /// personal data the daily purge removes from the database sits in the mailbox
+    /// indefinitely, which makes an erasure request impossible to satisfy — the reports
+    /// come back on the next sync.
+    /// </para>
+    /// </summary>
+    public bool DeleteAfterRetention { get; set; }
+
+    /// <summary>
+    /// Internal date of the oldest message still in the polled folder, refreshed on each
+    /// sync. Null until a sync has looked.
+    /// <para>
+    /// This is the evidence for the claim that the mailbox is a usable archive. Compared
+    /// against the oldest report in the database it answers "how far back could we
+    /// actually replay?", and after a deletion pass it is how an operator confirms the cut
+    /// landed where it was supposed to.
+    /// </para>
+    /// </summary>
+    public DateTime? OldestMessageAtUtc { get; set; }
+
     public DateTime? LastSuccessSyncAtUtc { get; set; }
     public long? LastProcessedUid { get; set; }
     public long? LastProcessedUidValidity { get; set; }

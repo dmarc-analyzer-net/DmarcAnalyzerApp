@@ -47,6 +47,21 @@ export function formatFullDate(iso: string): string {
   })
 }
 
+/**
+ * Exact UTC instant, e.g. "2026-07-27 08:00 UTC"; "—" for null.
+ *
+ * Deliberately not localised and deliberately not relative: this is for values an
+ * operator compares against another record — two artifacts a day apart, an offload
+ * timestamp against a log line — where "3d ago" in the reader's own timezone is the
+ * wrong answer twice over.
+ */
+export function formatUtcDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—'
+  const date = new Date(iso)
+  if (Number.isNaN(date.getTime())) return iso
+  return `${date.toISOString().slice(0, 16).replace('T', ' ')} UTC`
+}
+
 /** Relative for recent dates ("Today", "3d ago"), short full date otherwise; "Never" for null. */
 export function formatRelativeOrDate(iso: string | null): string {
   if (!iso) return 'Never'
