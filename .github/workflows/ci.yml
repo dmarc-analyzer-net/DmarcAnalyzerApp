@@ -284,8 +284,17 @@ jobs:
       # does not — it needs an API call, so the page sat empty through 2,177
       # pulls. Synced on a release rather than by hand, for the same reason as the
       # Artifact Hub metadata: a manual step nobody owns does not get done.
+      #
+      # continue-on-error because this is a listing nicety and the release is not.
+      # On v0.2.2 it returned "Forbidden" and took a green release build red with
+      # it, after the image and chart had already published correctly — a cosmetic
+      # step must never be able to do that. Forbidden means DOCKERHUB_TOKEN cannot
+      # edit repository metadata: registry push needs only Read/Write, but this
+      # endpoint wants a token with broader account access. Fix the token, not this.
       - name: Sync the Docker Hub description
         if: github.ref_type == 'tag' && steps.dockerhub.outputs.enabled == 'true'
+        continue-on-error: true
+        id: dockerhub_description
         uses: peter-evans/dockerhub-description@v4
         with:
           username: ${{ vars.DOCKERHUB_USERNAME || 'dmarcanalyzernet' }}
@@ -293,3 +302,9 @@ jobs:
           repository: ${{ env.DOCKERHUB_IMAGE }}
           short-description: "Open-source, self-hosted DMARC monitoring for agencies — unlimited domains, no per-domain pricing"
           readme-filepath: ./deploy/dockerhub-readme.md
+
+      - name: Note an unsynced Docker Hub description
+        if: steps.dockerhub_description.outcome == 'failure'
+        run: |
+          echo "::warning::Docker Hub description not updated (${{ steps.dockerhub_description.outcome }})."
+          echo "::warning::DOCKERHUB_TOKEN likely lacks permission to edit repository metadata. The release itself is unaffected."

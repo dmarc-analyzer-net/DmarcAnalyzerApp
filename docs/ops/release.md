@@ -40,6 +40,18 @@ There is no `edge` chart. A chart is cheap to install from the repository
 directory, and an unversioned moving chart is the kind of thing that makes a
 rollback ambiguous.
 
+### The Docker Hub description
+
+`deploy/dockerhub-readme.md` is synced to the Docker Hub page by the `image` job on
+a tag. It is **`continue-on-error`** — a listing nicety must not be able to fail a
+release, which it did once on v0.2.2 after the image and chart had already
+published.
+
+If the run logs `Docker Hub description not updated`, `DOCKERHUB_TOKEN` cannot edit
+repository metadata. Pushing images needs only Read/Write; this endpoint wants a
+token with broader account access. Nothing about the release is affected — the page
+just stays as it was.
+
 ### Listing it on Artifact Hub
 
 The chart carries `artifacthub.io/*` annotations in `Chart.yaml`, so a listing
