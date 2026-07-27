@@ -114,3 +114,54 @@ Reading of it:
 None of these is a search-traffic play — see the `seo` repo's content plan for why
 deployment keywords are not worth targeting. They are distribution: getting in
 front of people already browsing for something to self-host.
+
+## Portals beyond the app stores
+
+Surveyed 2026-07-27, every claim queried live.
+
+### dmarc.org
+
+Two pages, and we fit the less obvious one.
+
+- **[Products and Services](https://dmarc.org/resources/products-and-services/)** is
+  entirely commercial vendors — Agari/Fortra, dmarcian, EasyDMARC, Mimecast,
+  Proofpoint — each tagged Commercial or Free Trial. **There is no open-source or
+  self-hosted entry at all.** Being the only one would be striking; being
+  miscategorised among paid services would not help anyone.
+- **[Code and Libraries](https://dmarc.org/resources/code-and-libraries/)** is where
+  open-source DMARC packages live, and **parsedmarc is on neither page**, which
+  says something about how actively either is curated.
+
+No submission form for either — only a general contact form at `/contact-us/`,
+which needs a browser. Worth one polite email suggesting both; not worth chasing.
+
+### General software directories
+
+| Portal | State | Fit |
+|---|---|---|
+| **OpenAlternative** | open-source alternatives to commercial SaaS, has a Submit page | **strongest fit** — our positioning is exactly "the open-source alternative to dmarcian/EasyDMARC" |
+| **SaaSHub** | has a *DMARC Monitoring* category with a dozen entries | good, but see the name collision below |
+| **LibHunt** | carries parsedmarc, so OSS DMARC tooling is in scope | reasonable; no obvious submit URL, entries appear to be crawled from GitHub |
+| **AlternativeTo** | blocks automated access (403); submission is browser-only | worth doing by hand |
+| Slant, StackShare | little or no DMARC presence | skip |
+
+### The name collision, which matters more than any of these
+
+`dmarcanalyzer.com` **redirects to Mimecast's product page**, and SaaSHub's existing
+"DMARC Analyzer" entry is that product, not ours — our domain appears nowhere on
+it. dmarc.org's products page lists "mimecast DMARC Analyzer" too.
+
+So the name is already taken in this exact market by a vendor with a decade of
+SEO behind it. Practical consequences, in order of how soon they bite:
+
+1. **Directory submissions will collide.** SaaSHub already has the name; a second
+   entry is a duplicate or a confusion.
+2. **Search is unwinnable for the product name itself**, which the `seo` repo's
+   content plan already implies for different reasons.
+3. **Trademark is a question for a human.** "DMARC analyzer" is descriptive, which
+   makes for a weak mark, but Mimecast uses it as a product name. Nothing here is
+   legal advice — it is a flag.
+
+None of this is urgent, and none of it blocks the app-store submissions, which use
+the repository name and a description. It is worth deciding deliberately rather
+than discovering during a rename.
