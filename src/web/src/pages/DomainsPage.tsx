@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -29,6 +29,7 @@ import {
   type EnforcementStatus,
 } from '@/lib/analytics'
 import { fetchJson } from '@/lib/api'
+import { groupBySharedParent } from '@/lib/domain-grouping'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin } from '@/lib/authz'
 import type { Client, Domain } from '@/lib/entities'
@@ -281,10 +282,15 @@ export function DomainsPage() {
   }, [search, clientFilter, policyFilter, rows])
 
   // Default: worst compliance first, no_data last; ties broken by volume, then name.
+
   const sortedRows = useMemo(
     () => [...filteredRows].sort((a, b) => compareRows(a, b, sortKey, sortDir)),
     [filteredRows, sortKey, sortDir],
   )
+
+  // Siblings collapsed into groups, sort order preserved. Only where two or more monitored
+  // domains share a parent; everything else stays a plain row.
+  const listItems = useMemo(() => groupBySharedParent(sortedRows), [sortedRows])
 
   // Carries the current window and client filter into the drill-down page (and its back link).
   const detailSearch = useMemo(() => {
@@ -349,6 +355,90 @@ export function DomainsPage() {
   const subtitle = `${rows.length} ${rows.length === 1 ? 'domain' : 'domains'} across ${clientCount} ${
     clientCount === 1 ? 'client' : 'clients'
   }`
+
+  const renderRow = (row: DomainRow, indented = false) => {
+                const meta = ENFORCEMENT_STATUS_META[row.enforcementStatus]
+                const noData = row.enforcementStatus === 'no_data'
+                return (
+                  <TableRow
+                    key={row.domainId}
+                    onClick={() => navigate(`/domains/${row.domainId}${detailSearch}`)}
+                  >
+                    <TableCell className={cn(indented && 'pl-9')}>
+                      <span className="inline-flex items-center gap-2.5">
+                        <span
+                          className="h-2 w-2 shrink-0 rounded-full"
+                          style={{ background: meta.dot }}
+                          aria-hidden
+                        />
+                        <span className="font-mono text-sm text-body">{row.name}</span>
+                      </span>
+                      {/* pl-[18px] lines the client up under the domain name rather than
+                          under the status dot. */}
+                      <div className="mt-0.5 pl-[18px]">
+                        {row.clientSlug === 'default' ? (
+                          <Badge variant="warning">Default — needs client</Badge>
+                        ) : (
+                          <span className="text-xs text-secondary">{row.clientName ?? '—'}</span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      {/* The policy is cached from DNS, so it no longer depends on
+                          whether reports arrived in this window — a silent domain still
+                          shows the policy it really publishes. */}
+                      {row.publishedPolicy ? (
+                        <span className="inline-flex items-center gap-1.5">
+                          <PolicyBadge policy={row.publishedPolicy} />
+                          {/* A subdomain with no record of its own is not unprotected:
+                              receivers apply the parent's sp= (or p=). Marked rather than
+                              shown bare, because it is not this domain's policy to change. */}
+                          {row.dnsLookupStatus === 'inherited' && row.dnsPolicyInheritedFrom ? (
+                            <span
+                              className="text-xs text-secondary"
+                              title={`${row.name} publishes no DMARC record. Receivers apply ${row.dnsPolicyInheritedFrom}'s policy.`}
+                            >
+                              via {row.dnsPolicyInheritedFrom}
+                            </span>
+                          ) : null}
+                        </span>
+                      ) : (
+                        <span className="text-faint" title={describePolicyGap(row)}>
+                          —
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {noData ? (
+                        <span className="text-faint">—</span>
+                      ) : (
+                        <ComplianceBar value={row.complianceRate * 100} width={130} />
+                      )}
+                    </TableCell>
+                    <TableCell mono align="right">
+                      {noData ? <span className="text-faint">—</span> : formatCompact(row.messages)}
+                    </TableCell>
+                    <TableCell align="right">
+                      <Badge variant={meta.badge}>{meta.label}</Badge>
+                    </TableCell>
+                    {canManage ? (
+                      <TableCell align="right">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon="pencil"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            openDomainDialog(row)
+                          }}
+                        >
+                          Edit
+                        </Button>
+                      </TableCell>
+                    ) : null}
+                  </TableRow>
+                )
+  }
 
   return (
     <>
@@ -428,89 +518,30 @@ export function DomainsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {sortedRows.map((row) => {
-                const meta = ENFORCEMENT_STATUS_META[row.enforcementStatus]
-                const noData = row.enforcementStatus === 'no_data'
-                return (
-                  <TableRow
-                    key={row.domainId}
-                    onClick={() => navigate(`/domains/${row.domainId}${detailSearch}`)}
-                  >
-                    <TableCell>
-                      <span className="inline-flex items-center gap-2.5">
-                        <span
-                          className="h-2 w-2 shrink-0 rounded-full"
-                          style={{ background: meta.dot }}
-                          aria-hidden
-                        />
-                        <span className="font-mono text-sm text-body">{row.name}</span>
-                      </span>
-                      {/* pl-[18px] lines the client up under the domain name rather than
-                          under the status dot. */}
-                      <div className="mt-0.5 pl-[18px]">
-                        {row.clientSlug === 'default' ? (
-                          <Badge variant="warning">Default — needs client</Badge>
-                        ) : (
-                          <span className="text-xs text-secondary">{row.clientName ?? '—'}</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {/* The policy is cached from DNS, so it no longer depends on
-                          whether reports arrived in this window — a silent domain still
-                          shows the policy it really publishes. */}
-                      {row.publishedPolicy ? (
-                        <span className="inline-flex items-center gap-1.5">
-                          <PolicyBadge policy={row.publishedPolicy} />
-                          {/* A subdomain with no record of its own is not unprotected:
-                              receivers apply the parent's sp= (or p=). Marked rather than
-                              shown bare, because it is not this domain's policy to change. */}
-                          {row.dnsLookupStatus === 'inherited' && row.dnsPolicyInheritedFrom ? (
-                            <span
-                              className="text-xs text-secondary"
-                              title={`${row.name} publishes no DMARC record. Receivers apply ${row.dnsPolicyInheritedFrom}'s policy.`}
-                            >
-                              via {row.dnsPolicyInheritedFrom}
-                            </span>
-                          ) : null}
-                        </span>
-                      ) : (
-                        <span className="text-faint" title={describePolicyGap(row)}>
-                          —
-                        </span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {noData ? (
-                        <span className="text-faint">—</span>
-                      ) : (
-                        <ComplianceBar value={row.complianceRate * 100} width={130} />
-                      )}
-                    </TableCell>
-                    <TableCell mono align="right">
-                      {noData ? <span className="text-faint">—</span> : formatCompact(row.messages)}
-                    </TableCell>
-                    <TableCell align="right">
-                      <Badge variant={meta.badge}>{meta.label}</Badge>
-                    </TableCell>
-                    {canManage ? (
-                      <TableCell align="right">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          icon="pencil"
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            openDomainDialog(row)
-                          }}
-                        >
-                          Edit
-                        </Button>
-                      </TableCell>
-                    ) : null}
-                  </TableRow>
-                )
-              })}
+              {listItems.map((item) =>
+                item.kind === 'row' ? (
+                  renderRow(item.row)
+                ) : (
+                  <Fragment key={`group-${item.parent}`}>
+                    {item.header ? (
+                      renderRow(item.header)
+                    ) : (
+                      /* The parent is not a monitored domain — reports only ever arrive for
+                         the sending subdomains — so this is a label, not a row: no metrics,
+                         nothing to click. */
+                      <TableRow className="hover:bg-transparent">
+                        <TableCell colSpan={canManage ? 6 : 5} className="py-2">
+                          <span className="font-mono text-xs text-secondary">{item.parent}</span>
+                          <span className="ml-2 text-xs text-faint">
+                            not monitored · {item.members.length} subdomains
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    )}
+                    {item.members.map((member) => renderRow(member, true))}
+                  </Fragment>
+                ),
+              )}
             </TableBody>
           </Table>
           {sortedRows.length === 0 && !busy ? (
