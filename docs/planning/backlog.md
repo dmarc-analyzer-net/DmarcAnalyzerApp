@@ -206,6 +206,187 @@ Sequenced; each step is independently shippable.
       share a code path, which is how a migration Job that could never create a pod
       reached a real cluster.
 
+## Documentation debt (from the July 2026 review)
+
+Every doc in this repo was checked against the code. The live-migration
+handover, `src/api/README.md`, the MailKit advisories and the two items above
+(session cleanup, erasure) came out of the same pass and are done. What follows
+is what was found and not fixed. Line numbers were accurate in July 2026.
+
+The theme: **`architecture.md` and `api-contract.md` describe a system that was
+designed and then built differently.** `data-model.md` and the newer ops docs
+are accurate; the older planning docs are not, and they are what a new
+contributor reads first.
+
+### `architecture.md` — four things that do not exist
+
+- [ ] (todo) **§7 documents a DB-backed job queue** (`job_type`, `payload`,
+      `attempt_count`, `locked_by`, dead-letter states, backoff). There is no
+      job entity and no job table among the 17 `DbSet`s;
+      `QueueWorkerService.cs:213` reads active sources and iterates in-process.
+      ADR 0008 states it plainly — "there is no claim path" — and
+      `data-model.md:320` already records the truth. The class name is the only
+      surviving trace of the decision.
+- [ ] (todo) **§5 lists 21 entities; 12 do not exist** — `sync_run`,
+      `sync_checkpoint`, `raw_report`, `dmarc_record`, `alert_rule`,
+      `digest_schedule`, `export_job`, `magic_link_nonce`, `retention_policy`
+      and others. `data-model.md:9` explicitly warns these guessed names "are
+      *not* what shipped". Delete the list and point at `data-model.md` rather
+      than maintaining a second, wrong copy.
+- [ ] (todo) **"All client-scoped entities include `client_id`" is false** for
+      the four report tables and `mailbox_sync_run`. Tenancy is transitive via
+      `dmarc_report.DomainId → domain.ClientId`, which is *why* global domain
+      uniqueness is load-bearing. None of the three composite indexes it lists
+      exists, and `grep HasQueryFilter` returns nothing — isolation is explicit
+      in application code, not EF global filters. Worth stating correctly: it is
+      the single most important invariant in the system.
+- [ ] (todo) **Alerts, digest, retention, notifications and audit are marked
+      "planned, not built"** across §98, §128–130 and two "Not implemented"
+      banners. All five ship, with modules, services, worker passes and console
+      pages. Only exports, PDF and magic links are genuinely unbuilt.
+- [ ] (todo) **Smaller drift in the same file:** the Kubernetes section
+      describes a `CronJob` (the chart ships a long-running Deployment, and the
+      chart is absent from the doc entirely); observability claims structured
+      JSON logs and an OTEL exporter (neither is wired — no package, no
+      `AddJsonConsole`); §362 says "Playwright Chromium is already a dependency"
+      (it is not, in either project or the image); Compose services are named
+      `app-api`/`app-worker`, which exist in no file; the worker settings list
+      omits four `Worker__*` keys plus the whole `Alerts`/`Digest`/`Dns`/
+      `Retention`/`Email` sections and `WorkerSingleInstanceLock`; and the
+      ingestion flow gets steps 1, 2, 8 and 10 wrong.
+
+### `api-contract.md` — §0 is accurate, the rest has drifted
+
+The route inventory is genuinely complete: all 51 implemented routes documented,
+zero undocumented. The problems are everywhere else.
+
+- [ ] (todo) **Five auth levels are documented stricter than the code
+      enforces** — `GET /clients`, `/clients/{id}`, `/domains`, `/domains/{id}`
+      and `/system/status` are all `AllowClientViewer`, not staff-only. Rows are
+      grant-scoped so there is no cross-tenant read, but a `client_viewer` does
+      receive the full `ClientDto` including `retentionMonths`, `legalHold` and
+      the alert thresholds. Worth deciding whether those belong in a
+      viewer-visible DTO, then making doc and code agree. **No admin-only
+      endpoint is actually open** — all five run the safe direction.
+- [ ] (todo) **The shared error envelope does not exist.** §113 documents
+      `{error:{code,message,details[],traceId}}`; every path returns flat
+      `{"error":"string"}`, and `Program.cs` registers neither
+      `AddProblemDetails()` nor `UseExceptionHandler()`, so an unhandled
+      exception is a bare 500. Most 404s have no body at all. The frontend
+      parses exactly `{error?: string}`.
+- [ ] (todo) **The `page`/`pageSize` pagination envelope is implemented
+      nowhere.** Every list returns a bare array; only `/admin/audit-events`
+      pages, and it uses `limit`/`offset` + `{total, items}`. `/alerts`
+      truncates at 500 rows with no cursor and no total, so a busy tenant
+      silently gets an incomplete list.
+- [ ] (todo) **Seven endpoints are documented in *unmarked* sections and do not
+      exist** — both password-reset routes, `DELETE /clients/{id}`,
+      `DELETE /mailbox-sources/{id}`, `test-connection`, nested `sync-runs`, and
+      `GET /admin/health` (the real probes are `/health/live` and
+      `/health/ready`). `http/api.http` agrees with the code, so the doc is the
+      outlier. Marking them planned, as §7/§11–13 already do, is enough.
+- [ ] (todo) **§9 and §10 say "Not implemented" for the alert engine and the
+      digest**, both of which ship — §0 says so. Only the specific paths they
+      describe are absent. §16 also claims `agency_analyst` has "read/write
+      operational endpoints, limited admin settings"; an analyst has exactly two
+      write routes and zero `/admin/*` access.
+- [ ] (todo) **§1 describes magic-link tokens as a current auth mechanism** (no
+      token or bearer path exists; §12 and §16 concede this) and omits the real
+      second mechanism, OIDC. §17 lists 202 and 429, which nothing returns, and
+      omits 502 (two live endpoints) and 503 (`/health/ready`).
+- [ ] (todo) **Undocumented validation:** the 10-character password minimum
+      (nowhere in the contract), `clearAlertThresholds` as the only way to null
+      an override, `kind ∈ {alert,digest,both}` with 409 on duplicate
+      recipients, and the `mailbox-sync-runs` limit (default 50, clamped 1–200,
+      documented as "default server value").
+
+### ADRs
+
+- [ ] (todo) **Four ADRs say "accepted" while describing decisions the code did
+      not follow.** 0002's DB job queue and Kubernetes CronJob were never built;
+      0006's structured JSON logging and OTEL pipeline are not wired
+      (`backlog.md:177` already knows); 0004's dedicated migration Job is not
+      the default in any shipped topology. 0003 and 0004 also carry no
+      supersession pointer even though 0007 and 0008 say they supersede/extend
+      them — a reader arriving at 0003 first has no signal to keep reading.
+      Adding statuses and pointers is a small edit with a large payoff.
+- [ ] (todo) **The ADR README index lists filenames only** — no titles, no
+      statuses, so it cannot warn about supersession. 0004's filename
+      (`deployment-compose-and-kubernetes`) also disagrees with its own title.
+- [ ] (todo) **Ten architecturally significant decisions have no ADR.** In
+      rough order of value: mailbox-credential encryption (single install-wide
+      AES-256-GCM key, versioned `enc:v1:` envelope, **no rotation path** — the
+      consequence lives only in deployment comments); alerting and digest design
+      (report-relative evaluation, DB-row idempotency, SMTP-only, PDF deferred);
+      Carter modules plus an API-hosted SPA in one image; the in-process
+      scheduling loop; UTC-only date boundaries and the fact `client.Timezone`
+      is stored, validated, exposed — and read by nothing; no rate limiting or
+      login lockout on an unauthenticated endpoint; DNS policy caching;
+      reverse-proxy trust ordering; the migration strategy split three ways; and
+      the Apache-2.0 licence choice.
+- [ ] (todo) **ADR 0005's routing decision is half-implemented, and the two
+      halves can disagree.** Domain resolution honours ownership, but
+      `MailboxSyncService.cs:200` writes the ingest ledger with the *receiving
+      source's* `DefaultClientId` unconditionally — so the ledger (and the
+      retention purge scope keyed off it) can attribute a report to a different
+      client than `DmarcReport` does. Either resolve the owner before writing,
+      or amend the ADR to say the ledger is per-source by design.
+
+### Planning docs and entry points
+
+- [ ] (todo) **`status.md`, `roadmap.md` and `backlog.md` disagree on nine
+      features**, because each is stale at a different commit. `roadmap.md` is
+      the worst offender: it marks the alert engine, the monthly digest, audit
+      logging and the Helm chart as not started (all ship) and the DB job queue
+      as done (it does not exist), and quotes "59 tests" where there are 214.
+      `status.md` carries no date or commit anchor despite being the document
+      `planning/README.md` tells readers to check first. Consider making
+      `roadmap.md` milestone-shaped only and letting `backlog.md` own per-item
+      status, rather than maintaining three inventories.
+- [ ] (todo) **`.github/profile/README.md` advertises two features that do not
+      exist** — threat detection "with sending IP, volume, and geography" (no
+      geolocation anywhere; already tracked in the Parking Lot) and "white-label
+      client reports … per domain" (the shipped digest is one unbranded email
+      per client). This is the most public surface the project has.
+- [ ] (todo) **Open-source hygiene files are missing across both repos:** no
+      `SECURITY.md` (the disclosure policy exists only as website content, so
+      GitHub's "Report a vulnerability" affordance is absent for a product that
+      stores mailbox credentials), no `CONTRIBUTING.md`, no `CODE_OF_CONDUCT.md`,
+      no issue or PR templates, no `CHANGELOG.md`, no licence statement in the
+      README, and no licence at all on the website repo. Also: no documented way
+      to seed a dev database — sample RUA XML exists at
+      `src/api.tests/Fixtures/` and nothing tells a contributor it is there.
+- [ ] (todo) **`src/web/README.md` is the unmodified Vite starter template**,
+      while `AGENTS.md:19` links it as the authoritative frontend notes. Nothing
+      in it describes this app — not the `/api` proxy, the `@` alias, the design
+      tokens, or the lint gate.
+- [ ] (todo) **`docs/ops/configuration.md` mis-states two required settings.**
+      `Security__CredentialEncryptionKey` is listed as having "no usable
+      default" — the app starts without it and stores mailbox passwords in
+      *plaintext* with only a log warning (only Compose and Helm refuse); and
+      `ConnectionStrings__Default` does have a default, so a typo'd variable
+      name produces "cannot reach localhost:5432" rather than a clear failure.
+      It also describes `Worker__MaxRetryAttempts` as dead-lettering a queued
+      item — there is no queue and no dead-letter — and documents only one of
+      roughly a dozen silent value clamps.
+- [ ] (todo) **`docs/ops/mailbox-sync.md` omits four behaviours an operator
+      needs mid-incident:** that dedup makes reprocessing safe and idempotent;
+      that checkpointing means a manual sync re-fetches nothing already seen;
+      that one bad password produces *three* failed rows per pass (retry ×
+      backoff) and the source is never auto-deactivated; and how to force a full
+      re-sync (there is no API — it is a SQL `UPDATE` clearing
+      `LastProcessedUid`, safe because of dedup, bounded by
+      `MaxMessagesPerSync`).
+- [ ] (todo) **Missing runbooks:** a restore-from-backup *drill* (the procedure
+      exists on the website; nobody has rehearsed it, and a backup verified only
+      by `gzip -t` is of unknown restorability — the real test is that a mailbox
+      source still decrypts); encryption-key rotation (the consequence is
+      documented, the procedure is not, and the code's legacy-passthrough makes
+      a staged rotation genuinely possible); deployment rollback when a release
+      ships a migration the previous image cannot read; and ingestion-backlog
+      response, where nobody has written down that 200 messages/pass/hour means
+      a 10,000-message backlog takes about two days.
+
 ## Low Priority
 
 - [ ] (todo) Add export options for analytics (CSV and JSON).
