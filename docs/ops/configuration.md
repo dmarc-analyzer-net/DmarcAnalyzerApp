@@ -61,7 +61,7 @@ then and its log says so.
 | Variable | Default | Meaning |
 |---|---|---|
 | `Worker__ScheduleIntervalSeconds` | `3600` | Gap between polling passes. Floored at 15s. |
-| `Worker__MaxMessagesPerSync` | `200` | Messages fetched per mailbox per pass. Raise for a large backlog. |
+| `Worker__MaxMessagesPerSync` | `500` | Messages fetched per mailbox per pass. Also the throughput ceiling: with the default hourly schedule this is 500 messages an hour, so a mailbox receiving more than that during a burst falls behind until it catches up. Memory does not scale with it — messages are fetched and released one at a time — and a 500-message pass measured 21s average, 28s worst, against a 30-minute run timeout. |
 | `Worker__MaxRetryAttempts` | `3` | Attempts before a queued item is dead-lettered. |
 | `Worker__RetryBaseDelaySeconds` | `2` | Base for exponential retry backoff. |
 | `Worker__StaleRunTimeoutMinutes` | `90` | A sync run still marked running after this is closed as abandoned — recovers from a worker killed mid-pass. |

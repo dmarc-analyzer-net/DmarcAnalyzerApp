@@ -41,7 +41,6 @@ services:
       ConnectionStrings__Default: Host=postgres;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres
       Security__CredentialEncryptionKey: lSqzPZf0negcljwLKSzvZhIZlvd5hya25OYp1ogntKk=
       Worker__ScheduleIntervalSeconds: 15
-      Worker__MaxMessagesPerSync: 50
       Worker__MaxRetryAttempts: 3
       Worker__RetryBaseDelaySeconds: 2
       Worker__StaleRunTimeoutMinutes: 20

@@ -17,14 +17,13 @@ Recommended baseline:
 
 - Production:
   - `ScheduleIntervalSeconds=3600`
-  - `MaxMessagesPerSync=200`
+  - `MaxMessagesPerSync=500`
   - `MaxRetryAttempts=3`
   - `RetryBaseDelaySeconds=2`
   - `StaleRunTimeoutMinutes=90`
   - `SyncRunTimeoutMinutes=30`
 - Development:
   - `ScheduleIntervalSeconds=15`
-  - `MaxMessagesPerSync=50`
   - `StaleRunTimeoutMinutes=20`
   - `SyncRunTimeoutMinutes=10`
 
