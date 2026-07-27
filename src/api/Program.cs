@@ -4,6 +4,7 @@ using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Application.Hosting;
+using DmarcAnalyzer.Api.Application.Observability;
 using DmarcAnalyzer.Api.Application.Ingestion;
 using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Notifications;
@@ -28,6 +29,7 @@ if (mode == AppMode.Migrate)
     // trail, nothing that serves or ingests. It runs to completion and exits, so
     // an orchestrator can order schema changes ahead of every application pod.
     var migrateBuilder = Host.CreateApplicationBuilder(args);
+    var migrateTelemetry = migrateBuilder.AddTelemetry("migrate");
     var migrateConnectionString = migrateBuilder.Configuration.GetConnectionString("Default")
         ?? throw new InvalidOperationException(
             "ConnectionStrings:Default is required in migrate mode.");
@@ -43,6 +45,7 @@ if (mode == AppMode.Migrate)
     var migrateDb = scope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>();
     var migrateLogger = scope.ServiceProvider
         .GetRequiredService<ILoggerFactory>().CreateLogger("Migrate");
+    migrateLogger.LogTelemetryStatus(migrateTelemetry);
 
     // The same budget the other two paths use. AddDmarcReportRecordRangeBegin
     // rewrites 5.3M rows in ~94s on a production-sized database, well past
@@ -79,6 +82,7 @@ if (mode == AppMode.Migrate)
 if (mode == AppMode.Worker)
 {
     var workerBuilder = Host.CreateApplicationBuilder(args);
+    var workerTelemetry = workerBuilder.AddTelemetry("worker");
     var workerConnectionString = workerBuilder.Configuration.GetConnectionString("Default")
         ?? "Host=localhost;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres";
 
@@ -111,11 +115,14 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddHostedService<QueueWorkerService>();
 
     var workerHost = workerBuilder.Build();
+    workerHost.Services.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("Telemetry").LogTelemetryStatus(workerTelemetry);
     await workerHost.RunAsync();
     return;
 }
 
 var builder = WebApplication.CreateBuilder(args);
+var apiTelemetry = builder.AddTelemetry(mode == AppMode.All ? "all" : "api");
 var connectionString = builder.Configuration.GetConnectionString("Default")
     ?? "Host=localhost;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres";
 
@@ -199,6 +206,9 @@ var useForwardedHeaders = ForwardedHeadersSetup.TryConfigure(
     LoggerFactory.Create(b => b.AddConsole()).CreateLogger(nameof(ForwardedHeadersSetup)));
 
 var app = builder.Build();
+
+app.Services.GetRequiredService<ILoggerFactory>()
+    .CreateLogger("Telemetry").LogTelemetryStatus(apiTelemetry);
 
 if (useForwardedHeaders)
 {

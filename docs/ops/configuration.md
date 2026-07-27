@@ -162,6 +162,50 @@ the gateway honestly.
 | `AllowedHosts` | `*` | Host filtering. Usually left alone; a reverse proxy is the better place for this. |
 | `ASPNETCORE_ENVIRONMENT` | `Production` | `Development` enables the dev CORS policy for the Vite dev server. Never set it in a real deployment. |
 
+## Telemetry (OpenTelemetry)
+
+Off by default and free when off: with none of these set, the SDK is never
+registered and nothing changes. Setting an endpoint is the single switch that
+turns on traces, metrics and logs together.
+
+These are the OpenTelemetry specification's own variable names, not settings of
+ours, so whatever you already use for other services works here unchanged — and
+the values can be pasted straight into any OTel tool. Everything past the table
+(protocol, headers, timeouts, samplers, resource attributes) is read by the SDK
+itself and behaves exactly as the spec says; we deliberately do not re-implement
+or restrict it.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | *(unset)* | Collector address, e.g. `http://collector:4317`. Setting it enables all three signals. |
+| `OTEL_TRACES_EXPORTER` | follows the endpoint | `otlp`, `console`, or `none`. `console` prints spans with no collector — useful for seeing where a slow request spends its time locally. |
+| `OTEL_METRICS_EXPORTER` | follows the endpoint | Same values. |
+| `OTEL_LOGS_EXPORTER` | follows the endpoint | Same values. Exported records include the formatted message and scopes, so a log arrives with its values rather than as a bare template. |
+| `OTEL_SERVICE_NAME` | `dmarc-analyzer` | `service.name` on every signal. |
+| `OTEL_SDK_DISABLED` | `false` | `true` turns everything off regardless of the above. |
+
+An unrecognised exporter value falls back rather than failing startup: a typo in
+a telemetry variable must not be why a mail-ingesting service refuses to boot.
+
+What is instrumented:
+
+- **Requests** — ASP.NET Core, one span per request. Probe paths are excluded, or
+  they bury everything else: `/health/*`, and also `/api/v1/auth/setup`, which is
+  the readiness target in both the Compose healthcheck and the chart. That one is
+  a boolean "does an admin exist" check, so little is lost — but note the
+  console's first-load call to it is not traced either.
+- **PostgreSQL** — command spans from the Npgsql driver, plus its connection-pool
+  and command-duration meters. Driver-level rather than EF-level on purpose: EF's
+  own `Executed DbCommand` duration stops at the first row, so a query that
+  streams for seconds can log milliseconds. That gap is how a 7.7s request once
+  looked like 1s of SQL.
+- **Outbound HTTP** — the `HttpClient` calls made during OIDC sign-in.
+- **Runtime** — GC, thread pool and allocation meters.
+
+Both halves of a split deployment report the same `service.name` and are told
+apart by the `app.mode` resource attribute (`api`, `worker`, `all`, `migrate`),
+so one trace can span the console and an ingestion pass.
+
 ## Compose convenience variables
 
 These are not read by the application. The shipped Compose files use them to
