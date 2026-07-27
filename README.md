@@ -1,6 +1,22 @@
-# DmarcAnalyzerApp
+# DMARC Analyzer
 
-Agency-first DMARC analyzer platform (inspired by tools like dmarcian/EasyDMARC) built with:
+[![CI](https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/dmarc-analyzer-net/DmarcAnalyzerApp?sort=semver&label=release)](https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp/releases/latest)
+[![Docker pulls](https://img.shields.io/docker/pulls/dmarcanalyzernet/dmarc-analyzer?label=docker%20pulls)](https://hub.docker.com/r/dmarcanalyzernet/dmarc-analyzer)
+[![Artifact Hub](https://img.shields.io/endpoint?url=https://artifacthub.io/badge/repository/dmarc-analyzer-net)](https://artifacthub.io/packages/helm/dmarc-analyzer-net/dmarc-analyzer)
+[![License](https://img.shields.io/github/license/dmarc-analyzer-net/DmarcAnalyzerApp)](LICENSE.txt)
+
+Open-source, self-hosted DMARC monitoring for agencies. Point it at the mailbox
+your `rua=` reports arrive in and it collects, parses and charts them — unlimited
+domains, many clients, no per-domain pricing, and the report data never leaves
+your infrastructure.
+
+**[Documentation](https://dmarc-analyzer.net/docs)** ·
+**[Install guide](https://dmarc-analyzer.net/docs/install)** ·
+**[Configuration](https://dmarc-analyzer.net/docs/configuration)** ·
+**[Kubernetes](https://dmarc-analyzer.net/docs/kubernetes)**
+
+Built with:
 
 - ASP.NET Core + Carter (`src/api`)
 - React + Vite (`src/web`)
