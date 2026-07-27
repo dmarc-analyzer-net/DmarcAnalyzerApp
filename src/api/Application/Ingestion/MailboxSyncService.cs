@@ -446,11 +446,15 @@ public sealed class MailboxSyncService(
 
         await using var raw = new MemoryStream();
 
-        if (attachment is MessagePart embeddedMessagePart)
+        // Both of these are nullable: a malformed part can declare itself a message
+        // or a MIME part and carry nothing. We are parsing attachments that arrived
+        // from the internet, so treat that as an empty extraction — the same as an
+        // entity type we don't handle — rather than throwing.
+        if (attachment is MessagePart { Message: not null } embeddedMessagePart)
         {
             await embeddedMessagePart.Message.WriteToAsync(raw, ct);
         }
-        else if (attachment is MimePart mimePart)
+        else if (attachment is MimePart { Content: not null } mimePart)
         {
             await mimePart.Content.DecodeToAsync(raw, ct);
         }
