@@ -66,7 +66,7 @@ public sealed class OidcAuthModule : ICarterModule
                 return Results.Redirect($"/?loginError={result.ErrorCode}");
             }
 
-            http.Response.Cookies.Append(SessionCookie.Name, result.CookieId!, SessionCookie.Options());
+            http.Response.Cookies.Append(SessionCookie.Name, result.CookieId!, SessionCookie.Options(http.Request));
             return Results.Redirect(SafeReturnUrl(returnUrl));
         });
     }

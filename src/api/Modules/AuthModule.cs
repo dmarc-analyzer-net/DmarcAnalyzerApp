@@ -47,7 +47,7 @@ public sealed class AuthModule : ICarterModule
             }
 
             var login = result.Value!;
-            http.Response.Cookies.Append(SessionCookie.Name, login.CookieId, SessionCookie.Options());
+            http.Response.Cookies.Append(SessionCookie.Name, login.CookieId, SessionCookie.Options(http.Request));
 
             await audit.RecordAsync(AuditEvents.LoginSucceeded, $"Signed in as {login.User.Email}",
                 "user", login.User.Id,
