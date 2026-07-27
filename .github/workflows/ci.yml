@@ -279,3 +279,17 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # GHCR takes its description from the Dockerfile's OCI labels. Docker Hub
+      # does not — it needs an API call, so the page sat empty through 2,177
+      # pulls. Synced on a release rather than by hand, for the same reason as the
+      # Artifact Hub metadata: a manual step nobody owns does not get done.
+      - name: Sync the Docker Hub description
+        if: github.ref_type == 'tag' && steps.dockerhub.outputs.enabled == 'true'
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME || 'dmarcanalyzernet' }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.DOCKERHUB_IMAGE }}
+          short-description: "Open-source, self-hosted DMARC monitoring for agencies — unlimited domains, no per-domain pricing"
+          readme-filepath: ./deploy/dockerhub-readme.md

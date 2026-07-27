@@ -78,3 +78,39 @@ tags:
 ```
 
 Their CI fills in stars, release and commit history, so those fields are omitted.
+
+## The wider landscape
+
+Surveyed 2026-07-27. Every count below was queried live, not recalled.
+
+| Where | DMARC tools already there | Us | Effort |
+|---|---|---|---|
+| **Docker Hub** | — | **description was empty through 2,177 pulls** | done: CI syncs it on release |
+| **GHCR** | — | description comes from the Dockerfile OCI label | already fine |
+| **GitHub topics** | `dmarc` 345 repos, `email-security` 461 | 12 topics set | already fine |
+| **Artifact Hub** | 2, both `dmarc2logstash`, both 0★ | registered | badge lands on next processing run |
+| **awesome-selfhosted** | 0 — DMARC appears only as a mail-server feature | PR #2792 open | proposes a new category |
+| **dmarc.org — Code and Libraries** | old entries; **parsedmarc is on neither dmarc.org page** | absent | contact form; unclear how actively curated |
+| **Yunohost** | 1 (`dmarcguard`) | absent | needs a `_ynh` package — real work |
+| **CasaOS** | **0 of 166 apps** | absent | compose-based app definition |
+| **Umbrel** | **0 of 394 apps** | absent | compose-based app definition |
+| **selfh.st** | — | absent | has a Submit form |
+
+Reading of it:
+
+- **The registry pages were the real gap**, not the directories. Docker Hub had
+  real traffic landing on a blank page, which is worse than not being listed —
+  someone arriving there learned nothing and left.
+- **The compose-based app stores are the largest untapped audience.** CasaOS and
+  Umbrel have 560 apps between them and not one DMARC tool. Both take an app
+  definition wrapping a compose file, which we already ship. This is the obvious
+  next move if any is wanted.
+- **Yunohost has a competitor already** (`dmarcguard`), so the category is proven
+  there, but its packaging format is heavier than the others.
+- **dmarc.org is the most authoritative and the least certain.** Its list still
+  omits parsedmarc, which suggests it is not actively maintained; a submission may
+  simply sit. Worth one email, not worth chasing.
+
+None of these is a search-traffic play — see the `seo` repo's content plan for why
+deployment keywords are not worth targeting. They are distribution: getting in
+front of people already browsing for something to self-host.
