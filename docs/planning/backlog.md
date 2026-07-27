@@ -214,6 +214,25 @@ Sequenced; each step is independently shippable.
 - [ ] (todo) Add read-only client portal mode for selected clients.
 - [ ] (todo) Add mailbox connectors for Microsoft 365 and Google Workspace APIs.
 - [ ] (todo) Add forensic/failure (RUF) report ingestion and parsing (MVP is scoped to aggregate/RUA only; marketing site advertises "aggregate and forensic").
+- [ ] (todo) **Purge expired `user_session` rows.** Session expiry is enforced
+      lazily at read time (`AuthService.GetSessionUserAsync`) and nothing ever
+      deletes the rows, so the table grows without bound — and each row carries
+      the sign-in IP address and user agent, so this is a data-protection point
+      as well as hygiene. The retention pass already runs daily and batches
+      deletes; adding expired-session cleanup there is the natural shape. Until
+      it exists, the docs site's monitoring page tells operators to prune by
+      hand with SQL — this item retires that workaround.
+- [ ] (todo) **An erasure path: delete a domain, offboard a client.** There is
+      no `DELETE` endpoint for a domain or a client today; the only supported
+      data removal is the retention window plus the purge. That leaves two real
+      cases unserved: removing a single domain (and its reports) that was added
+      by mistake or has left the portfolio, and offboarding a client entirely —
+      which for an agency is a GDPR-adjacent obligation, not a nicety. The docs
+      site's data-protection page currently documents the gap honestly
+      ("faster-than-retention erasure means lowering the window and purging, or
+      SQL"); shipping this turns that paragraph into a feature. Cascades already
+      exist from `dmarc_report` down, and the audit trail should record the
+      deletion rather than be deleted.
 
 ## Parking Lot
 
