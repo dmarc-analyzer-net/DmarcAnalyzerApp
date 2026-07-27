@@ -129,16 +129,21 @@ Semantic versioning. While on `0.x`:
    clone silently deploys the **previous** release, schema and all. It happened
    between 0.1.0 and 0.2.0.
 
-   `VersionReferenceTests` now fails the build for anything in *this* repo. It
-   cannot see the website, so those stay manual — two files, four references:
+   `VersionReferenceTests` fails the build for anything in *this* repo. It cannot
+   see the website, so run that repo's own check there — against the version you
+   are about to cut, not the one already published:
 
-   | File | What |
-   |---|---|
-   | `src/content/docs/install.md` | the pinning example and the `helm install --version` |
-   | `src/content/docs/kubernetes.md` | `--version` in the install and production examples |
+   ```bash
+   cd ../dmarc-analyzer-net.github.io
+   ./scripts/check-doc-versions.sh 0.3.0
+   ```
 
-   Both live in the [website repo](https://github.com/dmarc-analyzer-net/dmarc-analyzer-net.github.io/tree/main/src/content/docs)
-   and should ship in the same release as step 4.
+   It reports the file, line and offending text for anything older, and exits
+   non-zero. Ship those fixes in the same release as step 4.
+
+   > This step used to list the website's files by hand. The list was wrong the
+   > day it was written — it named two files when there were three — which is why
+   > it is a script now. Do not reintroduce the list.
 
 ## Tagging
 
