@@ -187,6 +187,45 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         return copy;
     }
 
+    /// <summary>
+    /// Element values the DmarcRua enums accept, and what an unrecognised value becomes.
+    /// Keyed by (parent, element) because auth_results reuses the names dkim and spf for
+    /// complex types whose verdict lives in a nested result element.
+    /// </summary>
+    private static readonly (string Parent, string Element, string[] Allowed, string Fallback)[] EnumRepairs =
+    [
+        // DMARCResultType. No empty member, so an empty element here is fatal. 'fail' is the
+        // conservative reading: compliance is dkim=pass OR spf=pass, so a record whose other
+        // mechanism passed still counts, and a missing one never invents a pass.
+        ("policy_evaluated", "dkim", ["pass", "fail"], "fail"),
+        ("policy_evaluated", "spf", ["pass", "fail"], "fail"),
+
+        // DispositionType. 'none' matches what MapDisposition already does with anything
+        // that is not reject or quarantine.
+        ("policy_evaluated", "disposition", ["none", "quarantine", "reject", "nil", ""], "none"),
+
+        // DKIMResultType / SpfResultType, under auth_results. These are reported detail
+        // rather than the DMARC verdict, so they do not move compliance; permerror reads as
+        // "could not be evaluated", which is what an unparseable value amounts to.
+        ("dkim", "result",
+            ["none", "neutral", "pass", "fail", "policy", "softfail", "temperror", "permerror", "hardfail", ""],
+            "permerror"),
+        ("spf", "result",
+            ["none", "neutral", "pass", "fail", "softfail", "temperror", "permerror", "hardfail", ""],
+            "permerror"),
+    ];
+
+    /// <summary>
+    /// RFC 4408 result names that RFC 7208 renamed. A reporter still using the old name is
+    /// stating a result we understand exactly, so these are translated rather than defaulted.
+    /// </summary>
+    private static readonly Dictionary<string, string> LegacyResultNames =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["unknown"] = "permerror",
+            ["error"] = "temperror",
+        };
+
     private static MemoryStream NormalizeReportXml(Stream xmlStream, List<string> normalizationMessages)
     {
         try
@@ -195,7 +234,6 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             var document = XDocument.Load(xmlStream);
             var updated = false;
             var scopeNormalized = false;
-            var emptyResultNormalized = false;
 
             // DMARCbis reports namespace the schema (urn:ietf:params:xml:ns:dmarc-2.0),
             // which the DmarcRua serializer does not expect. The aggregate format is
@@ -235,38 +273,58 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 }
             }
 
-            // Some reporters send <dkim></dkim>, <dkim/> or whitespace inside
-            // policy_evaluated. DMARCResultType is a strict enum, so XmlSerializer rejects
-            // the empty string — and that fails the whole <feedback> document, discarding
-            // every valid record with it, 28 on average. It was ~1.5% of attachments.
+            // Reporters send values these enums do not accept, and XmlSerializer treats that
+            // as fatal: one bad token fails the whole <feedback> document and discards every
+            // record in it, 28 on average. Observed in one mailbox pass alone: '' and <dkim/>
+            // for policy_evaluated dkim (~1.5% of attachments), 'unknown' for an SPF auth
+            // result, and '15' for a disposition. Repairing the value costs one field;
+            // rejecting the document costs the whole report.
             //
-            // Empty means the reporter did not assert a pass, so 'fail' is the conservative
-            // reading: compliance is dkim=pass OR spf=pass, so a record whose other
-            // mechanism passed still counts compliant, and a missing one never invents one.
-            //
-            // Scoped to direct children of policy_evaluated on purpose. auth_results has its
-            // own dkim and spf elements, but those are complex types holding a nested
-            // <result> of a different enum, and an empty one there has not been observed.
-            foreach (var policyEvaluated in document.Descendants()
-                .Where(x => x.Name.LocalName == "policy_evaluated"))
+            // The accepted sets below are the XmlEnum names on the DmarcRua enums themselves,
+            // not the XSD, so they cannot drift from what the serializer will actually take.
+            // Note DispositionType, SpfResultType and DKIMResultType all accept '' — only
+            // DMARCResultType is strictly pass|fail, which is why an empty one was fatal.
+            foreach (var element in document.Descendants())
             {
-                foreach (var resultElement in policyEvaluated.Elements()
-                    .Where(x => x.Name.LocalName is "dkim" or "spf"))
+                var parent = element.Parent?.Name.LocalName;
+                if (parent is null)
                 {
-                    if (!string.IsNullOrWhiteSpace(resultElement.Value))
+                    continue;
+                }
+
+                var repair = EnumRepairs.FirstOrDefault(x =>
+                    x.Parent == parent && x.Element == element.Name.LocalName);
+                if (repair.Element is null)
+                {
+                    continue;
+                }
+
+                var original = (element.Value ?? string.Empty).Trim();
+                var candidate = LegacyResultNames.TryGetValue(original, out var modern) ? modern : original;
+
+                if (repair.Allowed.Contains(candidate, StringComparer.OrdinalIgnoreCase))
+                {
+                    // Whitespace-only where '' is legal still needs trimming to become ''.
+                    if (!string.Equals(element.Value, candidate, StringComparison.Ordinal))
                     {
-                        continue;
+                        element.Value = candidate;
+                        updated = true;
                     }
 
-                    resultElement.Value = "fail";
-                    updated = true;
+                    continue;
+                }
 
-                    if (!emptyResultNormalized)
-                    {
-                        normalizationMessages.Add(
-                            "warning: normalized empty policy_evaluated dkim/spf to 'fail' for compatibility");
-                        emptyResultNormalized = true;
-                    }
+                element.Value = repair.Fallback;
+                updated = true;
+
+                // Named, and deduplicated, so a large report cannot emit thousands of copies
+                // while an operator still learns which value was actually substituted.
+                var message =
+                    $"warning: replaced unrecognised {parent}/{element.Name.LocalName} value " +
+                    $"'{original}' with '{repair.Fallback}' for compatibility";
+                if (!normalizationMessages.Contains(message))
+                {
+                    normalizationMessages.Add(message);
                 }
             }
 

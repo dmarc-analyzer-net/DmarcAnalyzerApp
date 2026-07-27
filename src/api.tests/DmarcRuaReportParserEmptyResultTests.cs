@@ -174,4 +174,129 @@ public sealed class DmarcRuaReportParserEmptyResultTests
         Assert.Equal("s1", dkim.Selector);
         Assert.Equal("pass", dkim.Result);
     }
+
+    /// <summary>
+    /// 'unknown' is the RFC 4408 name for what RFC 7208 calls permerror. Seen in a real
+    /// mailbox, and fatal before the repair: SpfResultType has no such member.
+    /// </summary>
+    [Theory]
+    [InlineData("unknown", "permerror")]
+    [InlineData("error", "temperror")]
+    public void Parse_TranslatesLegacySpfResultNames(string reported, string expected)
+    {
+        var xml = ReportWithSpfAuthResult(reported);
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        var spf = Assert.Single(Assert.Single(result.Records).SpfAuthResults);
+        Assert.Equal(expected, spf.Result);
+    }
+
+    /// <summary>A value no version of the spec ever defined still must not cost the report.</summary>
+    [Fact]
+    public void Parse_WithNonsenseSpfResult_FallsBackToPermerrorAndKeepsTheReport()
+    {
+        var xml = ReportWithSpfAuthResult("wat");
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        var spf = Assert.Single(Assert.Single(result.Records).SpfAuthResults);
+        Assert.Equal("permerror", spf.Result);
+        Assert.Contains(result.ValidationMessages, x => x.Contains("'wat'", StringComparison.Ordinal));
+    }
+
+    /// <summary>A reporter putting a number in disposition. Observed as '15'.</summary>
+    [Fact]
+    public void Parse_WithNumericDisposition_FallsBackToNone()
+    {
+        using var stream = ReportWith("<disposition>15</disposition><dkim>pass</dkim><spf>pass</spf>");
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal(2, result.Records.Count);
+        var record = Assert.Single(result.Records, x => x.SourceIp == "192.0.2.1");
+        Assert.Equal("none", record.Disposition);
+        Assert.Contains(result.ValidationMessages, x => x.Contains("'15'", StringComparison.Ordinal));
+    }
+
+    /// <summary>The substituted value has to be named, or the repair is untraceable.</summary>
+    [Fact]
+    public void Parse_NamesTheOffendingValueInTheWarning()
+    {
+        using var stream = ReportWith("<disposition>none</disposition><dkim>bogus</dkim><spf>pass</spf>");
+
+        var result = _parser.Parse(stream);
+
+        Assert.Contains(
+            result.ValidationMessages,
+            x => x.Contains("policy_evaluated/dkim", StringComparison.Ordinal)
+                 && x.Contains("'bogus'", StringComparison.Ordinal)
+                 && x.Contains("'fail'", StringComparison.Ordinal));
+    }
+
+    /// <summary>Values the enums genuinely accept must survive untouched.</summary>
+    [Theory]
+    [InlineData("softfail")]
+    [InlineData("temperror")]
+    [InlineData("neutral")]
+    public void Parse_LeavesValidSpfResultsAlone(string reported)
+    {
+        var xml = ReportWithSpfAuthResult(reported);
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        var spf = Assert.Single(Assert.Single(result.Records).SpfAuthResults);
+        Assert.Equal(reported, spf.Result);
+        Assert.DoesNotContain(result.ValidationMessages, x => x.Contains("unrecognised", StringComparison.Ordinal));
+    }
+
+    private static string ReportWithSpfAuthResult(string spfResult) => $"""
+        <?xml version="1.0" encoding="UTF-8"?>
+        <feedback>
+          <report_metadata>
+            <org_name>example.net</org_name>
+            <report_id>spf-result</report_id>
+            <date_range><begin>1737676800</begin><end>1737763199</end></date_range>
+          </report_metadata>
+          <policy_published>
+            <domain>acme.example</domain><adkim>r</adkim><aspf>r</aspf>
+            <p>reject</p><pct>100</pct>
+          </policy_published>
+          <record>
+            <row><source_ip>192.0.2.1</source_ip><count>7</count>
+              <policy_evaluated><disposition>none</disposition><dkim>pass</dkim><spf>pass</spf></policy_evaluated>
+            </row>
+            <identifiers><header_from>acme.example</header_from></identifiers>
+            <auth_results>
+              <spf><domain>acme.example</domain><result>{spfResult}</result></spf>
+            </auth_results>
+          </record>
+        </feedback>
+        """;
+
+    /// <summary>
+    /// Documents a lossy mapping inside DmarcRua rather than anything this parser does.
+    /// SpfResultType aliases its members — PermError and HardFail are both 6, None and
+    /// Default are both 0 — so 'hardfail' round-trips as 'permerror' and an empty result
+    /// as 'none'. The repair correctly leaves both alone (no warning is raised); the value
+    /// changes underneath us in the serializer. Worth pinning so a future reader does not
+    /// go looking for the bug in the normalization.
+    /// </summary>
+    [Fact]
+    public void Parse_HardfailIsAcceptedButSurfacesAsPermerror()
+    {
+        var xml = ReportWithSpfAuthResult("hardfail");
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        var spf = Assert.Single(Assert.Single(result.Records).SpfAuthResults);
+        Assert.Equal("permerror", spf.Result);
+
+        // The giveaway that this is not our substitution: no warning was raised.
+        Assert.DoesNotContain(result.ValidationMessages, x => x.Contains("unrecognised", StringComparison.Ordinal));
+    }
 }
