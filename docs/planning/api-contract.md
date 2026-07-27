@@ -71,7 +71,7 @@ cross-tenant ids return **404**, never 403.
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/analytics/summary` | Compliance totals, daily trend, top failing domains, top reporters, dispositions, mailbox rollup (staff only for the mailbox block) |
-| GET | `/analytics/domains` | Per-domain compliance, pass rates, published policy, enforcement status |
+| GET | `/analytics/domains` | Per-domain compliance, pass rates, **effective** DMARC policy (inherited from the organisational domain when the domain publishes none, with `dnsPolicyInheritedFrom` naming the source), enforcement status |
 | GET | `/analytics/domains/{domainId}/drilldown` | Totals + trend for one domain |
 | GET | `/analytics/domains/{domainId}/sources` | Per-source-IP aggregation, worst first |
 | GET | `/analytics/domains/{domainId}/source-detail` | One source: evaluated DKIM×SPF combos, raw auth results, identifiers, reporters, trend. Requires `ip` (400 if missing) |

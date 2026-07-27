@@ -194,6 +194,58 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     (`Retention:AuditRetentionDays`), independent of client retention and legal
     hold
 
+- Published DMARC policy comes from **live DNS, not from reports**, and is the
+  policy that *applies* rather than the one the domain publishes. A subdomain with
+  no record of its own is not unprotected: RFC 7489 §6.6.3 has the receiver fall
+  back to the organisational domain and apply its `sp=`, else its `p=`.
+  `DmarcPolicyResolver` walks up label by label and takes the first record found,
+  which is what a receiver does — a tree walk as DMARCbis specifies, so there is no
+  Public Suffix List data file to keep current. Before it existed, six domains on a
+  real instance reported no policy while five were in fact covered by `p=reject`.
+  - the effective policy is cached on the domain row with the ancestor it came
+    from, so list views render from one query and a wrong inheritance is legible
+    ("p=reject via yulsn.io") rather than silent
+  - a subdomain publishing its own *weaker* record still wins, so one that has
+    opted out of a parent's enforcement is not shown as enforced
+  - a failed lookup keeps the last known policy **and** source: a transient
+    SERVFAIL must not make a `p=reject` domain look unprotected
+
+- Domains list groups sibling subdomains, but only where two or more monitored
+  domains share a parent — 3 groups over 8 rows on a 56-domain instance, against
+  the ~36 single-child headings that grouping everything would have added. The
+  parent is usually *not* monitored (reports only arrive for the sending
+  subdomain), so that heading is a label with no metrics and nothing to click.
+  Sort order is preserved: a group appears where its first member landed, so
+  worst-compliance-first still puts the worst group first.
+
+- OpenTelemetry, configured by the specification's own `OTEL_*` variables and off
+  until one is set — see `docs/ops/configuration.md`. Traces, metrics and logs over
+  OTLP, or `console` with no collector at all. Instrumented: ASP.NET Core requests,
+  **Npgsql at the driver level**, outbound `HttpClient`, runtime meters. Driver-level
+  is the point: EF's `Executed DbCommand` duration stops at the first row, so a
+  query that streams for seconds logs milliseconds — the gap that made a 7.7s
+  request look like 1s of SQL. Probe paths are excluded, including
+  `/api/v1/auth/setup`, which stays the readiness target because a 200 from it
+  proves migrations were applied and `CanConnectAsync` does not.
+  - structured JSON console logging, which ADR 0006 also lists as decided, is
+    **not** implemented — the console logger is plain text. Backlog item.
+
+- Report parsing tolerates malformed real-world reports rather than discarding
+  them. One bad token used to fail an entire `<feedback>` document and lose every
+  record in it, 28 on average:
+  - values the strict enums reject are replaced with a documented fallback and
+    named in a warning; the accepted sets are read off the DmarcRua enums by
+    reflection, so they cannot drift from what the serializer takes
+  - `unknown` and `error` in an SPF auth result are *translated* to `permerror`
+    and `temperror` — the RFC 4408 names for what RFC 7208 renamed
+  - a document truncated after its last complete `</record>` is completed and
+    parsed; one truncated mid-record is still refused, because ingesting a partial
+    report as whole would under-count permanently once the unique index keeps it
+  - measured on a real mailbox: parse failures fell from ~1.5% of attachments to
+    0.0%, and one reporter went from 100% discarded to ingesting
+  - the parser's `ValidationMessages` are still discarded by `MailboxSyncService`,
+    so these repairs leave no trace an operator can find. Backlog item.
+
 ## Planned Next
 
 - Repository/service pattern hardening and broader indexing strategy.
