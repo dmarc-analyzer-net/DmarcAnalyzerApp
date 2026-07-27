@@ -299,4 +299,88 @@ public sealed class DmarcRuaReportParserEmptyResultTests
         // The giveaway that this is not our substitution: no warning was raised.
         Assert.DoesNotContain(result.ValidationMessages, x => x.Contains("unrecognised", StringComparison.Ordinal));
     }
+
+    // --- Truncated documents ---------------------------------------------------------
+    //
+    // One real reporter (plesk4.lg.dynavee.net) sends XML ending at "</feedback" — the final
+    // '>' never arrives, and every one of its reports was discarded. The records themselves
+    // are complete, so the document is completable; the guard is that nothing may be lost.
+
+    private const string TruncatableReport = """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <feedback>
+          <report_metadata>
+            <org_name>plesk.example</org_name>
+            <report_id>truncated</report_id>
+            <date_range><begin>1737676800</begin><end>1737763199</end></date_range>
+          </report_metadata>
+          <policy_published>
+            <domain>acme.example</domain><adkim>r</adkim><aspf>r</aspf>
+            <p>reject</p><pct>100</pct>
+          </policy_published>
+          <record>
+            <row><source_ip>192.0.2.1</source_ip><count>7</count>
+              <policy_evaluated><disposition>15</disposition><spf>fail</spf><dkim>fail</dkim></policy_evaluated>
+            </row>
+            <identifiers><header_from>acme.example</header_from></identifiers>
+            <auth_results><spf><domain>acme.example</domain><result>pass</result></spf></auth_results>
+          </record>
+        </feedback>
+        """;
+
+    [Fact]
+    public void Parse_WithTruncatedRootTag_CompletesTheDocumentAndKeepsTheRecords()
+    {
+        // Exactly the observed corruption: drop the final '>'.
+        var truncated = TruncatableReport.TrimEnd()[..^1];
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(truncated));
+
+        var result = _parser.Parse(stream);
+
+        var record = Assert.Single(result.Records);
+        Assert.Equal("192.0.2.1", record.SourceIp);
+        Assert.Equal(7, record.MessageCount);
+        // The enum repair still runs, which it could not when the load failed.
+        Assert.Equal("none", record.Disposition);
+        Assert.Contains(result.ValidationMessages, x => x.Contains("truncated document", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Parse_WithTruncationAfterAWholeRecord_Recovers()
+    {
+        // Cut immediately after </record>: the root is open, no record is.
+        var truncated = TruncatableReport[..(TruncatableReport.IndexOf("</record>", StringComparison.Ordinal) + "</record>".Length)];
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(truncated));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Single(result.Records);
+        Assert.Contains(result.ValidationMessages, x => x.Contains("truncated document", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The guard. A report cut mid-record must still fail: completing it would ingest a
+    /// partial report as whole, and the unique index would keep that partial version even if
+    /// a complete copy arrived later.
+    /// </summary>
+    [Fact]
+    public void Parse_WithTruncationInsideARecord_StillFails()
+    {
+        var truncated = TruncatableReport[..(TruncatableReport.IndexOf("<count>7</count>", StringComparison.Ordinal) + "<count>7</count>".Length)];
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(truncated));
+
+        Assert.ThrowsAny<Exception>(() => _parser.Parse(stream));
+    }
+
+    /// <summary>A well-formed report must not be reported as truncated.</summary>
+    [Fact]
+    public void Parse_WithCompleteDocument_RaisesNoTruncationWarning()
+    {
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(TruncatableReport));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Single(result.Records);
+        Assert.DoesNotContain(result.ValidationMessages, x => x.Contains("truncated", StringComparison.Ordinal));
+    }
 }

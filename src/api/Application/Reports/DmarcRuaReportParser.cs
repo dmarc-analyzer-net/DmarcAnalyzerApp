@@ -1,6 +1,7 @@
 using DmarcRua;
 using System.Xml;
 using System.Xml.Schema;
+using System.Text;
 using System.Xml.Linq;
 
 namespace DmarcAnalyzer.Api.Application.Reports;
@@ -226,14 +227,141 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             ["error"] = "temperror",
         };
 
-    private static MemoryStream NormalizeReportXml(Stream xmlStream, List<string> normalizationMessages)
+    /// <summary>
+    /// Recovers a report whose XML was cut short, but only when nothing was lost with it.
+    /// <para>
+    /// One reporter sends aggregate XML ending at "&lt;/feedback" — the final '&gt;' never
+    /// arrives. Every record is present and closed; one character of markup is missing. It
+    /// is not our truncation: all three extraction paths copy the payload whole, so the byte
+    /// is gone before we see it. Left alone, 100% of that reporter's reports are discarded.
+    /// </para>
+    /// <para>
+    /// The guard is that the cut must fall outside any record. If a record is still open at
+    /// the point the reader failed, the report was genuinely cut mid-record, and completing
+    /// it would ingest a partial report as though it were whole — under-counting that period,
+    /// and permanently, since the unique index would treat a later complete copy as a
+    /// duplicate. In that case this returns null and the report fails as before.
+    /// </para>
+    /// </summary>
+    private static XDocument? TryCloseTruncatedDocument(Stream xmlStream, List<string> normalizationMessages)
     {
         try
         {
             xmlStream.Position = 0;
-            var document = XDocument.Load(xmlStream);
+            using var reader = new StreamReader(xmlStream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, leaveOpen: true);
+            var text = reader.ReadToEnd();
+
+            // A truncation usually lands mid-tag, so discard the dangling fragment first;
+            // otherwise the open-element scan below reads a tag that was never finished.
+            var lastClosed = text.LastIndexOf('>');
+            if (lastClosed < 0)
+            {
+                return null;
+            }
+
+            var trimmed = text[..(lastClosed + 1)];
+            var open = OpenElementsOf(trimmed);
+            if (open is null || open.Count == 0)
+            {
+                return null;
+            }
+
+            // The guard. "record" still open means a record was cut in half.
+            if (open.Any(x => string.Equals(x, "record", StringComparison.OrdinalIgnoreCase)))
+            {
+                return null;
+            }
+
+            var closing = string.Concat(open.Select(x => $"</{x}>"));
+            var document = XDocument.Parse(trimmed + closing);
+
+            normalizationMessages.Add(
+                $"warning: completed a truncated document by closing {closing} for compatibility");
+
+            return document;
+        }
+        catch (Exception ex) when (ex is XmlException or ArgumentException or DecoderFallbackException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The elements still open at the end of a truncated document, innermost first so the
+    /// caller can concatenate closing tags directly. Null if nothing could be read. Uses a
+    /// real reader rather than tag matching, so comments, CDATA and self-closing elements
+    /// are not miscounted.
+    /// </summary>
+    private static List<string>? OpenElementsOf(string xmlFragment)
+    {
+        var open = new List<string>();
+
+        try
+        {
+            using var reader = XmlReader.Create(new StringReader(xmlFragment), new XmlReaderSettings
+            {
+                ConformanceLevel = ConformanceLevel.Document,
+                DtdProcessing = DtdProcessing.Prohibit,
+                XmlResolver = null,
+                IgnoreWhitespace = true,
+                IgnoreComments = true,
+            });
+
+            while (reader.Read())
+            {
+                switch (reader.NodeType)
+                {
+                    case XmlNodeType.Element when !reader.IsEmptyElement:
+                        open.Add(reader.LocalName);
+                        break;
+                    case XmlNodeType.EndElement when open.Count > 0:
+                        open.RemoveAt(open.Count - 1);
+                        break;
+                }
+            }
+        }
+        catch (XmlException)
+        {
+            // Unexpected EOF is the expected outcome for a truncated fragment: whatever the
+            // reader managed before that still tells us which elements were left open.
+            if (open.Count == 0)
+            {
+                return null;
+            }
+        }
+
+        open.Reverse();
+        return open;
+    }
+
+    private static MemoryStream NormalizeReportXml(Stream xmlStream, List<string> normalizationMessages)
+    {
+        try
+        {
             var updated = false;
             var scopeNormalized = false;
+
+            xmlStream.Position = 0;
+            XDocument document;
+            try
+            {
+                document = XDocument.Load(xmlStream);
+            }
+            catch (XmlException)
+            {
+                // Every repair below needs a loadable document, and this catch used to be
+                // the outer one — a document that would not load silently skipped all of
+                // them and failed downstream with whatever DmarcRua complained about first,
+                // which sent me looking in the wrong place entirely.
+                var recovered = TryCloseTruncatedDocument(xmlStream, normalizationMessages);
+                if (recovered is null)
+                {
+                    throw;
+                }
+
+                document = recovered;
+                updated = true;
+            }
 
             // DMARCbis reports namespace the schema (urn:ietf:params:xml:ns:dmarc-2.0),
             // which the DmarcRua serializer does not expect. The aggregate format is
