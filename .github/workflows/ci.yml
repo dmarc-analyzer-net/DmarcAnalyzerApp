@@ -80,20 +80,28 @@ jobs:
 
       - uses: azure/setup-helm@v4
 
+      # A syntactically valid throwaway key. It has to be real base64 for 32 bytes:
+      # values.schema.json checks the shape, so a placeholder like "dummy" fails
+      # lint — and worse, would make the guardrail checks below pass because the
+      # schema rejected the key rather than because the guardrail fired.
       - name: Lint
-        run: helm lint "$CHART_DIR" --set auth.encryptionKey=dummy
+        env:
+          DUMMY_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+        run: helm lint "$CHART_DIR" --set auth.encryptionKey="$DUMMY_KEY"
 
       # Every supported combination, because they do not share a code path: the
       # migration Job renders only without bundled Postgres, and the worker
       # Deployment only in split mode. A single render would have shipped a Job
       # that could never create a pod.
       - name: Render every supported combination
+        env:
+          DUMMY_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
         run: |
           set -euo pipefail
           fail=0
           render() {
             local label="$1"; shift
-            if out=$(helm template t "$CHART_DIR" --set auth.encryptionKey=dummy "$@" 2>&1); then
+            if out=$(helm template t "$CHART_DIR" --set auth.encryptionKey="$DUMMY_KEY" "$@" 2>&1); then
               printf '  ok       %s (%s resources)\n' "$label" "$(printf '%s' "$out" | grep -c '^kind:')"
             else
               printf '  FAILED   %s\n%s\n' "$label" "$out"; fail=1
@@ -111,6 +119,8 @@ jobs:
       # quietly stops them refusing has to fail here rather than be discovered by
       # someone running two schedulers against one mailbox.
       - name: Guardrails must refuse
+        env:
+          DUMMY_KEY: AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
         run: |
           set -euo pipefail
           fail=0
@@ -122,12 +132,12 @@ jobs:
               printf '  refused      %s\n' "$label"
             fi
           }
-          refuses "combined with 2 app replicas" --set auth.encryptionKey=d --set app.replicas=2
-          refuses "worker.replicas=2"            --set auth.encryptionKey=d --set mode=split --set worker.replicas=2
-          refuses "startup migrations, 3 app replicas" --set auth.encryptionKey=d --set mode=split --set app.replicas=3 --set migrations.strategy=startup
-          refuses "external db without a host"   --set auth.encryptionKey=d --set postgres.enabled=false
+          refuses "combined with 2 app replicas" --set auth.encryptionKey="$DUMMY_KEY" --set app.replicas=2
+          refuses "worker.replicas=2"            --set auth.encryptionKey="$DUMMY_KEY" --set mode=split --set worker.replicas=2
+          refuses "startup migrations, 3 app replicas" --set auth.encryptionKey="$DUMMY_KEY" --set mode=split --set app.replicas=3 --set migrations.strategy=startup
+          refuses "external db without a host"   --set auth.encryptionKey="$DUMMY_KEY" --set postgres.enabled=false
           refuses "no encryption key"            --set mode=combined
-          refuses "unknown mode"                 --set auth.encryptionKey=d --set mode=hybrid
+          refuses "unknown mode"                 --set auth.encryptionKey="$DUMMY_KEY" --set mode=hybrid
           exit $fail
 
       - name: Log in to GHCR

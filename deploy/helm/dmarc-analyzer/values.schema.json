@@ -62,8 +62,7 @@
         "replicas": {
           "type": "integer",
           "minimum": 1,
-          "maximum": 1,
-          "description": "Must be 1. There is no claim mechanism in the queue, and the application takes a Postgres advisory lock, so a second worker exits rather than starting."
+          "description": "Must be 1. Deliberately not capped here: a schema can only say 'maximum: got 2, want 1', while the template guardrail explains that there is no claim mechanism in the queue, that two loops duplicate every sync and can send duplicate alert mail, and that the application would refuse it at runtime anyway. Shape belongs in the schema; rules that need explaining belong where they can explain themselves."
         },
         "resources": { "type": "object" },
         "nodeSelector": { "type": "object" },
