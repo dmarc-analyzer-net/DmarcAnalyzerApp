@@ -7,10 +7,16 @@ the state of each.
 ## Artifact Hub — ready, needs one browser step
 
 `Chart.yaml` carries the `artifacthub.io/*` annotations, so category, links,
-maintainer and screenshot all populate from the chart itself once the repository
-is registered. Registration and ownership-claiming need a logged-in browser and
-cannot be scripted from CI — the steps are in
-[release.md](release.md#listing-it-on-artifact-hub).
+maintainer and screenshot all populate from the chart itself. Registering the
+repository needed a browser once; everything after that is automated — the `chart`
+CI job pushes `artifacthub-repo.yml` to the OCI namespace on each tag, which is
+what earns the Verified publisher badge.
+
+It is done in CI rather than by hand because `GITHUB_TOKEN` already carries
+`packages:write` and a personal `gh` token does not — a local `oras push` fails
+with `permission_denied: The token provided does not match expected scopes` until
+someone runs `gh auth refresh -s write:packages`, which is exactly the kind of
+step that gets forgotten.
 
 **Why it is worth the ten minutes:** searching "dmarc" on Artifact Hub returns
 **two** packages, both `dmarc2logstash`, both at **zero stars** (checked

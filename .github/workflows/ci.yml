@@ -150,6 +150,24 @@ jobs:
           helm push "dist/dmarc-analyzer-${version}.tgz" "$CHART_REGISTRY"
           echo "::notice::Published chart $version to ${CHART_REGISTRY}/dmarc-analyzer"
 
+      # The Verified publisher badge. Artifact Hub reads this from the OCI
+      # namespace, not from git, so it has to be pushed like the chart. Done here
+      # rather than by hand because GITHUB_TOKEN already has packages:write and a
+      # personal `gh` token does not — the manual route needs a scope refresh
+      # nobody will remember. Re-pushing an unchanged file is harmless.
+      - name: Push Artifact Hub metadata
+        if: github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          curl -sSLo /tmp/oras.tar.gz \
+            https://github.com/oras-project/oras/releases/download/v1.2.3/oras_1.2.3_linux_amd64.tar.gz
+          tar -xzf /tmp/oras.tar.gz -C /tmp oras
+          /tmp/oras login ghcr.io -u '${{ github.actor }}' --password-stdin <<< '${{ secrets.GITHUB_TOKEN }}'
+          /tmp/oras push "${CHART_REGISTRY#oci://}/dmarc-analyzer:artifacthub.io" \
+            --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
+            deploy/helm/artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
+          echo "::notice::Pushed Artifact Hub metadata for the verified-publisher badge"
+
   changes:
     runs-on: ubuntu-latest
     outputs:

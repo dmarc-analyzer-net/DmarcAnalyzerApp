@@ -49,19 +49,19 @@ from CI:
 
 1. **Add the repository** at artifacthub.io → Control Panel → Repositories → Add,
    kind *Helm charts*, URL `oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer`.
-2. **Claim ownership**, which turns an unclaimed listing into a verified one. Copy
-   the repository ID from that same screen into
-   `deploy/helm/artifacthub-repo.yml`, set the owner email to the Artifact Hub
-   account's address, then push the file to the same OCI namespace:
+2. **The Verified publisher badge** is already wired up. `deploy/helm/artifacthub-repo.yml`
+   holds the repository ID from that same screen, and the `chart` job pushes it to
+   the OCI namespace on every tag. Nothing to do by hand.
 
-   ```bash
-   oras push ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer:artifacthub.io \
-     --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
-     deploy/helm/artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
-   ```
+   Two things that are easy to get wrong here, both learned the hard way:
 
-   The ID and the email both have to match the account or the claim silently
-   stays unverified.
+   - **`owners` / email is a different feature.** That section belongs to
+     *claiming* a repository somebody else added. Registering it yourself needs
+     only `repositoryID`, and an unnecessary `owners` block with a
+     non-matching address is a way to make it look broken.
+   - **The badge appears on the next processing run, not immediately** — and
+     Artifact Hub skips repositories that haven't changed. A tag changes the
+     chart, so a release always triggers it.
 
 Worth doing: a search for "dmarc" on Artifact Hub returns two packages, both
 `dmarc2logstash`, both at zero stars. The category is effectively empty.
