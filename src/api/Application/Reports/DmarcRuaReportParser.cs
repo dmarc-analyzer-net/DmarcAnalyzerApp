@@ -195,6 +195,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             var document = XDocument.Load(xmlStream);
             var updated = false;
             var scopeNormalized = false;
+            var emptyResultNormalized = false;
 
             // DMARCbis reports namespace the schema (urn:ietf:params:xml:ns:dmarc-2.0),
             // which the DmarcRua serializer does not expect. The aggregate format is
@@ -231,6 +232,41 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                         scopeNormalized = true;
                     }
                     updated = true;
+                }
+            }
+
+            // Some reporters send <dkim></dkim>, <dkim/> or whitespace inside
+            // policy_evaluated. DMARCResultType is a strict enum, so XmlSerializer rejects
+            // the empty string — and that fails the whole <feedback> document, discarding
+            // every valid record with it, 28 on average. It was ~1.5% of attachments.
+            //
+            // Empty means the reporter did not assert a pass, so 'fail' is the conservative
+            // reading: compliance is dkim=pass OR spf=pass, so a record whose other
+            // mechanism passed still counts compliant, and a missing one never invents one.
+            //
+            // Scoped to direct children of policy_evaluated on purpose. auth_results has its
+            // own dkim and spf elements, but those are complex types holding a nested
+            // <result> of a different enum, and an empty one there has not been observed.
+            foreach (var policyEvaluated in document.Descendants()
+                .Where(x => x.Name.LocalName == "policy_evaluated"))
+            {
+                foreach (var resultElement in policyEvaluated.Elements()
+                    .Where(x => x.Name.LocalName is "dkim" or "spf"))
+                {
+                    if (!string.IsNullOrWhiteSpace(resultElement.Value))
+                    {
+                        continue;
+                    }
+
+                    resultElement.Value = "fail";
+                    updated = true;
+
+                    if (!emptyResultNormalized)
+                    {
+                        normalizationMessages.Add(
+                            "warning: normalized empty policy_evaluated dkim/spf to 'fail' for compatibility");
+                        emptyResultNormalized = true;
+                    }
                 }
             }
 
