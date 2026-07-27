@@ -40,6 +40,10 @@ dotnet ef migrations add <Name> --project src/api/DmarcAnalyzer.Api.csproj
 # Full dev stack in Docker (api + worker + postgres + dev Zitadel)
 # Note: the repo-root compose file is the *development* stack and keeps api and
 # worker separate. deploy/compose.yml is the shipped one and runs APP_MODE=all.
+# Once per clone: the mailbox-credential encryption key is not committed, so
+# compose refuses to start until .env has one. Keep it — changing the key makes
+# stored mailbox passwords undecryptable.
+echo "DMARC_ENCRYPTION_KEY=$(openssl rand -base64 32)" > .env
 docker compose up -d --build
 ```
 

@@ -92,8 +92,14 @@ Vite is configured to proxy `/api` to the local ASP.NET API in development.
 Build and run the single image in two modes (`api`, `worker`) plus PostgreSQL:
 
 ```bash
+# once per clone — the key that encrypts mailbox credentials at rest is not in
+# the repo, so compose refuses to start until you generate your own
+echo "DMARC_ENCRYPTION_KEY=$(openssl rand -base64 32)" > .env
 docker compose up -d --build
 ```
+
+Keep that key once you have added a mailbox source: changing it makes every
+stored mailbox password undecryptable.
 
 Services:
 

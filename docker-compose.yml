@@ -1,3 +1,18 @@
+# DMARC Analyzer — development stack (local build, dev Zitadel for OIDC).
+#
+# One-time setup, because the mailbox-password encryption key must not live in
+# this file. A key committed to a public repo protects nothing, and every clone
+# would share it:
+#
+#   echo "DMARC_ENCRYPTION_KEY=$(openssl rand -base64 32)" > .env
+#   docker compose up -d
+#
+# Compose refuses to start without it rather than falling back to storing
+# mailbox passwords in plaintext. .env is gitignored. Keep the key once mailbox
+# credentials exist — changing it makes every stored password undecryptable.
+#
+# For self-hosting a release rather than developing, use deploy/compose.yml.
+
 services:
   api:
     build:
@@ -9,8 +24,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Default: Host=postgres;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres
       Database__MigrateOnStartup: "true"
-      # dev-only key; generate your own for real deployments: openssl rand -base64 32
-      Security__CredentialEncryptionKey: lSqzPZf0negcljwLKSzvZhIZlvd5hya25OYp1ogntKk=
+      Security__CredentialEncryptionKey: "${DMARC_ENCRYPTION_KEY:?DMARC_ENCRYPTION_KEY missing - run: echo \"DMARC_ENCRYPTION_KEY=$(openssl rand -base64 32)\" > .env}"
       # OIDC login is off by default so `docker compose up` is self-contained.
       # The dev Zitadel service below plus the host-run dev loop in
       # docs/ops/oidc-zitadel.md enable and exercise it.
@@ -39,7 +53,7 @@ services:
       APP_MODE: worker
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__Default: Host=postgres;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres
-      Security__CredentialEncryptionKey: lSqzPZf0negcljwLKSzvZhIZlvd5hya25OYp1ogntKk=
+      Security__CredentialEncryptionKey: "${DMARC_ENCRYPTION_KEY:?DMARC_ENCRYPTION_KEY missing - run: echo \"DMARC_ENCRYPTION_KEY=$(openssl rand -base64 32)\" > .env}"
       Worker__ScheduleIntervalSeconds: 15
       Worker__MaxMessagesPerSync: 50
       Worker__MaxRetryAttempts: 3

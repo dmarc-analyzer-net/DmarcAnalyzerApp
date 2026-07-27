@@ -369,3 +369,9 @@ src/api/wwwroot/
 
 # agent tooling — holds live git worktrees; must never be committed
 .claude/
+
+# compose reads .env for DMARC_ENCRYPTION_KEY, which protects mailbox passwords
+# at rest. It must never be committed — a key in a public repo protects nothing.
+.env
+.env.*
+!.env.example
