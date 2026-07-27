@@ -155,7 +155,7 @@ public sealed class RecordInspectionTests
             ["acme.example"] = ["v=spf1 include:_spf.google.com -all"],
         });
 
-        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns)
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
             .InspectAsync(domainId, CancellationToken.None);
 
         Assert.NotNull(dto);
@@ -191,7 +191,7 @@ public sealed class RecordInspectionTests
             ["acme.example"] = ["v=spf1 -all"],
         });
 
-        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns)
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
             .InspectAsync(domainId, CancellationToken.None);
 
         var sp = dto!.Comparison.Single(c => c.Field == "sp");
@@ -213,7 +213,7 @@ public sealed class RecordInspectionTests
             ["acme.example"] = ["v=spf1 -all"],
         });
 
-        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns)
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
             .InspectAsync(domainId, CancellationToken.None);
 
         var sp = dto!.Comparison.Single(c => c.Field == "sp");
@@ -234,7 +234,7 @@ public sealed class RecordInspectionTests
             ["acme.example"] = ["v=spf1 -all"],
         });
 
-        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns)
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
             .InspectAsync(domainId, CancellationToken.None);
 
         var sp = dto!.Comparison.Single(c => c.Field == "sp");
@@ -265,7 +265,7 @@ public sealed class RecordInspectionTests
         var domainId = await SeedDomainWithReportAsync(db, "none");
 
         var dns = new FakeDns([]);
-        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Viewer(Guid.NewGuid()), dns)
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Viewer(Guid.NewGuid()), dns, new DmarcPolicyResolver(dns))
             .InspectAsync(domainId, CancellationToken.None);
 
         Assert.Null(dto);

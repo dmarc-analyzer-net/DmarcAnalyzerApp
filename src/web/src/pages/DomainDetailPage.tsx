@@ -196,6 +196,9 @@ function buildEnforcementChecks(
   // that reads as "this domain publishes p=none", which is a different claim.
   const policy = domain.publishedPolicy
   const atQuarantine = policy === 'quarantine' || policy === 'reject'
+  // Set when the policy is the organisational domain's, because this domain publishes no
+  // record. Saying "DNS publishes p=reject" here would name the wrong domain.
+  const inheritedFrom = domain.policyInheritedFrom
   return [
     {
       tone: totals.reports > 0 ? 'ok' : 'danger',
@@ -223,8 +226,10 @@ function buildEnforcementChecks(
           ? 'Policy at quarantine or stronger'
           : 'Policy still monitoring',
       detail: policy === null
-        ? 'No DMARC record found in DNS for this domain'
-        : `DNS publishes p=${policy}`,
+        ? 'No DMARC record found for this domain or any parent domain'
+        : inheritedFrom
+          ? `Inherits p=${policy} from ${inheritedFrom} — this domain publishes no record of its own`
+          : `DNS publishes p=${policy}`,
     },
     {
       tone: policy === 'reject' ? 'ok' : 'neutral',

@@ -113,6 +113,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.HasIndex(x => x.ClientId);
             entity.Property(x => x.DnsPolicy).HasMaxLength(16);
             entity.Property(x => x.DnsLookupStatus).HasMaxLength(16);
+            entity.Property(x => x.DnsPolicyInheritedFrom).HasMaxLength(253);
             // The refresh pass picks the least-recently-checked domains first.
             entity.HasIndex(x => x.DnsCheckedAtUtc);
 

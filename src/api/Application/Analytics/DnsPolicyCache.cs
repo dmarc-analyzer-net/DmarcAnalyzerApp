@@ -19,7 +19,7 @@ public interface IDnsPolicyCache
     /// live lookup, so a difference from the cached value is corrected for free.
     /// A no-op when nothing changed, to keep page views from writing on every request.
     /// </summary>
-    Task WriteBackAsync(Guid domainId, DnsDmarcRecordDto record, CancellationToken ct);
+    Task WriteBackAsync(Guid domainId, EffectiveDmarcPolicy effective, CancellationToken ct);
 }
 
 /// <summary>
@@ -33,7 +33,7 @@ public interface IDnsPolicyCache
 /// </summary>
 public sealed class DnsPolicyCache(
     DmarcAnalyzerDbContext db,
-    IDnsTxtResolver dns,
+    IDmarcPolicyResolver policyResolver,
     ILogger<DnsPolicyCache> logger) : IDnsPolicyCache
 {
     public async Task<DnsPolicyRefreshResult> RefreshAllAsync(CancellationToken ct)
@@ -51,22 +51,23 @@ public sealed class DnsPolicyCache(
         {
             ct.ThrowIfCancellationRequested();
 
-            var record = RecordInspectionService.ParseDmarc(
-                await dns.ResolveAsync($"_dmarc.{domain.Name}", ct));
+            // Walks up when the domain publishes nothing of its own, so a subdomain covered
+            // by its parent's sp= is stored as covered rather than as unprotected.
+            var effective = await policyResolver.ResolveAsync(domain.Name, ct);
 
-            if (record.Status == RecordLookupStatus.LookupFailed)
+            if (effective.Status == RecordLookupStatus.LookupFailed)
             {
                 failed++;
             }
 
             // The refresh pass always advances CheckedAtUtc, even when nothing moved:
             // "we verified this" is exactly what the timestamp is for.
-            if (Differs(domain, record, out var policy))
+            if (Differs(domain, effective, out var policy))
             {
                 changed++;
             }
 
-            Store(domain, policy, record.Status);
+            Store(domain, policy, effective.Status, effective.InheritedFrom);
         }
 
         if (domains.Count > 0)
@@ -81,7 +82,7 @@ public sealed class DnsPolicyCache(
         return new DnsPolicyRefreshResult(domains.Count, changed, failed);
     }
 
-    public async Task WriteBackAsync(Guid domainId, DnsDmarcRecordDto record, CancellationToken ct)
+    public async Task WriteBackAsync(Guid domainId, EffectiveDmarcPolicy effective, CancellationToken ct)
     {
         var domain = await db.Domains.FirstOrDefaultAsync(x => x.Id == domainId, ct);
         if (domain is null)
@@ -92,16 +93,17 @@ public sealed class DnsPolicyCache(
         // Only persist a real difference, and crucially: touch nothing when there
         // isn't one. Mutating first and returning early would leave the tracked entity
         // dirty, so an unrelated SaveChanges later in the request would write it anyway.
-        if (!Differs(domain, record, out var policy))
+        if (!Differs(domain, effective, out var policy))
         {
             return;
         }
 
-        Store(domain, policy, record.Status);
+        Store(domain, policy, effective.Status, effective.InheritedFrom);
         await db.SaveChangesAsync(ct);
         logger.LogInformation(
-            "DNS policy for {Domain} corrected from a live lookup: {Status} p={Policy}",
-            domain.Name, record.Status, record.Policy ?? "(none)");
+            "DNS policy for {Domain} corrected from a live lookup: {Status} p={Policy}{From}",
+            domain.Name, effective.Status, policy ?? "(none)",
+            effective.InheritedFrom is null ? "" : $" (from {effective.InheritedFrom})");
     }
 
     /// <summary>
@@ -113,22 +115,41 @@ public sealed class DnsPolicyCache(
     /// SERVFAIL must not make a p=reject domain look unprotected. Only a successful
     /// lookup that finds no record clears it.
     /// </summary>
-    private static bool Differs(Data.Entities.Domain domain, DnsDmarcRecordDto record, out string? policy)
+    private static bool Differs(
+        Data.Entities.Domain domain, EffectiveDmarcPolicy effective, out string? policy)
     {
-        policy = record.Status switch
+        policy = effective.Status switch
         {
-            RecordLookupStatus.Found => record.Policy,
+            RecordLookupStatus.Found or RecordLookupStatus.Inherited => effective.Policy,
             RecordLookupStatus.Missing => null,
             _ => domain.DnsPolicy,
         };
 
-        return domain.DnsPolicy != policy || domain.DnsLookupStatus != record.Status;
+        return domain.DnsPolicy != policy
+            || domain.DnsLookupStatus != effective.Status
+            || domain.DnsPolicyInheritedFrom != InheritedFrom(effective, domain);
     }
 
-    private static void Store(Data.Entities.Domain domain, string? policy, string status)
+    /// <summary>
+    /// Keeps the previous source on a failed lookup, for the same reason the policy is kept:
+    /// a SERVFAIL must not turn "reject, from yulsn.io" into an unexplained reject.
+    /// </summary>
+    private static string? InheritedFrom(EffectiveDmarcPolicy effective, Data.Entities.Domain domain)
+        => effective.Status switch
+        {
+            RecordLookupStatus.Inherited => effective.InheritedFrom,
+            RecordLookupStatus.Found or RecordLookupStatus.Missing => null,
+            _ => domain.DnsPolicyInheritedFrom,
+        };
+
+    private static void Store(
+        Data.Entities.Domain domain, string? policy, string status, string? inheritedFrom)
     {
         domain.DnsPolicy = policy;
         domain.DnsLookupStatus = status;
         domain.DnsCheckedAtUtc = DateTime.UtcNow;
+        domain.DnsPolicyInheritedFrom = status == RecordLookupStatus.LookupFailed
+            ? domain.DnsPolicyInheritedFrom
+            : inheritedFrom;
     }
 }

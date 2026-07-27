@@ -111,7 +111,29 @@ A monitored domain. Globally unique across all clients.
 | `ClientId` | FK → `client`, **restrict** delete, indexed |
 | `Name` | max 255, **unique globally** |
 | `IsActive` | bool |
-| `CreatedAtUtc`, `UpdatedAtUtc` | |
+| `DnsPolicy` | max 16 — the **effective** policy a receiver applies. Cached so list views render it from one query instead of a DNS lookup per row. |
+| `DnsLookupStatus` | max 16 — `found` (own record), `inherited` (an ancestor's), `missing`, `lookup_failed`. |
+| `DnsPolicyInheritedFrom` | max 253 — the ancestor `DnsPolicy` came from, when inherited. Null otherwise. |
+| `DnsCheckedAtUtc` | when the three above were last refreshed. |
+| `CreatedAtUtc`, `UpdatedAtUtc` | `UpdatedAtUtc` means *an operator changed this domain*; the DNS refresh deliberately does not touch it. |
+
+`DnsPolicy` is the policy that **applies**, not necessarily the one this domain
+publishes. A subdomain with no DMARC record of its own is not unprotected: RFC 7489
+§6.6.3 has the receiver fall back to the organisational domain and apply its `sp=`,
+or its `p=` when there is no `sp=`. `DmarcPolicyResolver` walks up the DNS tree to
+find it, so `email.example.com` under a `p=reject` parent is stored as `reject` with
+`DnsLookupStatus = inherited`.
+
+Two things make that worth storing rather than deriving on read. The ancestor is
+usually **not** a monitored domain — in one real instance, 39 of 44 subdomain-shaped
+domains had no parent row, because reports only ever arrive for the sending
+subdomain — so the answer cannot come from this table. And a wrong inheritance
+should be legible: the source name is shown in the console next to the policy, so
+"reject, via example.com" can be checked rather than silently trusted.
+
+A failed lookup keeps the previous policy *and* source. A transient SERVFAIL must
+not make a `p=reject` domain look unprotected; only a successful lookup finding
+nothing anywhere clears them.
 
 ## A.3 Mailbox sources and sync history
 

@@ -32,7 +32,14 @@ public sealed class DnsPolicyCacheTests
     }
 
     private static DnsPolicyCache Cache(DmarcAnalyzerDbContext db, IDnsTxtResolver dns)
-        => new(db, dns, NullLogger<DnsPolicyCache>.Instance);
+        => new(db, new DmarcPolicyResolver(dns), NullLogger<DnsPolicyCache>.Instance);
+
+    /// <summary>What a detail-page lookup resolves: an own record, so nothing inherited.</summary>
+    private static EffectiveDmarcPolicy OwnRecord(string raw)
+    {
+        var record = RecordInspectionService.ParseDmarc([raw]);
+        return new EffectiveDmarcPolicy(record, record.Policy, record.Status, null);
+    }
 
     [Fact]
     public async Task RefreshAll_StoresPolicyStatusAndCheckedAt()
@@ -124,7 +131,7 @@ public sealed class DnsPolicyCacheTests
         await Cache(db, TestDnsTxtResolver.WithPolicy("acme.example", "none")).RefreshAllAsync(CancellationToken.None);
 
         // What a detail-page lookup would have just resolved.
-        var fresh = RecordInspectionService.ParseDmarc(new[] { "v=DMARC1; p=reject" });
+        var fresh = OwnRecord("v=DMARC1; p=reject");
         await Cache(db, TestDnsTxtResolver.Empty()).WriteBackAsync(domain.Id, fresh, CancellationToken.None);
 
         Assert.Equal("reject", (await db.Domains.SingleAsync(x => x.Id == domain.Id)).DnsPolicy);
@@ -138,7 +145,7 @@ public sealed class DnsPolicyCacheTests
         await Cache(db, TestDnsTxtResolver.WithPolicy("acme.example", "reject")).RefreshAllAsync(CancellationToken.None);
         var checkedAt = (await db.Domains.SingleAsync(x => x.Id == domain.Id)).DnsCheckedAtUtc;
 
-        var same = RecordInspectionService.ParseDmarc(new[] { "v=DMARC1; p=reject" });
+        var same = OwnRecord("v=DMARC1; p=reject");
         await Cache(db, TestDnsTxtResolver.Empty()).WriteBackAsync(domain.Id, same, CancellationToken.None);
 
         // Unchanged means no write at all, so the timestamp does not advance either —

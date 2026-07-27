@@ -4,6 +4,14 @@ namespace DmarcAnalyzer.Api.Application.Analytics;
 public static class RecordLookupStatus
 {
     public const string Found = "found";
+
+    /// <summary>
+    /// No record here, but an ancestor publishes one, so a receiver applies that. Distinct
+    /// from Found because the policy is not this domain's to change, and from Missing because
+    /// the domain is not unprotected.
+    /// </summary>
+    public const string Inherited = "inherited";
+
     public const string Missing = "missing";
     public const string LookupFailed = "lookup_failed";
 }

@@ -13,7 +13,8 @@ public interface IRecordInspectionService
 public sealed class RecordInspectionService(
     DmarcAnalyzerDbContext db,
     ICurrentUserContext currentUser,
-    IDnsTxtResolver dns) : IRecordInspectionService
+    IDnsTxtResolver dns,
+    IDmarcPolicyResolver policyResolver) : IRecordInspectionService
 {
     public async Task<RecordInspectionDto?> InspectAsync(Guid domainId, CancellationToken ct)
     {
@@ -29,7 +30,10 @@ public sealed class RecordInspectionService(
             return null;
         }
 
-        var dmarcTask = dns.ResolveAsync($"_dmarc.{domain.Name}", ct);
+        // Same walk the list views use. Without it this card said "mail receivers apply no
+        // policy" for a subdomain the Domains list showed as reject — two screens, one domain,
+        // opposite answers.
+        var dmarcTask = policyResolver.ResolveAsync(domain.Name, ct);
         var spfTask = dns.ResolveAsync(domain.Name, ct);
 
         var observedRow = await db.DmarcReports
@@ -49,7 +53,8 @@ public sealed class RecordInspectionService(
             })
             .FirstOrDefaultAsync(ct);
 
-        var dmarc = ParseDmarc(await dmarcTask);
+        var effective = await dmarcTask;
+        var dmarc = DescribeEffective(effective, domain.Name);
         var spf = ParseSpf(await spfTask);
 
         var observed = observedRow is null
@@ -73,6 +78,39 @@ public sealed class RecordInspectionService(
     }
 
     // --- DMARC (RFC 7489) ---
+
+
+    /// <summary>
+    /// Presents the effective policy as this card's DMARC record. When the policy is inherited
+    /// the ancestor's record is what a receiver reads, so that is what is shown — with the
+    /// "nothing published" complaint replaced by where the policy actually comes from, and the
+    /// effective value substituted for the ancestor's p= so sp= is reflected.
+    /// </summary>
+    private static DnsDmarcRecordDto DescribeEffective(EffectiveDmarcPolicy effective, string domainName)
+    {
+        if (effective.Status != RecordLookupStatus.Inherited)
+        {
+            return effective.Record;
+        }
+
+        var issues = new List<string>
+        {
+            $"{domainName} publishes no DMARC record. Receivers apply {effective.InheritedFrom}'s " +
+            $"policy, so this domain is effectively p={effective.Policy}. Publish a record here " +
+            "only if it should differ.",
+        };
+
+        // The ancestor's own complaints are about the ancestor, except the ones that would
+        // read as this domain's problem. Keep the substantive ones.
+        issues.AddRange(effective.Record.Issues.Where(x => !x.StartsWith("No DMARC record", StringComparison.Ordinal)));
+
+        return effective.Record with
+        {
+            Status = RecordLookupStatus.Inherited,
+            Policy = effective.Policy,
+            Issues = issues,
+        };
+    }
 
     public static DnsDmarcRecordDto ParseDmarc(IReadOnlyList<string>? txts)
     {

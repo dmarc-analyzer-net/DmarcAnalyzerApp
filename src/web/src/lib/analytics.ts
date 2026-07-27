@@ -144,6 +144,8 @@ export type DomainAnalytics = {
   spfAlignment: string | null
   /** Why the cached policy is what it is: found / missing / lookup_failed, or null if never checked. */
   dnsLookupStatus: string | null
+  /** Ancestor the policy came from when dnsLookupStatus is 'inherited'. */
+  dnsPolicyInheritedFrom: string | null
   /** When the cached policy was last refreshed from DNS. */
   dnsCheckedAtUtc: string | null
   /** Policy-aware posture used by the Status column. */
@@ -166,6 +168,8 @@ export type DrilldownDomain = {
   publishedPct: number | null
   dkimAlignment: string | null
   spfAlignment: string | null
+  /** Ancestor the policy came from when this domain publishes no record of its own. */
+  policyInheritedFrom: string | null
 }
 
 export type DrilldownTotals = {

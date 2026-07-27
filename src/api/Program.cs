@@ -107,6 +107,7 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddMemoryCache();
     workerBuilder.Services.Configure<DnsOptions>(workerBuilder.Configuration.GetSection("Dns"));
     workerBuilder.Services.AddSingleton<IDnsTxtResolver, DnsTxtResolver>();
+    workerBuilder.Services.AddScoped<IDmarcPolicyResolver, DmarcPolicyResolver>();
     workerBuilder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
     workerBuilder.Services.Configure<WorkerOptions>(workerBuilder.Configuration.GetSection("Worker"));
     // Registered before the loop: hosted services start in order, so this refuses
@@ -167,6 +168,7 @@ builder.Services.AddScoped<IDigestService, DigestService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IHostnameResolver, HostnameResolver>();
 builder.Services.AddSingleton<IDnsTxtResolver, DnsTxtResolver>();
+builder.Services.AddScoped<IDmarcPolicyResolver, DmarcPolicyResolver>();
 builder.Services.Configure<DnsOptions>(builder.Configuration.GetSection("Dns"));
 builder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));

@@ -18,11 +18,12 @@ internal static class TestAnalytics
         IDnsTxtResolver? dns = null)
     {
         var resolver = dns ?? TestDnsTxtResolver.Empty();
+        var policyResolver = new DmarcPolicyResolver(resolver);
         return new AnalyticsQueryService(
             db,
             user,
-            resolver,
-            new DnsPolicyCache(db, resolver, NullLogger<DnsPolicyCache>.Instance),
+            policyResolver,
+            new DnsPolicyCache(db, policyResolver, NullLogger<DnsPolicyCache>.Instance),
             NullLogger<AnalyticsQueryService>.Instance);
     }
 }

@@ -7,7 +7,7 @@ namespace DmarcAnalyzer.Api.Application.Analytics;
 public sealed class AnalyticsQueryService(
     DmarcAnalyzerDbContext db,
     ICurrentUserContext currentUser,
-    IDnsTxtResolver dns,
+    IDmarcPolicyResolver policyResolver,
     IDnsPolicyCache dnsCache,
     ILogger<AnalyticsQueryService> logger) : IAnalyticsQueryService
 {
@@ -25,23 +25,26 @@ public sealed class AnalyticsQueryService(
     /// rather than one per request. A missing or failed lookup yields nulls, which
     /// the header renders as "policy unknown" rather than guessing.
     /// </summary>
-    private async Task<DnsDmarcRecordDto> PublishedDmarcAsync(Guid domainId, string domainName, CancellationToken ct)
+    private async Task<EffectiveDmarcPolicy> PublishedDmarcAsync(Guid domainId, string domainName, CancellationToken ct)
     {
-        var record = RecordInspectionService.ParseDmarc(await dns.ResolveAsync($"_dmarc.{domainName}", ct));
+        // Walks up to the organisational domain when this one publishes nothing, because that
+        // is what a receiver does. A subdomain under a p=reject parent is enforced, not
+        // unprotected, and reporting it as unprotected was simply wrong.
+        var effective = await policyResolver.ResolveAsync(domainName, ct);
 
         // Correct the cached copy the list views read from, using the lookup we just
         // paid for. A no-op unless something actually changed. Best-effort on purpose:
         // a read request must not fail because a cache row could not be written.
         try
         {
-            await dnsCache.WriteBackAsync(domainId, record, ct);
+            await dnsCache.WriteBackAsync(domainId, effective, ct);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
             logger.LogWarning(ex, "Could not write back the DNS policy for {Domain}", domainName);
         }
 
-        return record;
+        return effective;
     }
 
     public async Task<AnalyticsSummaryDto> GetSummaryAsync(int days, CancellationToken ct)
@@ -234,6 +237,7 @@ public sealed class AnalyticsQueryService(
                 ClientSlug = x.Client.Slug,
                 x.DnsPolicy,
                 x.DnsLookupStatus,
+                x.DnsPolicyInheritedFrom,
                 x.DnsCheckedAtUtc,
             })
             .ToListAsync(ct);
@@ -277,6 +281,7 @@ public sealed class AnalyticsQueryService(
                     null,
                     null,
                     d.DnsLookupStatus,
+                    d.DnsPolicyInheritedFrom,
                     d.DnsCheckedAtUtc,
                     EnforcementStatus.Resolve(messages, rate, d.DnsPolicy));
             })
@@ -307,7 +312,8 @@ public sealed class AnalyticsQueryService(
 
         var domain = new DomainDrilldownDomainDto(
             domainRow.Id, domainRow.Name, domainRow.IsActive, domainRow.ClientId, domainRow.ClientName, domainRow.ClientSlug,
-            published.Policy, published.SubdomainPolicy, published.Pct, published.DkimAlignment, published.SpfAlignment);
+            published.Policy, published.Record.SubdomainPolicy, published.Record.Pct,
+            published.Record.DkimAlignment, published.Record.SpfAlignment, published.InheritedFrom);
 
         var window = await ResolveWindowAsync(days, ct);
         var records = DomainRecordsInWindow(domainId, window);
@@ -599,7 +605,7 @@ public sealed class AnalyticsQueryService(
             domainRow.Name,
             window,
             currentPolicy,
-            published.Pct,
+            published.Record.Pct,
             status,
             messages,
             compliant,

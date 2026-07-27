@@ -22,6 +22,14 @@ public sealed class Domain
     /// </summary>
     public string? DnsLookupStatus { get; set; }
 
+    /// <summary>
+    /// The ancestor a subdomain's policy came from, when <see cref="DnsLookupStatus"/> is
+    /// inherited. Null otherwise. Stored rather than recomputed so a list view can say
+    /// "reject, from yulsn.io" without a DNS lookup per row, and so a wrong inheritance is
+    /// legible instead of silent.
+    /// </summary>
+    public string? DnsPolicyInheritedFrom { get; set; }
+
     /// <summary>When the DNS values above were last refreshed.</summary>
     public DateTime? DnsCheckedAtUtc { get; set; }
 

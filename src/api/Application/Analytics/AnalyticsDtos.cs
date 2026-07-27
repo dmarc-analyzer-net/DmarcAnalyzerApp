@@ -65,7 +65,13 @@ public sealed record DomainDrilldownDomainDto(
     string? SubdomainPolicy,
     int? PublishedPct,
     string? DkimAlignment,
-    string? SpfAlignment);
+    string? SpfAlignment,
+    /// <summary>
+    /// Set when PublishedPolicy came from an ancestor because this domain publishes no record
+    /// of its own. Without it the header would claim this domain publishes a policy it does
+    /// not, which is the confusion the whole inheritance change exists to remove.
+    /// </summary>
+    string? PolicyInheritedFrom);
 
 /// <summary>Policy-aware enforcement status derived from published policy + compliance.</summary>
 public static class EnforcementStatus
@@ -175,8 +181,14 @@ public sealed record DomainAnalyticsDto(
     int? PublishedPct,
     string? DkimAlignment,
     string? SpfAlignment,
-    /// <summary>found / missing / lookup_failed, or null if never checked.</summary>
+    /// <summary>found / inherited / missing / lookup_failed, or null if never checked.</summary>
     string? DnsLookupStatus,
+    /// <summary>
+    /// The ancestor the policy came from when DnsLookupStatus is inherited — this domain
+    /// publishes no record of its own and receivers apply the organisational domain's.
+    /// Null otherwise.
+    /// </summary>
+    string? DnsPolicyInheritedFrom,
     /// <summary>When the cached policy above was last refreshed from DNS.</summary>
     DateTime? DnsCheckedAtUtc,
     string EnforcementStatus);

@@ -71,7 +71,7 @@ public sealed class ThreatFeedTests
         // The feed reads the cached DNS policy, so refresh the cache first — the same
         // thing the worker's DNS pass does before any list view is rendered.
         var dns = TestDnsTxtResolver.WithPolicy("acme.example", "none");
-        await new DnsPolicyCache(db, dns, NullLogger<DnsPolicyCache>.Instance)
+        await new DnsPolicyCache(db, new DmarcPolicyResolver(dns), NullLogger<DnsPolicyCache>.Instance)
             .RefreshAllAsync(CancellationToken.None);
 
         var feed = await TestAnalytics.Service(db, TestCurrentUserContext.Admin(), dns)

@@ -56,7 +56,7 @@ const POLICY_FILTER_OPTIONS: { value: string; label: string }[] = [
 function describePolicyGap(row: { dnsLookupStatus: string | null }): string {
   switch (row.dnsLookupStatus) {
     case 'missing':
-      return 'No DMARC record is published in DNS for this domain'
+      return 'No DMARC record is published for this domain, or for any parent domain'
     case 'lookup_failed':
       return 'The last DNS lookup for this domain failed'
     case 'found':
@@ -255,6 +255,7 @@ export function DomainsPage() {
         dkimAlignment: null,
         spfAlignment: null,
         dnsLookupStatus: null,
+        dnsPolicyInheritedFrom: null,
         dnsCheckedAtUtc: null,
         enforcementStatus: 'no_data',
         crud: domain,
@@ -459,7 +460,20 @@ export function DomainsPage() {
                           whether reports arrived in this window — a silent domain still
                           shows the policy it really publishes. */}
                       {row.publishedPolicy ? (
-                        <PolicyBadge policy={row.publishedPolicy} />
+                        <span className="inline-flex items-center gap-1.5">
+                          <PolicyBadge policy={row.publishedPolicy} />
+                          {/* A subdomain with no record of its own is not unprotected:
+                              receivers apply the parent's sp= (or p=). Marked rather than
+                              shown bare, because it is not this domain's policy to change. */}
+                          {row.dnsLookupStatus === 'inherited' && row.dnsPolicyInheritedFrom ? (
+                            <span
+                              className="text-xs text-secondary"
+                              title={`${row.name} publishes no DMARC record. Receivers apply ${row.dnsPolicyInheritedFrom}'s policy.`}
+                            >
+                              via {row.dnsPolicyInheritedFrom}
+                            </span>
+                          ) : null}
+                        </span>
                       ) : (
                         <span className="text-faint" title={describePolicyGap(row)}>
                           —
