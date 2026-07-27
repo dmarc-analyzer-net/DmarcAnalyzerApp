@@ -88,6 +88,26 @@ no-op.
 about 5.3M rows in roughly 94 seconds, so the default has room, but a very large
 database may want more.
 
+## Values validation
+
+`values.schema.json` is checked by Helm before install or upgrade, and Artifact
+Hub renders it as a values reference. It catches the class of mistake templates
+cannot see — a mistyped key, a string where a number belongs, a value outside the
+allowed set — and it catches them before anything reaches the cluster:
+
+```
+Error: values don't meet the specifications of the schema(s) in the following chart(s):
+dmarc-analyzer:
+- at '/postgres': additional properties 'enable' not allowed
+```
+
+`auth.encryptionKey` is pattern-checked against what the application will actually
+accept: base64 decoding to exactly 32 bytes. Getting that wrong used to surface as
+a crash loop after install.
+
+The cross-field rules below stay in the templates, because they need to explain
+themselves rather than just fail.
+
 ## What the chart refuses
 
 Some configurations would install successfully and then misbehave in a way that

@@ -1,0 +1,231 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "DMARC Analyzer chart values",
+  "description": "Validated by Helm before install or upgrade, and rendered as a values reference on Artifact Hub. This catches the class of mistake the template guardrails cannot see — a typo'd key, a string where a number belongs, a value outside the allowed set — and it catches them before anything reaches the cluster. The cross-field rules that need more than a type check (combined mode with several replicas, a worker replica count other than one) stay in _helpers.tpl, where they can explain themselves.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["image", "mode", "app", "worker", "postgres", "auth"],
+  "properties": {
+    "image": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository"],
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": {
+          "type": "string",
+          "description": "Empty means the chart's appVersion, which is the intended default. Pin for production.",
+          "pattern": "^$|^[\\w][\\w.-]{0,127}$"
+        },
+        "pullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": { "name": { "type": "string" } },
+        "required": ["name"]
+      }
+    },
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+
+    "mode": {
+      "type": "string",
+      "enum": ["combined", "split"],
+      "description": "combined runs the console and ingestion in one Deployment; split runs them separately."
+    },
+
+    "app": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "replicas": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Only meaningful above 1 with mode=split — every combined pod runs its own ingestion loop, and the chart refuses that combination."
+        },
+        "resources": { "type": "object" },
+        "nodeSelector": { "type": "object" },
+        "tolerations": { "type": "array" },
+        "affinity": { "type": "object" },
+        "podAnnotations": { "type": "object" }
+      }
+    },
+
+    "worker": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "replicas": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1,
+          "description": "Must be 1. There is no claim mechanism in the queue, and the application takes a Postgres advisory lock, so a second worker exits rather than starting."
+        },
+        "resources": { "type": "object" },
+        "nodeSelector": { "type": "object" },
+        "tolerations": { "type": "array" },
+        "affinity": { "type": "object" },
+        "podAnnotations": { "type": "object" }
+      }
+    },
+
+    "postgres": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Bundled PostgreSQL is evaluation-grade: one replica, no backups, no pooling. Set false and use externalDatabase for anything you would be upset to lose."
+        },
+        "image": { "type": "string", "minLength": 1 },
+        "database": { "type": "string", "minLength": 1 },
+        "username": { "type": "string", "minLength": 1 },
+        "password": { "type": "string" },
+        "persistence": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "size": {
+              "type": "string",
+              "pattern": "^[0-9]+(\\.[0-9]+)?(E|P|T|G|M|k|Ei|Pi|Ti|Gi|Mi|Ki)?$",
+              "description": "Kubernetes quantity, for example 10Gi."
+            },
+            "storageClass": { "type": "string" }
+          }
+        },
+        "resources": { "type": "object" }
+      }
+    },
+
+    "externalDatabase": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "host": { "type": "string" },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "database": { "type": "string" },
+        "username": { "type": "string" },
+        "password": { "type": "string" },
+        "connectionString": {
+          "type": "string",
+          "description": "Set this to bypass the fields above — useful for sslmode or pooling parameters. Npgsql spells it 'SSL Mode', not 'sslmode'."
+        }
+      }
+    },
+
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "encryptionKey": {
+          "type": "string",
+          "pattern": "^$|^[A-Za-z0-9+/]{43}=$",
+          "description": "Base64 for exactly 32 bytes: openssl rand -base64 32. The application refuses to start on anything else. Prefer existingSecret so the key stays out of values files and `helm get values`."
+        },
+        "existingSecret": {
+          "type": "string",
+          "description": "A Secret you manage, with keys encryption-key and db-password."
+        }
+      }
+    },
+
+    "migrations": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "strategy": {
+          "type": "string",
+          "enum": ["", "job", "startup"],
+          "description": "Empty picks startup with bundled PostgreSQL and job without — a pre-install hook runs before the bundled StatefulSet exists, so a Job would wait for a database that is not there yet."
+        },
+        "activeDeadlineSeconds": {
+          "type": "integer",
+          "minimum": 60,
+          "description": "The largest shipped migration rewrites about 5.3M rows in roughly 94 seconds."
+        },
+        "resources": { "type": "object" }
+      }
+    },
+
+    "service": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "type": { "type": "string", "enum": ["ClusterIP", "NodePort", "LoadBalancer"] },
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "annotations": { "type": "object" }
+      }
+    },
+
+    "ingress": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "className": { "type": "string" },
+        "annotations": { "type": "object" },
+        "hosts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["host", "paths"],
+            "properties": {
+              "host": { "type": "string", "minLength": 1 },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["path", "pathType"],
+                  "properties": {
+                    "path": { "type": "string", "pattern": "^/" },
+                    "pathType": { "type": "string", "enum": ["Exact", "Prefix", "ImplementationSpecific"] }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tls": { "type": "array" }
+      }
+    },
+
+    "extraEnv": {
+      "type": "object",
+      "description": "Any setting from docs/ops/configuration.md with no typed value above. Same names as the Compose deployment.",
+      "additionalProperties": { "type": ["string", "number", "boolean"] }
+    },
+    "extraEnvFromSecret": {
+      "type": "object",
+      "description": "Values pulled from existing Secrets — SMTP and OIDC credentials in particular.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "key"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "key": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+
+    "serviceAccount": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "create": { "type": "boolean" },
+        "name": { "type": "string" },
+        "annotations": { "type": "object" }
+      }
+    },
+
+    "podSecurityContext": { "type": "object" },
+    "securityContext": { "type": "object" }
+  }
+}
