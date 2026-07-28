@@ -14,6 +14,28 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   `oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer` on a release tag.
   Exactly one ingestion worker may run per database, enforced by a Postgres
   advisory lock.
+- **Backup, offload and recovery** (ADR 0009, design detail in
+  `config-export-and-recovery.md`). A JSON configuration artifact — clients, domains,
+  mailbox sources with their encrypted credentials, recipients, users, identities,
+  grants — is the primary backup; `pg_dump` is demoted to the pre-upgrade artifact a
+  rollback across a migration needs. Report data is deliberately excluded, because the
+  mailbox is the archive and re-ingestion is idempotent.
+  - Manual export (`GET /api/v1/admin/config/export`), **refused** when no credential
+    encryption key is configured, because the mailbox passwords in it would be plaintext.
+  - Continuous offload to S3-compatible object storage on the worker loop
+    (`Backup:*`): `config/latest.json` promoted only after being staged and
+    length-verified, a dated daily copy, and the append-only history tables
+    (audit, alerts, digests, sync runs, ingest ledger) shipped as immutable JSONL with an
+    overlap window so a row committed mid-pass is never skipped.
+  - Import as a first-run console action, `restore` (empty install only) or `merge`.
+    **Additive: never deletes a row.** On an email collision the imported user wins and
+    only that account's sessions are revoked.
+  - Optional report-mail archive to the same bucket, and **opt-in mailbox retention
+    deletion** so the system has one retention window instead of two — cut on the widest
+    window the source serves, suspended entirely for any source serving a client under
+    legal hold, with a grace margin, a preview, and an audit row.
+  - Not built: replaying reports back from the bucket archive. Until it exists the
+    archive is evidence, not a restore path.
 - ASP.NET Core API with Carter modules and EF Core + PostgreSQL integration.
 - Core and ingestion/report schema migrations in place for:
   - `client`

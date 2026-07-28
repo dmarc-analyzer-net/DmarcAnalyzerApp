@@ -22,6 +22,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<UserClientGrant> UserClientGrants => Set<UserClientGrant>();
     public DbSet<UserIdentity> UserIdentities => Set<UserIdentity>();
+    public DbSet<BackupStreamState> BackupStreamStates => Set<BackupStreamState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -134,6 +135,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.PasswordEncrypted).HasMaxLength(2048).IsRequired();
             entity.Property(x => x.LastProcessedUid);
             entity.Property(x => x.LastProcessedUidValidity);
+            entity.Property(x => x.DeleteAfterRetention).HasDefaultValue(false);
             entity.HasIndex(x => x.DefaultClientId);
 
             entity.HasOne(x => x.DefaultClient)
@@ -340,6 +342,16 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .WithMany(x => x.SpfAuthResults)
                 .HasForeignKey(x => x.DmarcReportRecordId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<BackupStreamState>(entity =>
+        {
+            entity.ToTable("backup_stream_state");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Stream).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.LastError).HasMaxLength(4000);
+            // One row per stream; the offload upserts on this.
+            entity.HasIndex(x => x.Stream).IsUnique();
         });
     }
 }

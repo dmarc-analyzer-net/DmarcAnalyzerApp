@@ -194,6 +194,41 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.ToTable("audit_event", (string)null);
                 });
 
+            modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.BackupStreamState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("LastAttemptAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<DateTime?>("LastSuccessAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Stream")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime?>("WatermarkUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Stream")
+                        .IsUnique();
+
+                    b.ToTable("backup_stream_state", (string)null);
+                });
+
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.Client", b =>
                 {
                     b.Property<Guid>("Id")
@@ -600,6 +635,11 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Property<Guid>("DefaultClientId")
                         .HasColumnType("uuid");
 
+                    b.Property<bool>("DeleteAfterRetention")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("Host")
                         .IsRequired()
                         .HasMaxLength(255)
@@ -621,6 +661,9 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
+
+                    b.Property<DateTime?>("OldestMessageAtUtc")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("PasswordEncrypted")
                         .IsRequired()

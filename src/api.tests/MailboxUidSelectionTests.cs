@@ -26,7 +26,7 @@ public sealed class MailboxUidSelectionTests
     [Fact]
     public void AUidAtTheCheckpointIsNotReprocessed()
     {
-        var selected = MailboxSyncService.SelectUidsToProcess(Uids(230686), 230686, 500);
+        var selected = MailboxSyncService.SelectUidsPastCheckpoint(Uids(230686), 230686);
 
         Assert.Empty(selected);
     }
@@ -34,7 +34,7 @@ public sealed class MailboxUidSelectionTests
     [Fact]
     public void UidsBelowTheCheckpointAreIgnoredToo()
     {
-        var selected = MailboxSyncService.SelectUidsToProcess(Uids(10, 200, 230686), 230686, 500);
+        var selected = MailboxSyncService.SelectUidsPastCheckpoint(Uids(10, 200, 230686), 230686);
 
         Assert.Empty(selected);
     }
@@ -42,53 +42,34 @@ public sealed class MailboxUidSelectionTests
     [Fact]
     public void OnlyWhatIsPastTheCheckpointIsSelected()
     {
-        var selected = MailboxSyncService.SelectUidsToProcess(Uids(230686, 230687, 230688), 230686, 500);
+        var selected = MailboxSyncService.SelectUidsPastCheckpoint(Uids(230686, 230687, 230688), 230686);
 
         Assert.Equal([230687u, 230688u], selected.Select(x => x.Id));
     }
 
-    /// <summary>A first sync has no checkpoint, so everything is fair game.</summary>
+
+    /// <summary>A first sync has no checkpoint, so everything the search found is fair game.</summary>
     [Fact]
     public void WithNoCheckpointEverythingIsSelected()
     {
-        var selected = MailboxSyncService.SelectUidsToProcess(Uids(3, 1, 2), null, 500);
+        var selected = MailboxSyncService.SelectUidsPastCheckpoint(Uids(3, 1, 2), null);
 
         Assert.Equal([1u, 2u, 3u], selected.Select(x => x.Id));
     }
 
+    [Fact]
+    public void AnEmptySearchSelectsNothing()
+        => Assert.Empty(MailboxSyncService.SelectUidsPastCheckpoint([], 230686));
+
     /// <summary>
-    /// Oldest first, and explicitly so: the batch cap only means "the oldest N" if the order is
-    /// known, and the unlimited backfill is defined as oldest-to-newest.
+    /// Oldest first, explicitly. The drain loop's batch boundaries and the oldest-to-newest
+    /// backfill both depend on the order, so it is not left to whatever the server returned.
     /// </summary>
     [Fact]
     public void SelectionIsOldestFirstEvenIfTheServerIsNot()
     {
-        var selected = MailboxSyncService.SelectUidsToProcess(Uids(9, 5, 7, 6), 4, 2);
+        var selected = MailboxSyncService.SelectUidsPastCheckpoint(Uids(9, 5, 7, 6), 4);
 
-        Assert.Equal([5u, 6u], selected.Select(x => x.Id));
+        Assert.Equal([5u, 6u, 7u, 9u], selected.Select(x => x.Id));
     }
-
-    [Fact]
-    public void TheBatchSizeCaps()
-    {
-        var selected = MailboxSyncService.SelectUidsToProcess(Uids(1, 2, 3, 4, 5), null, 3);
-
-        Assert.Equal(3, selected.Length);
-    }
-
-    /// <summary>A batch size of zero or less must still make progress, not stall silently.</summary>
-    [Theory]
-    [InlineData(0)]
-    [InlineData(-1)]
-    public void ANonPositiveBatchSizeStillTakesOne(int batchSize)
-    {
-        var selected = MailboxSyncService.SelectUidsToProcess(Uids(1, 2, 3), null, batchSize);
-
-        Assert.Single(selected);
-        Assert.Equal(1u, selected[0].Id);
-    }
-
-    [Fact]
-    public void AnEmptySearchSelectsNothing()
-        => Assert.Empty(MailboxSyncService.SelectUidsToProcess([], 230686, 500));
 }

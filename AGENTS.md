@@ -65,6 +65,8 @@ docker compose up -d --build
 5. [Report routing, dedup & retention](docs/planning/adr/0005-report-routing-dedup-and-retention.md)
 6. [Observability & operations baseline](docs/planning/adr/0006-observability-and-operations-baseline.md)
 7. [Authorization & pluggable authentication](docs/planning/adr/0007-authorization-and-pluggable-authentication.md)
+8. [Deployment topologies & config contract](docs/planning/adr/0008-deployment-topologies-and-config-contract.md)
+9. [Configuration export & recovery](docs/planning/adr/0009-configuration-export-and-recovery.md)
 
 ### Operations runbooks — [`docs/ops/`](docs/ops/)
 - [Directory listings](docs/ops/directory-listings.md) — Artifact Hub and awesome-selfhosted, and why the second is blocked on a category decision

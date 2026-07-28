@@ -1,6 +1,7 @@
 using Carter;
 using DmarcAnalyzer.Api.Application.Analytics;
 using DmarcAnalyzer.Api.Application.Auth;
+using DmarcAnalyzer.Api.Application.Backup;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Application.Hosting;
@@ -110,6 +111,17 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddScoped<IDmarcPolicyResolver, DmarcPolicyResolver>();
     workerBuilder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
     workerBuilder.Services.Configure<WorkerOptions>(workerBuilder.Configuration.GetSection("Worker"));
+    // Backup offload runs on the loop, so the worker host needs the whole chain — the
+    // export service included. Registering it only on the API host would leave the pass
+    // throwing from GetRequiredService in worker mode, visible as nothing but a caught log
+    // line while backups silently never happen.
+    workerBuilder.Services.Configure<BackupOptions>(workerBuilder.Configuration.GetSection("Backup"));
+    workerBuilder.Services.AddSingleton<IObjectStorage, S3ObjectStorage>();
+    workerBuilder.Services.AddScoped<IReportMailArchive, ReportMailArchive>();
+    workerBuilder.Services.AddScoped<IBackupExportService, BackupExportService>();
+    workerBuilder.Services.AddScoped<IBackupOffloadService, BackupOffloadService>();
+    workerBuilder.Services.AddScoped<IMailboxRetentionPlanner, MailboxRetentionPlanner>();
+    workerBuilder.Services.AddScoped<IMailboxRetentionService, MailboxRetentionService>();
     // Registered before the loop: hosted services start in order, so this refuses
     // a second worker before that worker connects to any mailbox.
     workerBuilder.Services.AddHostedService<WorkerSingleInstanceLock>();
@@ -173,6 +185,15 @@ builder.Services.Configure<DnsOptions>(builder.Configuration.GetSection("Dns"));
 builder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
 builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection("Network"));
+builder.Services.Configure<BackupOptions>(builder.Configuration.GetSection("Backup"));
+builder.Services.AddSingleton<IObjectStorage, S3ObjectStorage>();
+builder.Services.AddScoped<IReportMailArchive, ReportMailArchive>();
+builder.Services.AddScoped<IBackupExportService, BackupExportService>();
+builder.Services.AddScoped<IBackupImportService, BackupImportService>();
+builder.Services.AddScoped<IConfigImportPreviewService, ConfigImportPreviewService>();
+builder.Services.AddScoped<IBackupOffloadService, BackupOffloadService>();
+builder.Services.AddScoped<IMailboxRetentionPlanner, MailboxRetentionPlanner>();
+builder.Services.AddScoped<IMailboxRetentionService, MailboxRetentionService>();
 
 if (mode == AppMode.All)
 {

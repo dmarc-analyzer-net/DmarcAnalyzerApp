@@ -57,6 +57,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
             PasswordEncrypted = credentialProtector.Protect(request.Password),
             DefaultClientId = request.DefaultClientId,
             IsActive = request.IsActive,
+            DeleteAfterRetention = request.DeleteAfterRetention,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
@@ -162,6 +163,11 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
             source.IsActive = request.IsActive.Value;
         }
 
+        if (request.DeleteAfterRetention.HasValue)
+        {
+            source.DeleteAfterRetention = request.DeleteAfterRetention.Value;
+        }
+
         source.UpdatedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
@@ -180,6 +186,8 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
             x.DefaultClientId,
             defaultClientName,
             x.IsActive,
+            x.DeleteAfterRetention,
+            x.OldestMessageAtUtc,
             x.LastSuccessSyncAtUtc,
             x.LastProcessedUid,
             x.LastProcessedUidValidity,

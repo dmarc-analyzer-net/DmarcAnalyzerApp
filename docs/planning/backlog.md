@@ -380,10 +380,23 @@ zero undocumented. The problems are everywhere else.
       re-sync (there is no API — it is a SQL `UPDATE` clearing
       `LastProcessedUid`, safe because of dedup, bounded by
       `MaxMessagesPerSync`).
-- [ ] (todo) **Missing runbooks:** a restore-from-backup *drill* (the procedure
-      exists on the website; nobody has rehearsed it, and a backup verified only
-      by `gzip -t` is of unknown restorability — the real test is that a mailbox
-      source still decrypts); encryption-key rotation (the consequence is
+- [ ] (todo) **Replay reports from the bucket archive** (spec phase 8, the one
+      phase of ADR 0009 not built). `Backup__ArchiveReportMail` stores the whole
+      message gzipped at `reports/yyyy/MM/dd/<source>/<uidvalidity>-<uid>.eml.gz`,
+      but nothing reads it back, so **the archive is currently evidence, not a
+      restore path** — and the docs say so. Needs a bucket-sourced ingestion path
+      (`POST /api/v1/admin/reports/replay?from=&to=`) walking the prefix and
+      feeding each object through `ExtractXmlStreamsAsync`; safe to re-run because
+      report dedup is idempotent. Also missing: a picker for the dated daily
+      snapshots, so recovering from a bad `latest.json` still means fetching the
+      dated copy by hand, and a console surface for
+      `MailboxSource.DeleteAfterRetention` (today it is settable only in the
+      database, and `mailbox-retention/preview` is the only way to see which
+      sources have it on).
+- [ ] (todo) **Missing runbooks:** a restore-from-backup *drill* — now scriptable
+      end to end, since export → import into a throwaway instance → compare
+      manifest counts → sync a mailbox source is the check that actually proves
+      the encryption key round-tripped; encryption-key rotation (the consequence is
       documented, the procedure is not, and the code's legacy-passthrough makes
       a staged rotation genuinely possible); deployment rollback when a release
       ships a migration the previous image cannot read; and ingestion-backlog

@@ -31,6 +31,25 @@ public static class AuditEvents
     public const string NotificationRecipientAdded = "notification_recipient.added";
     public const string NotificationRecipientRemoved = "notification_recipient.removed";
     public const string DatabaseMigrated = "admin.database.migrated";
+
+    /// <summary>
+    /// An artifact carrying mailbox credentials and password hashes left the install.
+    /// Worth a row even though it changes nothing.
+    /// </summary>
+    public const string ConfigExported = "admin.config.exported";
+
+    /// <summary>
+    /// Configuration was read back into this install — rows created or updated, and possibly
+    /// password hashes replaced under the operator running it. Often the first row a
+    /// recovered install has, and the one that explains where everything else came from.
+    /// </summary>
+    public const string ConfigImported = "admin.config.imported";
+
+    /// <summary>
+    /// Report mail was deleted from a mailbox. The only record that it existed, once the
+    /// pass has run.
+    /// </summary>
+    public const string MailboxRetentionDeleted = "mailbox_source.retention.deleted";
 }
 
 public interface IAuditLog

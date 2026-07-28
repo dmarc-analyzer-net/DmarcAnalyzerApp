@@ -61,7 +61,10 @@ then and its log says so.
 | Variable | Default | Meaning |
 |---|---|---|
 | `Worker__ScheduleIntervalSeconds` | `3600` | Gap between polling passes. Floored at 15s. |
-| `Worker__MaxMessagesPerSync` | `500` | Messages fetched per mailbox per pass. Also the throughput ceiling: with the default hourly schedule this is 500 messages an hour, so a mailbox receiving more than that during a burst falls behind until it catches up. Memory does not scale with it — messages are fetched and released one at a time — and a 500-message pass measured 21s average, 28s worst, against a 30-minute run timeout. |
+| `Worker__MaxMessagesPerSync` | `500` | Messages fetched per **batch**, not per pass. A pass keeps drawing batches until the mailbox is drained or the drain budget below runs out, committing its checkpoint between them — so this bounds what a crash mid-drain costs in re-fetching, not how much a pass can ingest overall. Memory does not scale with it either way — messages are fetched and released one at a time — and a 500-message batch measured 21s average, 28s worst, well inside the drain budget below. |
+| `Worker__MailboxDrainBudgetMinutes` | `20` | How long one source may keep drawing batches before the pass moves on, so one large backlog cannot starve the other sources. At least one batch always runs, however tight this is. **Silently clamped to `SyncRunTimeoutMinutes - 1`** when set equal to or above it, with a warning logged: the timeout cancels the run and records it `partial`, whereas the budget is meant to stop the drain gracefully first. |
+| `Worker__MailboxRetentionGraceDays` | `30` | Extra days on top of a client's retention window before report mail is deleted from the mailbox. Deliberately generous: this is the one pass that removes data the app does not own, and the margin is what stops a clock skew or a mid-incident retention change from destroying mail the database has not re-read. |
+| `Worker__MailboxRetentionIntervalHours` | `24` | Gap between mailbox retention passes. Retention is measured in months, so daily is plenty. |
 | `Worker__MaxRetryAttempts` | `3` | Attempts before a queued item is dead-lettered. |
 | `Worker__RetryBaseDelaySeconds` | `2` | Base for exponential retry backoff. |
 | `Worker__StaleRunTimeoutMinutes` | `90` | A sync run still marked running after this is closed as abandoned — recovers from a worker killed mid-pass. |
@@ -76,6 +79,53 @@ then and its log says so.
 | Variable | Default | Meaning |
 |---|---|---|
 | `Retention__AuditRetentionDays` | `730` | Age at which audit entries are purged. Per-client report retention is set in the console, not here. |
+
+## Backup offload (`Backup`)
+
+Ships the configuration artifact — clients, domains, mailbox sources, recipients, users
+and grants — to S3-compatible object storage on a schedule. Report data is deliberately
+not included: it arrived over IMAP and can arrive again, and it outweighs the rest by
+roughly four orders of magnitude.
+
+**`Backup__Bucket` empty disables the whole feature**, the same way an empty `Email__Host`
+makes alerts and digests inert. The manual export endpoint
+(`GET /api/v1/admin/config/export`) works regardless.
+
+Two things are worth knowing before you turn this on:
+
+- **The artifact is a credential file.** It carries `enc:v1:` mailbox ciphertext and
+  PBKDF2 password hashes. The bucket must be private, and
+  `Security__CredentialEncryptionKey` must **never** be stored in the same bucket — the
+  pair together is the thing that exposes your mailbox passwords. The manifest carries a
+  key *fingerprint*, not the key.
+- **Offload refuses to run with no encryption key configured.** In that state the app
+  stores mailbox passwords in plaintext, so the artifact would be a plaintext credential
+  file. That is a failure, not a warning, and it is logged as one.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `Backup__Bucket` | *(empty)* | Destination bucket. Empty disables offload. |
+| `Backup__IntervalMinutes` | `30` | Gap between offload passes. **Effective resolution is `Worker__ScheduleIntervalSeconds`** — with the shipped hourly schedule, 30 here still means roughly hourly. Shorten the schedule interval too if the cadence matters. |
+| `Backup__Endpoint` | *(empty)* | Custom S3 endpoint for MinIO, Cloudflare R2, Backblaze B2. Empty targets AWS. |
+| `Backup__Region` | `us-east-1` | AWS region. Used only as the signing region when `Endpoint` is set. |
+| `Backup__AccessKeyId` | *(empty)* | Static credential. Leave both key settings empty to use the ambient chain — an instance role or IRSA beats a long-lived key in configuration. |
+| `Backup__SecretAccessKey` | *(empty)* | Paired with the above. Put it in a secret, not in `compose.yml`. |
+| `Backup__Prefix` | `dmarc` | Key prefix, so one bucket can hold more than one install. |
+| `Backup__ForcePathStyle` | `true` | Address the bucket as a path segment rather than a subdomain. Required by MinIO and most S3-compatible services; harmless on AWS. |
+| `Backup__DailySnapshot` | `true` | Also write a dated copy of each snapshot. `config/latest.json` is overwritten every pass, so without either this or bucket versioning one bad write ends the only copy. |
+| `Backup__IncludeHistory` | `true` | Ship the append-only tables (audit, alerts, digests, sync runs, ingest ledger) as immutable dated objects. These are the rows no report replay can reconstruct. |
+| `Backup__HistoryOverlapMinutes` | `15` | Minutes of history re-shipped every pass. Deliberately not `0`: a row committed just after a pass read the clock would otherwise be skipped for good. Duplicates cost nothing because import de-duplicates on the primary key. |
+| `Backup__ArchiveReportMail` | `false` | Archive raw report mail to the bucket as it is ingested, so report history survives independently of the mailbox. Off by default — it is the largest thing this feature can be asked to store, and it needs its own lifecycle rule. |
+
+**Bucket versioning is strongly recommended.** `config/latest.json` is overwritten on every
+pass, and versioning is what makes a bad overwrite recoverable. The app checks the bucket's
+versioning state and warns when it is off, but does not refuse to run — several
+S3-compatible backends report versioning inconsistently, and a backup that will not run is
+worse than an unversioned one.
+
+**Kubernetes.** The chart has no `backup:` block; its `values.schema.json` sets
+`additionalProperties: false`, so use the existing escape hatches — `extraEnv` for the
+non-secret settings and `extraEnvFromSecret` for `Backup__SecretAccessKey`.
 
 ## Email (`Email`)
 

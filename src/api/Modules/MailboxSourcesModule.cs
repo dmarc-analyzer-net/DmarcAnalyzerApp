@@ -49,8 +49,16 @@ public sealed class MailboxSourcesModule : ICarterModule
             }
 
             var updatedSource = result.Value!;
-            await audit.RecordAsync(AuditEvents.MailboxSourceUpdated,
-                $"Updated mailbox source {updatedSource.Name}",
+
+            // Turning mail deletion on is the one change here that leads to data being
+            // destroyed outside this application, so it is named in the summary rather than
+            // hidden inside a generic "updated".
+            var summary = request.DeleteAfterRetention is { } deleteAfterRetention
+                ? $"Updated mailbox source {updatedSource.Name} — mail deletion past retention " +
+                  $"{(deleteAfterRetention ? "ENABLED" : "disabled")}"
+                : $"Updated mailbox source {updatedSource.Name}";
+
+            await audit.RecordAsync(AuditEvents.MailboxSourceUpdated, summary,
                 "mailbox_source", updatedSource.Id, ct: ct);
             return Results.Ok(updatedSource);
         }).RequireAgencyAdmin();
