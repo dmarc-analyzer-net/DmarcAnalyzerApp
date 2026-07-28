@@ -1,6 +1,15 @@
 @baseUrl = http://localhost:5076
 @mailboxSourceId = 00000000-0000-0000-0000-000000000000
 
+# Set this before running the register, create-user or login requests below.
+#
+# Deliberately empty rather than a working default. This repository is public, so a
+# real value here becomes the admin password on every instance bootstrapped by
+# copying these requests — which is exactly what happened once. Empty makes the API
+# answer 400 "email and password are required" until you choose one, instead of
+# quietly creating an account whose password anyone can look up.
+@password =
+
 ### Check whether first-run bootstrap is needed
 GET {{baseUrl}}/api/v1/auth/setup
 
@@ -10,7 +19,7 @@ Content-Type: application/json
 
 {
   "email": "admin@agency.tld",
-  "password": "changeme1234",
+  "password": "{{password}}",
   "displayName": "Agency Admin"
 }
 
@@ -23,7 +32,7 @@ Content-Type: application/json
 
 {
   "email": "viewer@client.tld",
-  "password": "changeme1234",
+  "password": "{{password}}",
   "displayName": "Client Viewer",
   "role": "client_viewer"
 }
@@ -51,7 +60,7 @@ Content-Type: application/json
 
 {
   "email": "admin@agency.tld",
-  "password": "changeme1234"
+  "password": "{{password}}"
 }
 
 ### Get current user
