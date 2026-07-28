@@ -96,7 +96,7 @@ Surveyed 2026-07-27. Every count below was queried live, not recalled.
 
 | Where | DMARC tools already there | Us | Effort |
 |---|---|---|---|
-| **Docker Hub** | — | **description was empty through 2,177 pulls** | done: CI syncs it on release |
+| **Docker Hub** | — | **still empty at 3,280 pulls** | CI is wired; the token can't edit metadata |
 | **GHCR** | — | description comes from the Dockerfile OCI label | already fine |
 | **GitHub topics** | `dmarc` 345 repos, `email-security` 461 | 12 topics set | already fine |
 | **Artifact Hub** | 2, both `dmarc2logstash`, both 0★ | **listed, Verified publisher** | done |
@@ -109,9 +109,21 @@ Surveyed 2026-07-27. Every count below was queried live, not recalled.
 
 Reading of it:
 
-- **The registry pages were the real gap**, not the directories. Docker Hub had
-  real traffic landing on a blank page, which is worse than not being listed —
-  someone arriving there learned nothing and left.
+- **The registry pages are the real gap**, not the directories — and Docker Hub is
+  still open. Real traffic lands on a blank page, which is worse than not being
+  listed: someone arriving there learns nothing and leaves. **3,280 pulls as of
+  2026-07-28**, checked against the Docker Hub API, with `description` and
+  `full_description` both empty.
+
+  The sync is not missing, it is *failing*. `ci.yml` runs
+  `peter-evans/dockerhub-description` on a tag, and on v0.2.2 it returned
+  **Forbidden** — `DOCKERHUB_TOKEN` can push images (Read/Write is enough for the
+  registry) but cannot edit repository metadata, which needs broader account
+  access. The step is `continue-on-error` and emits a warning, deliberately, so a
+  cosmetic failure cannot take a green release red. That means **it will keep
+  failing silently until someone widens the token** — nothing else will complain.
+  Two ways out: widen the token, or paste `deploy/dockerhub-readme.md` into the
+  Docker Hub UI by hand once.
 - **The compose-based app stores are the largest untapped audience.** CasaOS and
   Umbrel have 560 apps between them and not one DMARC tool. Both take an app
   definition wrapping a compose file, which we already ship. This is the obvious
