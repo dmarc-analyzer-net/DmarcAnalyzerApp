@@ -4,7 +4,10 @@ Two directories reach self-hosters better than any page we could rank for
 deployment keywords — the reasoning is in the `seo` repo's content plan. This is
 the state of each.
 
-## Artifact Hub — ready, needs one browser step
+## Artifact Hub — done
+
+Live as `dmarc-analyzer` under the `dmarc-analyzer-net` repository, with the
+Verified publisher badge (confirmed against the search API 2026-07-28).
 
 `Chart.yaml` carries the `artifacthub.io/*` annotations, so category, links,
 maintainer and screenshot all populate from the chart itself. Registering the
@@ -22,7 +25,15 @@ step that gets forgotten.
 **two** packages, both `dmarc2logstash`, both at **zero stars** (checked
 2026-07-26). Nobody holds this category.
 
-## awesome-selfhosted — blocked on a category decision, not on effort
+## awesome-selfhosted — submitted and closed unmerged
+
+PR #2792 took the new-tag route described below. A maintainer closed it on
+2026-07-27, roughly eight hours after it opened, with **no comment and no
+review**, so nothing was learned about which part they objected to — the tag, the
+four-project seeding, or the project itself. The branch and fork survive, and a
+plain `Miscellaneous` entry (bottom of this section) was never tried.
+
+The reasoning that led there, kept because it is still the argument for any retry:
 
 The entry itself is trivial to write and the project meets the curation bar:
 Apache-2.0, actively developed, working software, real documentation. There is no
@@ -88,12 +99,12 @@ Surveyed 2026-07-27. Every count below was queried live, not recalled.
 | **Docker Hub** | — | **description was empty through 2,177 pulls** | done: CI syncs it on release |
 | **GHCR** | — | description comes from the Dockerfile OCI label | already fine |
 | **GitHub topics** | `dmarc` 345 repos, `email-security` 461 | 12 topics set | already fine |
-| **Artifact Hub** | 2, both `dmarc2logstash`, both 0★ | registered | badge lands on next processing run |
-| **awesome-selfhosted** | 0 — DMARC appears only as a mail-server feature | PR #2792 open | proposes a new category |
+| **Artifact Hub** | 2, both `dmarc2logstash`, both 0★ | **listed, Verified publisher** | done |
+| **awesome-selfhosted** | 0 — DMARC appears only as a mail-server feature | PR #2792 closed unmerged, no comment | `Miscellaneous` entry untried |
 | **dmarc.org — Code and Libraries** | old entries; **parsedmarc is on neither dmarc.org page** | absent | contact form; unclear how actively curated |
 | **Yunohost** | 1 (`dmarcguard`) | absent | needs a `_ynh` package — real work |
-| **CasaOS** | **0 of 166 apps** | absent | compose-based app definition |
-| **Umbrel** | **0 of 394 apps** | absent | compose-based app definition |
+| **CasaOS** | **0 of 166 apps** | IceWhaleTech/CasaOS-AppStore#988 open | awaiting review |
+| **Umbrel** | **0 of 394 apps** | getumbrel/umbrel-apps#5929 open | awaiting review |
 | **selfh.st** | — | absent | has a Submit form |
 
 Reading of it:
