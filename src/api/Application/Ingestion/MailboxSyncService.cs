@@ -98,10 +98,7 @@ public sealed class MailboxSyncService(
             }
 
             var uids = await inbox.SearchAsync(query, operationToken);
-            var maxMessagesPerSync = Math.Max(1, _options.MaxMessagesPerSync);
-            var selectedUids = uids
-                .Take(maxMessagesPerSync)
-                .ToArray();
+            var selectedUids = SelectUidsToProcess(uids, lastProcessedUid, _options.MaxMessagesPerSync);
 
             long? highestProcessedUid = null;
 
@@ -439,6 +436,37 @@ public sealed class MailboxSyncService(
         => (attachment.ContentDisposition?.FileName ?? attachment.ContentType?.Name ?? string.Empty)
             .Trim()
             .ToLowerInvariant();
+
+    /// <summary>
+    /// The UIDs to process from a search result: only those past the checkpoint, oldest first,
+    /// capped at the batch size.
+    /// <para>
+    /// The filter is not redundant with the UID range already in the search, and leaving it out
+    /// was a real bug. IMAP resolves <c>*</c> to the highest UID that exists, so searching
+    /// <c>230687:*</c> on a mailbox whose highest UID is 230686 does not return nothing — the
+    /// range is normalised to <c>230686:230687</c> and the last message comes back. The service
+    /// then recomputed the checkpoint it already had, wrote no change, and did the same thing on
+    /// the next pass: one message re-fetched, re-parsed and re-checked against the database every
+    /// poll, forever. On a real instance that was 5,162 no-op passes and a
+    /// <c>mailbox_sync_run</c> row every 16 seconds.
+    /// </para>
+    /// <para>
+    /// It stayed invisible until a mailbox was fully caught up for the first time — while there
+    /// is a backlog, <c>*</c> is above the checkpoint and the range behaves as intended. The
+    /// range is kept because it is what stops the server sending a quarter of a million UIDs
+    /// on every poll; this filter just refuses to trust its edges.
+    /// </para>
+    /// <para>
+    /// Ordering is explicit rather than assumed. The batch size only means "oldest first" if the
+    /// order is known, and an unlimited oldest-to-newest backfill depends on that.
+    /// </para>
+    /// </summary>
+    public static UniqueId[] SelectUidsToProcess(
+        IEnumerable<UniqueId> found, long? lastProcessedUid, int maxMessagesPerSync)
+        => [.. found
+            .Where(x => !lastProcessedUid.HasValue || x.Id > lastProcessedUid.Value)
+            .OrderBy(x => x.Id)
+            .Take(Math.Max(1, maxMessagesPerSync))];
 
     private static async Task<IReadOnlyList<MemoryStream>> ExtractXmlStreamsAsync(MimeEntity attachment, ILogger logger, CancellationToken ct)
     {
