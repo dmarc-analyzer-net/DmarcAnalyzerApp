@@ -58,7 +58,7 @@ helm install dmarc ./deploy/helm/dmarc-analyzer -n dmarc \
   --set image.tag=0.2.2
 ```
 
-Four things worth doing deliberately:
+Five things worth doing deliberately:
 
 - **`auth.existingSecret`.** Otherwise the encryption key sits in your values
   file, your shell history, and `helm get values`.
@@ -67,6 +67,12 @@ Four things worth doing deliberately:
   recoverable from a database backup.
 - **`postgres.enabled=false`.** The bundled StatefulSet has no replication, no
   backups and no pooling. It is there to make a trial one command.
+- **Turn on backup offload.** The chart has no `backup:` block — set
+  `Backup__Bucket` and friends via `extraEnv`, and `Backup__SecretAccessKey`
+  via `extraEnvFromSecret` — but the feature is the same one Compose gets:
+  a configuration export shipped to S3-compatible object storage, refused
+  outright if the credential key above isn't set. See
+  [`docs/ops/configuration.md`](../../../docs/ops/configuration.md#backup-offload-backup).
 - **Pin `image.tag`.** `latest` and `edge` make a rollback ambiguous.
 
 ## Migrations

@@ -73,6 +73,15 @@ corrupted in a way that only shows up when you try to restore.
 its own — `Security__CredentialEncryptionKey` is needed to decrypt stored mailbox
 passwords, so back up the environment file too.
 
+This dump is still the right thing to take before a migration specifically: it is
+the only artifact that can restore report data, which matters if the release must
+be rolled back and the previous image cannot read the new schema. For everyday
+backup, `GET /api/v1/admin/config/export` and continuous offload to object storage
+(`Backup:*`, see [`configuration.md`](configuration.md#backup-offload-backup)) cover
+configuration — clients, domains, mailbox sources, users — separately and far more
+cheaply; see the [website's backup page](https://dmarc-analyzer-net.github.io/docs/upgrading-and-backup/)
+for the full picture.
+
 ## Applying the migrations
 
 Two ways. **Prefer the first.**

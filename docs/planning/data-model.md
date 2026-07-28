@@ -152,6 +152,8 @@ separate checkpoint table.
 | `IsActive` | bool |
 | `LastSuccessSyncAtUtc` | nullable |
 | `LastProcessedUid`, `LastProcessedUidValidity` | bigint, nullable — **the resumable backfill checkpoint** |
+| `DeleteAfterRetention` | default false — opt-in per source; the worker expunges report mail past the *widest* retention window among the clients this source serves, suspended entirely if any of them is under legal hold |
+| `OldestMessageAtUtc` | nullable — internal date of the oldest message still in the polled folder, refreshed each sync; the evidence for how far back the mailbox can still archive-replay from |
 | `CreatedAtUtc`, `UpdatedAtUtc` | |
 
 ### `mailbox_sync_run`
@@ -342,6 +344,26 @@ client's retention setting, and **not protected by legal hold**.
 - **No job table.** Background work is the worker polling `mailbox_source` and
   writing `mailbox_sync_run`; there is no generic queue table.
 - **No separate checkpoint table** — checkpoints live on `mailbox_source`.
+
+## A.6 Backup
+
+### `backup_stream_state`
+Where the offload worker got to, per stream — the configuration snapshot plus
+one row per append-only history table it ships (`audit_event`, `alert_event`,
+`digest_delivery`, `mailbox_sync_run`, `dmarc_report_ingest`). Has to be in the
+database rather than the worker's memory: the periodic passes gate on
+in-memory fields, so a restarted worker would otherwise re-ship a history
+stream from the beginning of time, and the console needs "when did this last
+succeed?" to survive a restart too.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK |
+| `Stream` | max 64 — `config`, or a history table name; **unique** |
+| `WatermarkUtc` | nullable — highest row timestamp shipped so far, read back with an overlap window rather than used as an exact cursor; null for `config`, which is a snapshot with nothing to advance through |
+| `LastSuccessAtUtc`, `LastAttemptAtUtc` | nullable |
+| `LastError` | max 4000, nullable — cleared by the next success, so a lingering value always means "still failing" |
+| `UpdatedAtUtc` | |
 
 ---
 
