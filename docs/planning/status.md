@@ -278,3 +278,10 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
 - `docs/planning/backlog.md` is the prioritized task source of truth.
 - `docs/planning/roadmap.md` defines milestone sequencing.
 - `docs/planning/api-contract.md` and `docs/planning/data-model.md` include both implemented and planned target state.
+- **There is deliberately no admin password recovery path.** No reset endpoint, no
+  forgot-password flow, and no `APP_MODE=reset-password`. It was proposed after an
+  agent lost track of a dev instance's admin password and rejected on the grounds
+  that a mode able to rewrite any user's password is more attack surface than the
+  scenario is worth, and that the scenario was self-inflicted rather than something
+  operators hit. Recovery, if ever needed, is a deliberate database operation.
+  Please do not re-propose it.
