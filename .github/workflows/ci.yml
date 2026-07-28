@@ -57,11 +57,12 @@ jobs:
           cache: npm
           cache-dependency-path: src/web/package-lock.json
 
-      - name: Frontend type-check + build
+      - name: Frontend type-check + test + build
         working-directory: src/web
         run: |
           npm ci
           npx tsc --noEmit
+          npm test
           npm run build
 
 

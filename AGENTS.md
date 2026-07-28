@@ -31,6 +31,7 @@ dotnet test src/api.tests
 # Frontend (from src/web)
 npm install
 npm run build     # tsc -b && vite build   (must pass)
+npm test          # vitest run              (must pass; runs in CI)
 npm run lint      # eslint .                (must be clean)
 npm run dev       # Vite dev server, proxies /api to the local API
 
