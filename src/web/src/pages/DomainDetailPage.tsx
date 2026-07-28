@@ -256,12 +256,16 @@ function alignmentSummary(domain: DrilldownDomain): string | null {
 // --- Record inspection (live DNS vs observed policy) ---
 
 const LOOKUP_STATUS_META: Record<
-  'found' | 'missing' | 'lookup_failed',
+  RecordInspection['dmarc']['status'],
   { label: string; badge: 'success' | 'danger' | 'warning' }
 > = {
   found: { label: 'Published', badge: 'success' },
   missing: { label: 'Missing', badge: 'danger' },
   lookup_failed: { label: 'Lookup failed', badge: 'warning' },
+  // DMARC only — no record of its own, but an ancestor's policy applies (the tree
+  // walk in DmarcPolicyResolver). Distinct from 'missing': the domain isn't
+  // unprotected, so this isn't a danger badge.
+  inherited: { label: 'Inherited', badge: 'warning' },
 }
 
 function RecordBlock({
@@ -380,6 +384,35 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
             }
             issues={inspection.spf.issues}
           />
+          {inspection.externalDestinations.length > 0 ? (
+            <div className="lg:col-span-2">
+              <PanelSectionTitle>External report destinations</PanelSectionTitle>
+              <ul className="mt-2 space-y-1.5">
+                {inspection.externalDestinations.map((dest) => (
+                  <li
+                    key={dest.destination}
+                    className={cn(
+                      'flex items-start gap-1.5 text-xs leading-relaxed',
+                      dest.status === 'not_authorized'
+                        ? 'text-[var(--status-danger-fg)]'
+                        : dest.status === 'lookup_failed'
+                          ? 'text-[var(--status-warn-fg)]'
+                          : 'text-secondary',
+                    )}
+                  >
+                    <Icon
+                      name={dest.status === 'authorized' ? 'circle-check' : 'triangle-alert'}
+                      size={13}
+                      className="mt-px shrink-0"
+                    />
+                    <span>
+                      <span className="font-mono font-semibold">{dest.destination}</span>: {dest.detail}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
           {inspection.observed && inspection.comparison.length > 0 ? (
             <div className="lg:col-span-2">
               <div className="flex items-center gap-2">

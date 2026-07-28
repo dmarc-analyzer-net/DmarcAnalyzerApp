@@ -60,6 +60,56 @@ public sealed class RecordInspectionTests
         Assert.Contains(dto.Issues, i => i.Contains("rua"));
     }
 
+    // --- RFC 9989 tags: t, psd, np ---
+
+    [Fact]
+    public void ParseDmarc_TPsdNp_AreSurfaced()
+    {
+        var dto = RecordInspectionService.ParseDmarc(
+            ["v=DMARC1; p=reject; np=quarantine; rua=mailto:d@acme.example; t=y; psd=n"]);
+
+        Assert.Equal("y", dto.Testing);
+        Assert.Equal("n", dto.PublicSuffixDomain);
+        Assert.Equal("quarantine", dto.NonExistentSubdomainPolicy);
+        Assert.Empty(dto.Issues);
+    }
+
+    [Fact]
+    public void ParseDmarc_TPsdNp_AbsentByDefault()
+    {
+        var dto = RecordInspectionService.ParseDmarc(["v=DMARC1; p=reject; rua=mailto:d@acme.example"]);
+        Assert.Null(dto.Testing);
+        Assert.Null(dto.PublicSuffixDomain);
+        Assert.Null(dto.NonExistentSubdomainPolicy);
+    }
+
+    [Theory]
+    [InlineData("t=x", "Invalid t=")]
+    [InlineData("psd=maybe", "Invalid psd=")]
+    [InlineData("np=block", "Invalid np=")]
+    public void ParseDmarc_InvalidNewTagValue_FlagsIssue(string tag, string expectedPrefix)
+    {
+        var dto = RecordInspectionService.ParseDmarc([$"v=DMARC1; p=reject; rua=mailto:d@acme.example; {tag}"]);
+        Assert.Contains(dto.Issues, i => i.StartsWith(expectedPrefix, StringComparison.Ordinal));
+    }
+
+    // --- RFC 9989: p downgraded from required to RECOMMENDED, with a rua-conditioned fallback ---
+
+    [Fact]
+    public void ParseDmarc_NoPolicyButValidRua_ExplainsImplicitNone()
+    {
+        var dto = RecordInspectionService.ParseDmarc(["v=DMARC1; rua=mailto:d@acme.example"]);
+        Assert.Contains(dto.Issues, i => i.Contains("treat this as") && i.Contains("p=none"));
+        Assert.DoesNotContain(dto.Issues, i => i.Contains("no DMARC processing"));
+    }
+
+    [Fact]
+    public void ParseDmarc_NoPolicyAndNoRua_ExplainsNoProcessing()
+    {
+        var dto = RecordInspectionService.ParseDmarc(["v=DMARC1"]);
+        Assert.Contains(dto.Issues, i => i.Contains("no DMARC processing"));
+    }
+
     // --- SPF parsing ---
 
     [Fact]
@@ -116,7 +166,8 @@ public sealed class RecordInspectionTests
     }
 
     private static async Task<Guid> SeedDomainWithReportAsync(
-        DmarcAnalyzerDbContext db, string policy, string? subdomainPolicy = null, bool spReported = true)
+        DmarcAnalyzerDbContext db, string policy, string? subdomainPolicy = null, bool spReported = true,
+        string domainName = "acme.example")
     {
         var client = new Client
         {
@@ -125,7 +176,7 @@ public sealed class RecordInspectionTests
         };
         var domain = new Domain
         {
-            Id = Guid.NewGuid(), ClientId = client.Id, Name = "acme.example", IsActive = true,
+            Id = Guid.NewGuid(), ClientId = client.Id, Name = domainName, IsActive = true,
             CreatedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow,
         };
         db.AddRange(client, domain, new DmarcReport
@@ -256,6 +307,118 @@ public sealed class RecordInspectionTests
         // Stronger subdomain policy is unusual but not a gap.
         var stronger = RecordInspectionService.ParseDmarc(["v=DMARC1; p=none; sp=reject; rua=mailto:d@acme.example"]);
         Assert.DoesNotContain(stronger.Issues, x => x.Contains("weaker than"));
+    }
+
+    // --- External-destination authorization (RFC 9990 §4) ---
+
+    [Fact]
+    public async Task Inspect_ExternalRuaAuthorized_ReportsAuthorized()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject");
+
+        var dns = new FakeDns(new()
+        {
+            ["_dmarc.acme.example"] = ["v=DMARC1; p=reject; rua=mailto:dmarc@agency.example"],
+            ["acme.example"] = ["v=spf1 -all"],
+            ["acme.example._report._dmarc.agency.example"] = ["v=DMARC1"],
+        });
+
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
+            .InspectAsync(domainId, CancellationToken.None);
+
+        var dest = Assert.Single(dto!.ExternalDestinations);
+        Assert.Equal("agency.example", dest.Destination);
+        Assert.Equal(ExternalDestinationAuthStatus.Authorized, dest.Status);
+    }
+
+    [Fact]
+    public async Task Inspect_ExternalRuaNotAuthorized_ReportsNotAuthorized()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject");
+
+        var dns = new FakeDns(new()
+        {
+            ["_dmarc.acme.example"] = ["v=DMARC1; p=reject; rua=mailto:dmarc@agency.example"],
+            ["acme.example"] = ["v=spf1 -all"],
+            // Empty (not omitted): NXDOMAIN/no TXT records — agency.example never opted in.
+            ["acme.example._report._dmarc.agency.example"] = Array.Empty<string>(),
+        });
+
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
+            .InspectAsync(domainId, CancellationToken.None);
+
+        var dest = Assert.Single(dto!.ExternalDestinations);
+        Assert.Equal("agency.example", dest.Destination);
+        Assert.Equal(ExternalDestinationAuthStatus.NotAuthorized, dest.Status);
+    }
+
+    [Fact]
+    public async Task Inspect_ExternalDestinationLookupFails_ReportsLookupFailed()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject");
+
+        var dns = new FakeDns(new()
+        {
+            ["_dmarc.acme.example"] = ["v=DMARC1; p=reject; rua=mailto:dmarc@agency.example"],
+            ["acme.example"] = ["v=spf1 -all"],
+            // Explicit null (not omitted): simulates a SERVFAIL/timeout on this lookup.
+            ["acme.example._report._dmarc.agency.example"] = null,
+        });
+
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
+            .InspectAsync(domainId, CancellationToken.None);
+
+        var dest = Assert.Single(dto!.ExternalDestinations);
+        Assert.Equal(ExternalDestinationAuthStatus.LookupFailed, dest.Status);
+    }
+
+    [Fact]
+    public async Task Inspect_RuaOnOwnDomain_NoExternalCheck()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject");
+
+        var dns = new FakeDns(new()
+        {
+            ["_dmarc.acme.example"] = ["v=DMARC1; p=reject; rua=mailto:dmarc@acme.example"],
+            ["acme.example"] = ["v=spf1 -all"],
+        });
+
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
+            .InspectAsync(domainId, CancellationToken.None);
+
+        Assert.Empty(dto!.ExternalDestinations);
+    }
+
+    [Fact]
+    public async Task Inspect_InheritedRecord_SkipsExternalCheck()
+    {
+        await using var db = NewDb();
+        // mail.acme.example (3 labels) so the tree walk has a real ancestor to find —
+        // a 2-label domain like acme.example has none (Ancestors stops below 2 remaining
+        // labels), so this needs its own seed rather than the default "acme.example".
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject", domainName: "mail.acme.example");
+
+        // mail.acme.example itself publishes no record; the parent org domain does, with
+        // an external rua. The inherited-vs-own-record judgement call is deliberately not
+        // made here — see CheckExternalDestinationsAsync's doc comment.
+        var dns = new FakeDns(new()
+        {
+            // Empty (not omitted): NXDOMAIN/no record here, so the resolver walks up —
+            // omitting the key would read as a lookup failure and stop the walk instead.
+            ["_dmarc.mail.acme.example"] = Array.Empty<string>(),
+            ["_dmarc.acme.example"] = ["v=DMARC1; p=reject; rua=mailto:dmarc@agency.example"],
+            ["mail.acme.example"] = ["v=spf1 -all"],
+        });
+
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
+            .InspectAsync(domainId, CancellationToken.None);
+
+        Assert.Equal(RecordLookupStatus.Inherited, dto!.Dmarc.Status);
+        Assert.Empty(dto.ExternalDestinations);
     }
 
     [Fact]

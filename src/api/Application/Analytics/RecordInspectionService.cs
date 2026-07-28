@@ -56,6 +56,7 @@ public sealed class RecordInspectionService(
         var effective = await dmarcTask;
         var dmarc = DescribeEffective(effective, domain.Name);
         var spf = ParseSpf(await spfTask);
+        var externalDestinations = await CheckExternalDestinationsAsync(domain.Name, dmarc, ct);
 
         var observed = observedRow is null
             ? null
@@ -74,8 +75,117 @@ public sealed class RecordInspectionService(
             dmarc,
             spf,
             observed,
-            Compare(dmarc, observed));
+            Compare(dmarc, observed),
+            externalDestinations);
     }
+
+    /// <summary>
+    /// A report address outside this domain only works if that destination opts in, by
+    /// publishing a DMARC record at {domain}._report._dmarc.{destination} — RFC 9990 §4,
+    /// which compares organizational domains and sanctions the *._report._dmarc wildcard
+    /// form; both are satisfied here for free because DNS itself resolves a wildcard
+    /// answer for the queried name. Without this record, conforming receivers just never
+    /// send the reports, and nothing bounces to say why.
+    /// <para>
+    /// Only checked when this domain publishes its own record (Status == Found). An
+    /// inherited ancestor record's rua/ruf is the ancestor's authorization to verify, and
+    /// which domain name the check should use in that case is a judgement call the
+    /// website's checker (which has no tree walk) never had to make — porting it
+    /// untested would go beyond what is actually proven correct.
+    /// </para>
+    /// </summary>
+    private async Task<IReadOnlyList<ExternalDestinationAuthDto>> CheckExternalDestinationsAsync(
+        string domainName, DnsDmarcRecordDto record, CancellationToken ct)
+    {
+        if (record.Status != RecordLookupStatus.Found)
+        {
+            return [];
+        }
+
+        var destinations = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var value in new[] { record.Rua, record.Ruf })
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                continue;
+            }
+
+            foreach (var uri in ReportUris(value))
+            {
+                var dest = MailtoDomain(uri);
+                if (dest is not null && !RelatedDomains(dest, domainName) && seen.Add(dest))
+                {
+                    destinations.Add(dest);
+                }
+            }
+        }
+
+        if (destinations.Count == 0)
+        {
+            return [];
+        }
+
+        var results = new List<ExternalDestinationAuthDto>();
+        foreach (var dest in destinations)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var name = $"{domainName}._report._dmarc.{dest}";
+            var txts = await dns.ResolveAsync(name, ct);
+
+            if (txts is null)
+            {
+                results.Add(new ExternalDestinationAuthDto(dest, ExternalDestinationAuthStatus.LookupFailed,
+                    $"The lookup for {name} failed — try again, an unverified result is not the same as a missing record."));
+                continue;
+            }
+
+            var authorized = txts.Any(t => t.TrimStart().StartsWith("v=DMARC1", StringComparison.OrdinalIgnoreCase));
+            results.Add(authorized
+                ? new ExternalDestinationAuthDto(dest, ExternalDestinationAuthStatus.Authorized,
+                    $"Found the authorization record at {name}.")
+                : new ExternalDestinationAuthDto(dest, ExternalDestinationAuthStatus.NotAuthorized,
+                    $"No DMARC record at {name}, so conforming receivers will not send reports to {dest}. " +
+                    $"Publish a TXT record there containing v=DMARC1; or send reports to an address at {domainName} instead."));
+        }
+
+        return results;
+    }
+
+    /// <summary>Report addresses, comma-separated; may repeat with an obsolete !size suffix.</summary>
+    private static IEnumerable<string> ReportUris(string value)
+        => value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+    /// <summary>The domain part of a mailto: URI, or null for anything else.</summary>
+    private static string? MailtoDomain(string uri)
+    {
+        var trimmed = uri.Trim();
+        if (!trimmed.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        var address = trimmed[7..];
+        var bang = address.IndexOf('!');
+        if (bang >= 0)
+        {
+            address = address[..bang];
+        }
+
+        var at = address.LastIndexOf('@');
+        return at < 0 ? null : address[(at + 1)..].Trim().TrimEnd('.').ToLowerInvariant();
+    }
+
+    /// <summary>
+    /// Same domain, or one inside the other. Deliberately not a public-suffix comparison —
+    /// this only decides whether to run an extra lookup, and the extra lookup is harmless
+    /// when it turns out to be unnecessary.
+    /// </summary>
+    private static bool RelatedDomains(string a, string b)
+        => string.Equals(a, b, StringComparison.OrdinalIgnoreCase)
+           || a.EndsWith("." + b, StringComparison.OrdinalIgnoreCase)
+           || b.EndsWith("." + a, StringComparison.OrdinalIgnoreCase);
 
     // --- DMARC (RFC 7489) ---
 
@@ -138,12 +248,25 @@ public sealed class RecordInspectionService(
         var tags = ParseTags(raw);
 
         tags.TryGetValue("p", out var policy);
+        tags.TryGetValue("rua", out var rua);
+        // RFC 9989 downgraded p from required to RECOMMENDED, with a specific fallback:
+        // a valid rua makes a p-less record behave as p=none (reports flow, nothing
+        // enforced); without one, receivers apply no DMARC processing at all. Matches
+        // the same rua-format check the public checker tool uses.
+        var hasValidRua = rua is not null
+            && (rua.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)
+                || rua.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || rua.StartsWith("https://", StringComparison.OrdinalIgnoreCase));
         if (policy is null)
         {
-            issues.Add("Record has no p= tag — it is not a valid DMARC policy.");
+            issues.Add(hasValidRua
+                ? "Record has no p= tag. Because a valid rua= address is present, receivers treat this as " +
+                  "p=none — you will get reports, but nothing is enforced. Publish p= explicitly rather than " +
+                  "relying on that."
+                : "Record has no p= tag and no valid rua= address, so receivers apply no DMARC processing to " +
+                  "this domain at all.");
         }
 
-        tags.TryGetValue("rua", out var rua);
         if (rua is null)
         {
             issues.Add("No rua= tag — you are not receiving aggregate reports.");
@@ -174,6 +297,29 @@ public sealed class RecordInspectionService(
                 $"sp={subdomainPolicy} is weaker than p={policy} — subdomains are not protected at the same level.");
         }
 
+        var testing = tags.GetValueOrDefault("t");
+        if (testing is not null
+            && !string.Equals(testing, "y", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(testing, "n", StringComparison.OrdinalIgnoreCase))
+        {
+            issues.Add($"Invalid t= value \"{testing}\" — the only legal values are y and n.");
+        }
+
+        var psd = tags.GetValueOrDefault("psd");
+        if (psd is not null
+            && !string.Equals(psd, "y", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(psd, "n", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(psd, "u", StringComparison.OrdinalIgnoreCase))
+        {
+            issues.Add($"Invalid psd= value \"{psd}\" — the only legal values are y, n and u.");
+        }
+
+        var nonExistentSubdomainPolicy = tags.GetValueOrDefault("np");
+        if (nonExistentSubdomainPolicy is not null && PolicyStrength(nonExistentSubdomainPolicy) is null)
+        {
+            issues.Add($"Invalid np= value \"{nonExistentSubdomainPolicy}\" — must be none, quarantine or reject.");
+        }
+
         return new DnsDmarcRecordDto(
             RecordLookupStatus.Found,
             raw,
@@ -184,7 +330,10 @@ public sealed class RecordInspectionService(
             tags.GetValueOrDefault("ruf"),
             tags.GetValueOrDefault("adkim"),
             tags.GetValueOrDefault("aspf"),
-            issues);
+            issues,
+            testing,
+            psd,
+            nonExistentSubdomainPolicy);
     }
 
     /// <summary>none &lt; quarantine &lt; reject; null for anything unrecognized.</summary>

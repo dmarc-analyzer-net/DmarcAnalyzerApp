@@ -316,8 +316,11 @@ export type ThreatFeed = {
 
 // --- Record inspection (GET /api/v1/analytics/domains/{domainId}/records) ---
 
-/** Outcome of a live DNS check: found, missing, or the lookup itself failed. */
-export type RecordLookupStatus = 'found' | 'missing' | 'lookup_failed'
+/**
+ * Outcome of a live DNS check: found, missing, the lookup itself failed, or (DMARC
+ * only) inherited from an ancestor domain via the policy tree walk.
+ */
+export type RecordLookupStatus = 'found' | 'missing' | 'lookup_failed' | 'inherited'
 
 export type DnsDmarcRecord = {
   status: RecordLookupStatus
@@ -330,6 +333,12 @@ export type DnsDmarcRecord = {
   dkimAlignment: string | null
   spfAlignment: string | null
   issues: string[]
+  /** Testing mode (RFC 9989) — 'y' or 'n', null when not published. Default is 'n'. */
+  testing: string | null
+  /** Public suffix domain flag (RFC 9989) — 'y'/'n'/'u', null when not published. Default is 'u'. */
+  publicSuffixDomain: string | null
+  /** Policy for non-existent subdomains (RFC 9989, promoted from experimental RFC 9091). */
+  nonExistentSubdomainPolicy: string | null
 }
 
 export type DnsSpfRecord = {
@@ -368,6 +377,19 @@ export type RecordComparison = {
   note: string | null
 }
 
+export type ExternalDestinationAuthStatus = 'authorized' | 'not_authorized' | 'lookup_failed'
+
+/**
+ * A rua/ruf address at a domain other than the one publishing the record only works
+ * if that destination has authorized it via a {domain}._report._dmarc.{destination}
+ * record (RFC 9990 §4). Without it, conforming receivers silently drop the reports.
+ */
+export type ExternalDestinationAuth = {
+  destination: string
+  status: ExternalDestinationAuthStatus
+  detail: string
+}
+
 export type RecordInspection = {
   domainId: string
   name: string
@@ -375,6 +397,7 @@ export type RecordInspection = {
   spf: DnsSpfRecord
   observed: ObservedPolicy | null
   comparison: RecordComparison[]
+  externalDestinations: ExternalDestinationAuth[]
 }
 
 // --- Alerts (GET /api/v1/alerts) ---

@@ -162,6 +162,58 @@ public sealed class DmarcRuaReportParserTests
         Assert.Contains(result.ValidationMessages, x => x.Contains("normalized SPF scope value 'helo'", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// np, testing and discovery_method (RFC 9989/9990/9991) are already modeled by
+    /// DmarcRua 2.0.0's PolicyPublishedType — this only guards that the parser
+    /// actually reads them through, as informational messages rather than silently
+    /// discarding them like it did before.
+    /// </summary>
+    [Fact]
+    public void Parse_SurfacesNpTestingAndDiscoveryMethod()
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback>
+              <report_metadata>
+                <org_name>bis-tags-test</org_name>
+                <report_id>bis-tags-1</report_id>
+                <date_range><begin>1737446400</begin><end>1737532800</end></date_range>
+              </report_metadata>
+              <policy_published>
+                <domain>acme.example</domain>
+                <adkim>r</adkim><aspf>r</aspf>
+                <p>reject</p><np>quarantine</np><pct>100</pct>
+                <testing>y</testing>
+                <discovery_method>treewalk</discovery_method>
+              </policy_published>
+              <record>
+                <row><source_ip>192.0.2.1</source_ip><count>1</count>
+                  <policy_evaluated><disposition>none</disposition><dkim>pass</dkim><spf>pass</spf></policy_evaluated>
+                </row>
+                <identifiers><header_from>acme.example</header_from></identifiers>
+                <auth_results><spf><domain>acme.example</domain><result>pass</result></spf></auth_results>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Contains(result.ValidationMessages, x => x == "info: np=quarantine published for acme.example");
+        Assert.Contains(result.ValidationMessages, x => x == "info: t=y published for acme.example");
+        Assert.Contains(result.ValidationMessages, x => x == "info: discovery_method=treewalk reported for acme.example");
+        Assert.False(result.HasValidationErrors, string.Join(" | ", result.ValidationMessages));
+    }
+
+    [Fact]
+    public void Parse_WithoutNpTestingOrDiscoveryMethod_AddsNoMessages()
+    {
+        using var stream = OpenFixture("sample-yahoo-aggregate.xml");
+        var result = _parser.Parse(stream);
+        Assert.DoesNotContain(result.ValidationMessages, x => x.StartsWith("info:", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void Parse_WithDmarcBisNamespace_StripsNamespaceAndParses()
     {

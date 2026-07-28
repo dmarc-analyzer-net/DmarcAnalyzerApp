@@ -40,6 +40,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 return $"{severity}: {x.Message}";
             })
             .Concat(normalizationMessages)
+            .Concat(DescribeDmarcBisTags(policyPublished))
             .ToArray();
 
         var records = feedback.Record?
@@ -108,6 +109,35 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         AlignmentType.Strict => "strict",
         _ => "relaxed",
     };
+
+    /// <summary>
+    /// Read-through only, per the DMARCbis (RFC 9989/9990/9991) impact report: np,
+    /// testing and discovery_method are already modeled by DmarcRua 2.0.0 (unlike sp,
+    /// these are genuinely nullable, so presence comes from the library for free — no
+    /// HasSubdomainPolicyTag-style XML sniff needed) but were never read. Surfaced as
+    /// informational validation messages rather than new DmarcReport columns: cheap,
+    /// no migration, and there is nowhere else yet worth putting them — the same
+    /// unresolved backlog item that leaves ValidationMessages itself unsurfaced to
+    /// operators applies here too.
+    /// </summary>
+    private static IEnumerable<string> DescribeDmarcBisTags(PolicyPublishedType policyPublished)
+    {
+        if (policyPublished.Np is { } np)
+        {
+            yield return $"info: np={MapDisposition(np)} published for {policyPublished.Domain}";
+        }
+
+        if (policyPublished.Testing is { } testing)
+        {
+            yield return $"info: t={(testing == TestingType.Yes ? "y" : "n")} published for {policyPublished.Domain}";
+        }
+
+        if (policyPublished.DiscoveryMethod is { } discovery)
+        {
+            var method = discovery == DiscoveryType.Treewalk ? "treewalk" : "psl";
+            yield return $"info: discovery_method={method} reported for {policyPublished.Domain}";
+        }
+    }
 
     /// <summary>
     /// Whether the reporter actually sent an sp tag.
