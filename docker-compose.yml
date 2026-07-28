@@ -100,8 +100,14 @@ services:
       interval: 3s
       timeout: 3s
       retries: 10
+    # Bound to the loopback interface, not every interface. Local tooling (psql, a
+    # GUI client, the host-run dev loop) is unaffected; other machines on the network
+    # can no longer reach the database. That matters here because the credentials are
+    # committed two lines above — publishing 5432:5432 put a postgres/postgres
+    # database on the LAN of anyone who ran this file. The shipped deploy/compose.yml
+    # never published the port at all; only this development stack did.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
