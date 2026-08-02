@@ -52,6 +52,15 @@ services:
       POSTGRES_DB: ${DMARC_DB_NAME:-dmarc_analyzer}
       POSTGRES_USER: ${DMARC_DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DMARC_DB_PASSWORD:-${POSTGRES_PASSWORD:-postgres}}
+      # Pinned rather than inherited. The postgres image moved its default PGDATA in
+      # 18 (to /var/lib/postgresql/18/docker) and moved the declared VOLUME with it,
+      # so an image built on that default would stop looking where this volume keeps
+      # the cluster — and, finding nothing, would initdb an empty one and start up
+      # healthy. Naming the path makes a major-version change fail loudly with
+      # "database files are incompatible with server" instead of silently serving an
+      # empty database. Set to where the data already is; pointing it at a
+      # subdirectory would orphan every existing volume.
+      PGDATA: /var/lib/postgresql/data
     # The app migrates on boot, so gate it on Postgres actually accepting
     # connections — without this the first `up` races and the app exits.
     healthcheck:
