@@ -178,6 +178,8 @@ Ops runbook:
   every deployment shape. Kept true by `ConfigurationContractTests`.
 - `docs/ops/migrating-a-running-instance.md` — bringing a running instance onto a
   newer image, including why a green healthcheck does not prove the schema is current.
+- `docs/ops/upgrading-postgresql.md` — the PostgreSQL 17 → 18 migration. A major
+  version cannot upgrade in place; this is the dump-and-restore window.
 - `docs/ops/mailbox-sync.md`
 - `docs/ops/oidc-zitadel.md`
 - `docs/ops/release.md`

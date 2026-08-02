@@ -56,7 +56,7 @@ worker:
 # externalDatabase at a managed instance or a Postgres operator.
 postgres:
   enabled: true
-  image: postgres:17-alpine
+  image: postgres:18-alpine
   database: dmarc_analyzer
   username: postgres
   # Ignored when auth.existingSecret is set.
