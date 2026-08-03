@@ -1,11 +1,7 @@
 # Render Blueprint — one-click deploy via the "Deploy to Render" button in
 # the README. Provisions the app (single container, APP_MODE=all) and a
-# managed Postgres database, and wires them together automatically.
-#
-# Render's managed Postgres exposes its connection details as a
-# postgresql://user:password@host:port/database URI (over Render's private
-# network), which DATABASE_URL accepts directly — the app converts it to
-# Npgsql's ADO.NET format internally. No manual paste step needed.
+# managed Postgres database, and wires them together automatically via
+# DATABASE_URL (see docs/ops/configuration.md).
 #
 # Security__CredentialEncryptionKey is generated for you (base64, 256-bit —
 # matches `openssl rand -base64 32`). Keep it: losing it makes every stored
