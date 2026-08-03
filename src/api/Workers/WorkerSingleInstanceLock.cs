@@ -1,3 +1,4 @@
+using DmarcAnalyzer.Api.Data;
 using Microsoft.Extensions.Options;
 using Npgsql;
 
@@ -50,7 +51,7 @@ public sealed class WorkerSingleInstanceLock(
             return;
         }
 
-        var connectionString = configuration.GetConnectionString("Default");
+        var connectionString = ConnectionStringResolver.Resolve(configuration);
 
         if (string.IsNullOrWhiteSpace(connectionString))
         {
