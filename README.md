@@ -71,6 +71,7 @@ variables.
 | Provider | Deploy | Notes |
 |---|---|---|
 | **Render** | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp) | Provisions the app + a managed Postgres and wires them together automatically via `DATABASE_URL` — see `render.yaml`. |
+| **Railway** | [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/J8Lq_s?referralCode=8Bb-8X) | Same shape as Render: a Postgres plugin plus the app image, wired together via `DATABASE_URL`. |
 | **Coolify** | [![Deploy-Coolify](https://img.shields.io/badge/Deploy-Coolify-6B46C1?style=for-the-badge&logo=docker)](./deploy/compose.yml) | Import `deploy/compose.yml` directly — Coolify runs Compose files natively. |
 | **Dokploy** | [![Deploy-Dokploy](https://img.shields.io/badge/Deploy-Dokploy-00B4D8?style=for-the-badge&logo=docker)](./deploy/compose.yml) | Same file — Dokploy also imports Compose services as-is. |
 
@@ -78,9 +79,9 @@ Coolify and Dokploy both need `DMARC_ENCRYPTION_KEY` and a Postgres
 connection set the same way as the Quick Start above — see
 `docs/ops/configuration.md` for every variable and where it applies.
 
-<!-- TODO: Railway / Zeabur / Northflank one-click buttons need a template
-minted under our own account on each platform's dashboard (their deploy
-URLs embed an account-linked template ID, not a generic repo reference).
+<!-- TODO: Zeabur / Northflank one-click buttons need a template minted
+under our own account on each platform's dashboard (their deploy URLs
+embed an account-linked template ID, not a generic repo reference).
 Create the templates, then replace this comment with the resulting badges. -->
 
 ## Repository Layout
