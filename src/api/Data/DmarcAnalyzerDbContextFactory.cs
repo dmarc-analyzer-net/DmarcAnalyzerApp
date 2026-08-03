@@ -14,8 +14,11 @@ public sealed class DmarcAnalyzerDbContextFactory : IDesignTimeDbContextFactory<
 
     public DmarcAnalyzerDbContext CreateDbContext(string[] args)
     {
-        var connectionString = Environment.GetEnvironmentVariable("ConnectionStrings__Default")
-            ?? "Host=localhost;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres";
+        var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");
+        var connectionString = !string.IsNullOrEmpty(databaseUrl)
+            ? ConnectionStringResolver.FromDatabaseUrl(databaseUrl)
+            : Environment.GetEnvironmentVariable("ConnectionStrings__Default")
+                ?? "Host=localhost;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres";
 
         var options = new DbContextOptionsBuilder<DmarcAnalyzerDbContext>()
             // The only reason this factory exists is `dotnet ef`, and its main job

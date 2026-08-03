@@ -33,6 +33,7 @@ Two settings have no usable default.
 |---|---|
 | `Security__CredentialEncryptionKey` | AES-256-GCM key protecting stored mailbox passwords. Generate with `openssl rand -base64 32`. **Back it up.** Lose or change it and every stored mailbox credential becomes undecryptable; each source has to be entered again. |
 | `ConnectionStrings__Default` | Npgsql connection string. The Compose files build this from `DMARC_DB_*`; set it directly if you prefer. |
+| `DATABASE_URL` | A `postgres://user:pass@host:port/database` URI, converted to Npgsql format internally. Takes priority over `ConnectionStrings__Default` when both are set. For platforms (Render, Heroku, Railway, ...) that hand you a managed database as a URI rather than an ADO.NET string. A `sslmode` query parameter is honored (`disable`, `allow`, `prefer`, `require`, `verify-ca`, `verify-full`). |
 
 ## Runtime shape
 

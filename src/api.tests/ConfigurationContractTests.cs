@@ -47,6 +47,7 @@ public sealed class ConfigurationContractTests
     [
         "Security__CredentialEncryptionKey",
         "ConnectionStrings__Default",
+        "DATABASE_URL",
         "Database__MigrateOnStartup",
         "APP_MODE",
     ];
@@ -84,7 +85,7 @@ public sealed class ConfigurationContractTests
         var text = File.ReadAllText(DocPath());
         var tokens = Regex.Matches(text, @"`([A-Za-z][A-Za-z0-9_.]*)`")
             .Select(m => m.Groups[1].Value)
-            .Where(v => v.Contains("__") || v == "APP_MODE" || v == "AllowedHosts")
+            .Where(v => v.Contains("__") || v == "APP_MODE" || v == "AllowedHosts" || v == "DATABASE_URL")
             .Select(v => Regex.Replace(v, @"__\d+$", ""));
 
         return [.. tokens];

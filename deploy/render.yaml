@@ -1,16 +1,11 @@
 # Render Blueprint — one-click deploy via the "Deploy to Render" button in
 # the README. Provisions the app (single container, APP_MODE=all) and a
-# managed Postgres database.
+# managed Postgres database, and wires them together automatically.
 #
-# Render's managed Postgres exposes its connection details as a postgres://
-# URI, but this app's ConnectionStrings__Default expects Npgsql's ADO.NET
-# format (Host=...;Port=...;Database=...;Username=...;Password=...), so it
-# can't be wired automatically. During the Blueprint deploy flow, Render will
-# prompt you for ConnectionStrings__Default (marked sync: false below) —
-# open the dmarc-analyzer-db database's "Info" page for the individual
-# host/port/database/user/password fields and compose:
-#
-#   Host=<host>;Port=<port>;Database=<database>;Username=<user>;Password=<password>
+# Render's managed Postgres exposes its connection details as a
+# postgresql://user:password@host:port/database URI (over Render's private
+# network), which DATABASE_URL accepts directly — the app converts it to
+# Npgsql's ADO.NET format internally. No manual paste step needed.
 #
 # Security__CredentialEncryptionKey is generated for you (base64, 256-bit —
 # matches `openssl rand -base64 32`). Keep it: losing it makes every stored
@@ -35,7 +30,9 @@ services:
         value: all
       - key: Database__MigrateOnStartup
         value: "true"
-      - key: ConnectionStrings__Default
-        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: dmarc-analyzer-db
+          property: connectionString
       - key: Security__CredentialEncryptionKey
         generateValue: true

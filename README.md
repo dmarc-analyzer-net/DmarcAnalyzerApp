@@ -70,7 +70,7 @@ variables.
 
 | Provider | Deploy | Notes |
 |---|---|---|
-| **Render** | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp) | Provisions the app + a managed Postgres. During setup you'll be prompted to paste `ConnectionStrings__Default` — see `deploy/render.yaml` for how to build it from the database's connection details. |
+| **Render** | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp) | Provisions the app + a managed Postgres and wires them together automatically via `DATABASE_URL` — see `deploy/render.yaml`. |
 | **Coolify** | [![Deploy-Coolify](https://img.shields.io/badge/Deploy-Coolify-6B46C1?style=for-the-badge&logo=docker)](./deploy/compose.yml) | Import `deploy/compose.yml` directly — Coolify runs Compose files natively. |
 | **Dokploy** | [![Deploy-Dokploy](https://img.shields.io/badge/Deploy-Dokploy-00B4D8?style=for-the-badge&logo=docker)](./deploy/compose.yml) | Same file — Dokploy also imports Compose services as-is. |
 

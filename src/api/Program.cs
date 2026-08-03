@@ -31,9 +31,9 @@ if (mode == AppMode.Migrate)
     // an orchestrator can order schema changes ahead of every application pod.
     var migrateBuilder = Host.CreateApplicationBuilder(args);
     var migrateTelemetry = migrateBuilder.AddTelemetry("migrate");
-    var migrateConnectionString = migrateBuilder.Configuration.GetConnectionString("Default")
+    var migrateConnectionString = ConnectionStringResolver.Resolve(migrateBuilder.Configuration)
         ?? throw new InvalidOperationException(
-            "ConnectionStrings:Default is required in migrate mode.");
+            "ConnectionStrings:Default or DATABASE_URL is required in migrate mode.");
 
     migrateBuilder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
         options.UseNpgsql(migrateConnectionString));
@@ -84,7 +84,7 @@ if (mode == AppMode.Worker)
 {
     var workerBuilder = Host.CreateApplicationBuilder(args);
     var workerTelemetry = workerBuilder.AddTelemetry("worker");
-    var workerConnectionString = workerBuilder.Configuration.GetConnectionString("Default")
+    var workerConnectionString = ConnectionStringResolver.Resolve(workerBuilder.Configuration)
         ?? "Host=localhost;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres";
 
     workerBuilder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
@@ -136,7 +136,7 @@ if (mode == AppMode.Worker)
 
 var builder = WebApplication.CreateBuilder(args);
 var apiTelemetry = builder.AddTelemetry(mode == AppMode.All ? "all" : "api");
-var connectionString = builder.Configuration.GetConnectionString("Default")
+var connectionString = ConnectionStringResolver.Resolve(builder.Configuration)
     ?? "Host=localhost;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres";
 
 builder.Services.AddCarter();
