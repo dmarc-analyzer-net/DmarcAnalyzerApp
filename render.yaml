@@ -13,6 +13,11 @@
 # Security__CredentialEncryptionKey is generated for you (base64, 256-bit —
 # matches `openssl rand -base64 32`). Keep it: losing it makes every stored
 # mailbox credential undecryptable.
+#
+# PORT tells Render which port to probe — its default expectation is 10000,
+# and Docker-image auto-detection is only "usually" reliable per Render's own
+# docs. The container binds 8080 (see the Dockerfile's EXPOSE), regardless of
+# this variable's value — the app itself does not read PORT.
 
 databases:
   - name: dmarc-analyzer-db
@@ -29,6 +34,8 @@ services:
     plan: free
     healthCheckPath: /api/v1/auth/setup
     envVars:
+      - key: PORT
+        value: "8080"
       - key: APP_MODE
         value: all
       - key: Database__MigrateOnStartup
