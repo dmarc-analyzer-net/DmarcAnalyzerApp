@@ -30,6 +30,7 @@ public sealed class VersionReferenceTests
     [
         "README.md",
         Path.Combine("deploy", "helm", "dmarc-analyzer", "README.md"),
+        "render.yaml",
     ];
 
     /// <summary>

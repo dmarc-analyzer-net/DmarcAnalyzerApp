@@ -134,12 +134,15 @@ Semantic versioning. While on `0.x`:
    to know what exists.
 6. **Version references point at the release you are about to cut**, not the last
    one. Bump `deploy/helm/dmarc-analyzer/Chart.yaml` — both `version` and
-   `appVersion` — *before* tagging.
+   `appVersion` — *before* tagging. Bump `render.yaml`'s image tag too.
 
    This is not cosmetic. `values.image.tag` defaults to the chart's `appVersion`,
    so a stale `Chart.yaml` means `helm install ./deploy/helm/dmarc-analyzer` from a
    clone silently deploys the **previous** release, schema and all. It happened
-   between 0.1.0 and 0.2.0.
+   between 0.1.0 and 0.2.0. `render.yaml` pins a tag rather than tracking `latest`
+   for the same reason Render's own sync forced on us: it reacts to a change
+   committed to the file, never to a new push to a tag it already references, so
+   a forgotten bump means that deploy never updates again.
 
    `VersionReferenceTests` fails the build for anything in *this* repo. It cannot
    see the website, so run that repo's own check there — against the version you

@@ -3,6 +3,13 @@
 # managed Postgres database, and wires them together automatically via
 # DATABASE_URL (see docs/ops/configuration.md).
 #
+# The image tag is pinned, not `latest`. Render's sync only reacts to a
+# change committed to this file — never to a new push to a tag it already
+# references — so `latest` here would mean this deploy never updates itself.
+# Bump the tag with every release (VersionReferenceTests enforces it; see
+# "Before tagging" in docs/ops/release.md), and a Blueprint with auto-sync on
+# picks up the new version on its own.
+#
 # Security__CredentialEncryptionKey is generated for you (base64, 256-bit —
 # matches `openssl rand -base64 32`). Keep it: losing it makes every stored
 # mailbox credential undecryptable.
@@ -18,7 +25,7 @@ services:
     type: web
     runtime: image
     image:
-      url: ghcr.io/dmarc-analyzer-net/dmarc-analyzer:latest
+      url: ghcr.io/dmarc-analyzer-net/dmarc-analyzer:0.2.2
     plan: free
     healthCheckPath: /api/v1/auth/setup
     envVars:
