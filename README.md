@@ -66,6 +66,23 @@ variables.
 - Upgrading: `docker compose pull && docker compose up -d` (schema migrations
   run automatically on startup via `Database__MigrateOnStartup`).
 
+## One-Click Deploy
+
+| Provider | Deploy | Notes |
+|---|---|---|
+| **Render** | [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp) | Provisions the app + a managed Postgres. During setup you'll be prompted to paste `ConnectionStrings__Default` — see `deploy/render.yaml` for how to build it from the database's connection details. |
+| **Coolify** | [![Deploy-Coolify](https://img.shields.io/badge/Deploy-Coolify-6B46C1?style=for-the-badge&logo=docker)](./deploy/compose.yml) | Import `deploy/compose.yml` directly — Coolify runs Compose files natively. |
+| **Dokploy** | [![Deploy-Dokploy](https://img.shields.io/badge/Deploy-Dokploy-00B4D8?style=for-the-badge&logo=docker)](./deploy/compose.yml) | Same file — Dokploy also imports Compose services as-is. |
+
+Coolify and Dokploy both need `DMARC_ENCRYPTION_KEY` and a Postgres
+connection set the same way as the Quick Start above — see
+`docs/ops/configuration.md` for every variable and where it applies.
+
+<!-- TODO: Railway / Zeabur / Northflank one-click buttons need a template
+minted under our own account on each platform's dashboard (their deploy
+URLs embed an account-linked template ID, not a generic repo reference).
+Create the templates, then replace this comment with the resulting badges. -->
+
 ## Repository Layout
 
 - `src/api` - backend app (api / worker / all modes via `APP_MODE`)
@@ -163,6 +180,21 @@ Use `http/api.http` with VS Code REST Client or JetBrains HTTP client to run API
 
 - File: `http/api.http`
 - Default base URL: `http://localhost:5076`
+
+## Key API Endpoints
+
+Everything lives under `/api/v1`; full contract in
+`docs/planning/api-contract.md`. A sample to get oriented:
+
+- `GET /api/v1/system/status` — health/version
+- `GET /api/v1/domains`, `GET /api/v1/clients` — the core resources
+- `GET /api/v1/analytics/summary` — dashboard-level pass/fail totals
+- `GET /api/v1/analytics/domains/{domainId}/sources` — per-domain sending sources
+- `GET /api/v1/alerts` — configured alert rules
+- `GET /api/v1/mailbox-health`, `GET /api/v1/mailbox-sync-runs`,
+  `POST /api/v1/mailbox-sources/{id}/sync` — mailbox ingestion status/trigger
+
+Try these against a running instance with `http/api.http` (see above).
 
 ## Mailbox Sync Monitoring
 

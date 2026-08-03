@@ -1,0 +1,41 @@
+# Render Blueprint — one-click deploy via the "Deploy to Render" button in
+# the README. Provisions the app (single container, APP_MODE=all) and a
+# managed Postgres database.
+#
+# Render's managed Postgres exposes its connection details as a postgres://
+# URI, but this app's ConnectionStrings__Default expects Npgsql's ADO.NET
+# format (Host=...;Port=...;Database=...;Username=...;Password=...), so it
+# can't be wired automatically. During the Blueprint deploy flow, Render will
+# prompt you for ConnectionStrings__Default (marked sync: false below) —
+# open the dmarc-analyzer-db database's "Info" page for the individual
+# host/port/database/user/password fields and compose:
+#
+#   Host=<host>;Port=<port>;Database=<database>;Username=<user>;Password=<password>
+#
+# Security__CredentialEncryptionKey is generated for you (base64, 256-bit —
+# matches `openssl rand -base64 32`). Keep it: losing it makes every stored
+# mailbox credential undecryptable.
+
+databases:
+  - name: dmarc-analyzer-db
+    databaseName: dmarc_analyzer
+    plan: free
+    postgresMajorVersion: "18"
+
+services:
+  - name: dmarc-analyzer
+    type: web
+    runtime: image
+    image:
+      url: ghcr.io/dmarc-analyzer-net/dmarc-analyzer:latest
+    plan: free
+    healthCheckPath: /api/v1/auth/setup
+    envVars:
+      - key: APP_MODE
+        value: all
+      - key: Database__MigrateOnStartup
+        value: "true"
+      - key: ConnectionStrings__Default
+        sync: false
+      - key: Security__CredentialEncryptionKey
+        generateValue: true
