@@ -13,7 +13,10 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   migrations via a pre-install Job, and is published to
   `oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer` on a release tag.
   Exactly one ingestion worker may run per database, enforced by a Postgres
-  advisory lock.
+  advisory lock. A Render Blueprint (`render.yaml`, repo root) is a third deploy
+  path — provisions the app plus a managed Postgres and wires them together via
+  `DATABASE_URL`, which the app accepts as a `postgres://` URI alongside the
+  existing ADO.NET `ConnectionStrings__Default`.
 - **Backup, offload and recovery** (ADR 0009, design detail in
   `config-export-and-recovery.md`). A JSON configuration artifact — clients, domains,
   mailbox sources with their encrypted credentials, recipients, users, identities,
