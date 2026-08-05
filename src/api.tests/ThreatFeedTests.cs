@@ -75,7 +75,7 @@ public sealed class ThreatFeedTests
             .RefreshAllAsync(CancellationToken.None);
 
         var feed = await TestAnalytics.Service(db, TestCurrentUserContext.Admin(), dns)
-            .GetThreatFeedAsync(30, 100, CancellationToken.None);
+            .GetThreatFeedAsync(30, 100, null, CancellationToken.None);
 
         Assert.Equal(2, feed.TotalSources);
         Assert.Equal(350, feed.TotalFailedMessages);
@@ -99,7 +99,7 @@ public sealed class ThreatFeedTests
         await db.SaveChangesAsync();
 
         var feed = await TestAnalytics.Service(db, TestCurrentUserContext.Admin(), TestDnsTxtResolver.Empty())
-            .GetThreatFeedAsync(30, 100, CancellationToken.None);
+            .GetThreatFeedAsync(30, 100, null, CancellationToken.None);
 
         var source = Assert.Single(feed.Sources);
         Assert.Equal(1000, source.Messages);
@@ -119,10 +119,33 @@ public sealed class ThreatFeedTests
         await db.SaveChangesAsync();
 
         var feed = await TestAnalytics.Service(db, TestCurrentUserContext.Viewer(granted.Id), TestDnsTxtResolver.Empty())
-            .GetThreatFeedAsync(30, 100, CancellationToken.None);
+            .GetThreatFeedAsync(30, 100, null, CancellationToken.None);
 
         var source = Assert.Single(feed.Sources);
         Assert.Equal("granted.example", source.Domain);
+        Assert.Equal(1, feed.TotalSources);
+        Assert.Equal(10, feed.TotalFailedMessages);
+    }
+
+    [Fact]
+    public async Task ClientFilter_RestrictsToThatClientsSources()
+    {
+        await using var db = NewDb();
+        var (acme, acmeDomain) = NewClientWithDomain("acme", "acme.example");
+        var (globex, globexDomain) = NewClientWithDomain("globex", "globex.example");
+        db.AddRange(acme, acmeDomain, globex, globexDomain);
+        AddReport(db, acmeDomain.Id, ("198.51.100.24", 10, "fail", "fail"));
+        // Bigger than acme's threat, so a naive "take top 100 then filter" approach
+        // would still return the right count but for the wrong reason — this proves
+        // the filter is applied before ranking, not after.
+        AddReport(db, globexDomain.Id, ("192.0.2.99", 999, "fail", "fail"));
+        await db.SaveChangesAsync();
+
+        var feed = await TestAnalytics.Service(db, TestCurrentUserContext.Admin(), TestDnsTxtResolver.Empty())
+            .GetThreatFeedAsync(30, 100, acme.Id, CancellationToken.None);
+
+        var source = Assert.Single(feed.Sources);
+        Assert.Equal("acme.example", source.Domain);
         Assert.Equal(1, feed.TotalSources);
         Assert.Equal(10, feed.TotalFailedMessages);
     }

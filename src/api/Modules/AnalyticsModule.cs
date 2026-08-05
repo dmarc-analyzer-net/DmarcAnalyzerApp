@@ -84,10 +84,11 @@ public sealed class AnalyticsModule : ICarterModule
         app.MapGet("/api/v1/analytics/threats", async (
             int? days,
             int? limit,
+            Guid? clientId,
             IAnalyticsQueryService service,
             CancellationToken ct) =>
         {
-            var feed = await service.GetThreatFeedAsync(days ?? 30, limit ?? 100, ct);
+            var feed = await service.GetThreatFeedAsync(days ?? 30, limit ?? 100, clientId, ct);
             return Results.Ok(feed);
         }).AllowClientViewer();
 

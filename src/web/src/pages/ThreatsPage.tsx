@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { PolicyBadge } from '@/components/data/PolicyBadge'
@@ -7,9 +7,11 @@ import { DaysSelector } from '@/components/DaysSelector'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardHeader } from '@/components/ui/card'
 import { Icon } from '@/components/ui/icon'
+import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { parseAnalyticsDays, type AnalyticsDays, type ThreatFeed } from '@/lib/analytics'
 import { fetchJson } from '@/lib/api'
+import type { Client } from '@/lib/entities'
 import { formatCompact, formatFullDate, formatPercent, formatRelativeOrDate } from '@/lib/format'
 import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
@@ -24,19 +26,30 @@ export function ThreatsPage() {
   usePageTitle('Threats')
   const [searchParams, setSearchParams] = useSearchParams()
   const days = parseAnalyticsDays(searchParams.get('days'))
+  const clientFilter = searchParams.get('client') ?? ''
 
+  const [clients, setClients] = useState<Client[]>([])
   const [feed, setFeed] = useState<ThreatFeed | null>(null)
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hostnames, setHostnames] = useState<Record<string, string | null>>({})
   const requestSeq = useRef(0)
 
+  useEffect(() => {
+    void fetchJson<Client[]>('/api/v1/clients').then(setClients).catch(() => {
+      // Client filter is best-effort enrichment; the feed still loads without it.
+    })
+  }, [])
+
   const loadData = useCallback(async () => {
     const seq = ++requestSeq.current
     setBusy(true)
     setError(null)
     try {
-      const payload = await fetchJson<ThreatFeed>(`/api/v1/analytics/threats?days=${days}&limit=100`)
+      const clientParam = clientFilter ? `&clientId=${encodeURIComponent(clientFilter)}` : ''
+      const payload = await fetchJson<ThreatFeed>(
+        `/api/v1/analytics/threats?days=${days}&limit=100${clientParam}`,
+      )
       if (seq === requestSeq.current) setFeed(payload)
     } catch (loadError) {
       if (seq === requestSeq.current) {
@@ -45,11 +58,16 @@ export function ThreatsPage() {
     } finally {
       if (seq === requestSeq.current) setBusy(false)
     }
-  }, [days])
+  }, [days, clientFilter])
 
   useEffect(() => {
     void loadData()
   }, [loadData])
+
+  const sortedClients = useMemo(
+    () => [...clients].sort((a, b) => a.name.localeCompare(b.name)),
+    [clients],
+  )
 
   // Reverse-DNS enrichment, same best-effort pattern as the domain drill-down.
   useEffect(() => {
@@ -83,6 +101,18 @@ export function ThreatsPage() {
     )
   }
 
+  const setClientFilter = (clientId: string) => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev)
+        if (clientId) params.set('client', clientId)
+        else params.delete('client')
+        return params
+      },
+      { replace: true },
+    )
+  }
+
   const windowLabel = feed
     ? feed.window.anchoredToLatestData
       ? `data through ${formatFullDate(feed.window.endUtc)}`
@@ -99,7 +129,22 @@ export function ThreatsPage() {
             {windowLabel ? ` · ${windowLabel}` : ''}
           </p>
         </div>
-        <DaysSelector value={days} onChange={setDays} disabled={busy} />
+        <div className="flex shrink-0 items-center gap-2.5">
+          <Select
+            aria-label="Filter by client"
+            className="w-44"
+            value={clientFilter}
+            onChange={(e) => setClientFilter(e.target.value)}
+          >
+            <option value="">All clients</option>
+            {sortedClients.map((client) => (
+              <option key={client.id} value={client.id}>
+                {client.name}
+              </option>
+            ))}
+          </Select>
+          <DaysSelector value={days} onChange={setDays} disabled={busy} />
+        </div>
       </div>
 
       {error ? (
@@ -142,7 +187,9 @@ export function ThreatsPage() {
                 <Icon name="circle-check" size={32} className="text-[var(--status-ok-dot)]" />
                 <p className="text-sm font-semibold text-body">No unauthenticated sources</p>
                 <p className="max-w-md text-sm text-secondary">
-                  Every message in this window passed DKIM or SPF. Nothing looks like spoofing.
+                  {clientFilter
+                    ? 'Every message from this client in this window passed DKIM or SPF. Nothing looks like spoofing.'
+                    : 'Every message in this window passed DKIM or SPF. Nothing looks like spoofing.'}
                 </p>
               </div>
             ) : (

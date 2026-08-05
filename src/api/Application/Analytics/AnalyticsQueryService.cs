@@ -619,7 +619,7 @@ public sealed class AnalyticsQueryService(
             blocking.Take(20).ToArray());
     }
 
-    public async Task<ThreatFeedDto> GetThreatFeedAsync(int days, int limit, CancellationToken ct)
+    public async Task<ThreatFeedDto> GetThreatFeedAsync(int days, int limit, Guid? clientId, CancellationToken ct)
     {
         days = ClampDays(days);
         limit = limit switch { <= 0 => 100, > 500 => 500, _ => limit };
@@ -635,12 +635,17 @@ public sealed class AnalyticsQueryService(
         // across the whole tenant; an explicit join collapses it to a single-pass
         // GROUP BY. Joining ScopedDomains() also keeps client_viewer scoping in
         // exactly one place instead of re-deriving it from the record side.
+        //
+        // The client filter is applied here, before Take(limit), rather than
+        // client-side after fetch — otherwise a client's own worst offenders could
+        // be pushed out of the global top-N by other clients' noisier traffic.
         var grouped = (
                 from rec in db.DmarcReportRecords.AsNoTracking()
                 join rep in db.DmarcReports.AsNoTracking() on rec.DmarcReportId equals rep.Id
                 join dom in ScopedDomains() on rep.DomainId equals dom.Id
                 where rec.ReportRangeBeginUtc >= window.BeginUtc
                       && rec.ReportRangeBeginUtc <= window.EndUtc
+                      && (clientId == null || dom.ClientId == clientId)
                 select new
                 {
                     rec.SourceIp,
