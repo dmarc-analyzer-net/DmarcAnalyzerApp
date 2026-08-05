@@ -50,6 +50,20 @@ docker compose up -d --build
 
 **Local dev URLs:** frontend `http://localhost:5173`, API `http://localhost:5076` (Vite proxies `/api`). **Docker:** API on `http://localhost:8080`, Postgres `localhost:5432`. (You can override host ports locally with a gitignored `docker-compose.override.yml`.)
 
+### Working in a worktree
+
+A fresh worktree has none of this repo's gitignored files, and two of them gate whether it can build or run at all:
+
+```bash
+cp ../DmarcAnalyzerApp/.env .          # or wherever the original checkout is
+cd src/web && npm install              # ~274M; or symlink node_modules if package-lock.json is untouched
+```
+
+- **`.env` must be copied, not regenerated.** Compose refuses to start without `DMARC_ENCRYPTION_KEY`, and a *new* key makes every mailbox password already in the database undecryptable.
+- **`docker-compose.override.yml` is gitignored too**, so a worktree lacks whatever host-port remapping the original had — see the compose notes above.
+- `bin/`, `obj/` and `src/web/dist/` rebuild themselves; they need nothing.
+- `.gitignore` excludes `.claude/`, so worktrees created under `.claude/worktrees/` never appear as untracked noise.
+
 ## Architecture & conventions — where to read
 
 - System architecture: [`docs/planning/architecture.md`](docs/planning/architecture.md)
@@ -102,6 +116,7 @@ The full list with defaults is in [`docs/ops/configuration.md`](docs/ops/configu
 ## Working agreements
 
 - **`main` is protected**: no direct pushes. Branch → implement → verify → open a PR (`gh pr create`). Merges happen via PR.
+- **Work in a git worktree, not the shared checkout**, whenever a task will edit tracked files toward a commit — more than one agent session works in these checkouts at once, and a bare `git status` there shows other people's changes as readily as your own. Diff only the paths you touched (`git diff --stat -- <paths>`), stage explicitly (never `git add -A`), and re-run the checks at the end, because a green run says nothing about a tree someone else edited afterwards. See "Working in a worktree" below for what a fresh one needs.
 - **Verify before shipping**: build + tests + lint, and for user-facing changes run the stack (`docker compose up -d --build`) and check the real app. `docs/planning/status.md` and `backlog.md` should be updated as part of feature PRs.
 - **Backend**: modules stay thin; put logic in `Application/` services. Prefer EF LINQ; when a query needs raw SQL (e.g. `DISTINCT ON`, per-group aggregates), keep it tenant-scoped and remember InMemory tests can't execute it.
 - **Ingestion changes need a real database.** Every test uses `UseInMemoryDatabase`, which supports neither the raw SQL nor the transactions `MailboxSyncService` depends on — two real bugs there were invisible to the suite and had to be found by hand against Postgres. Until the integration harness in the backlog exists, verify changes to that file against a real database and say so in the PR.
