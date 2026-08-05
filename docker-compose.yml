@@ -66,8 +66,28 @@ services:
   # Dev-only identity provider for testing the OIDC login front door.
   # Console: http://localhost:8082/ui/console (zitadel-admin@zitadel.localhost / Password1!)
   # Setup guide: docs/ops/oidc-zitadel.md
+  #
+  # v4, because v2.65.1 could not start against the Postgres 18 below: its
+  # 34_add_cache_schema migration does CREATE UNLOGGED on a partitioned table,
+  # which Postgres 18 refuses ("partitioned tables cannot be unlogged"). The
+  # container crash-looped, so the OIDC path this stack exists to exercise was
+  # broken for anyone who cloned the repo.
+  #
+  # Deliberately still one container, which is what the feature flag below buys.
+  # v4 defaults to its login-v2 UI, and that ships as a *separate* container that
+  # has to share an origin with the API — so taking the default means adding both
+  # a login service and a reverse proxy to route /ui/v2/login. Without them the
+  # console redirects to /ui/v2/login and gets a bare {"code":5,"Not Found"}: no
+  # way to sign in at all. Turning LoginV2 off keeps v4's built-in login, and the
+  # authorization-code flow behaves exactly as it did on v2.
+  #
+  # DEFAULTINSTANCE only applies on first init, so flipping this later does
+  # nothing to an existing volume — the instance has to be recreated.
+  #
+  # Upstream will remove the built-in login eventually. When it does, this grows a
+  # zitadel-login service and a proxy in front of both.
   zitadel:
-    image: ghcr.io/zitadel/zitadel:v2.65.1
+    image: ghcr.io/zitadel/zitadel:v4.16.2
     command: start-from-init --masterkey "84f3926e521bf337d69f76c0fd2769b8" --tlsMode disabled
     environment:
       ZITADEL_DATABASE_POSTGRES_HOST: postgres
@@ -82,6 +102,7 @@ services:
       ZITADEL_EXTERNALSECURE: "false"
       ZITADEL_EXTERNALDOMAIN: localhost
       ZITADEL_EXTERNALPORT: "8082"
+      ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"
     ports:
       - "8082:8080"
     depends_on:

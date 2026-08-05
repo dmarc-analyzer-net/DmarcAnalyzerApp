@@ -23,13 +23,49 @@ Start the dev IdP (part of the compose stack):
 docker compose up -d zitadel   # console at http://localhost:8082
 ```
 
+The service runs **Zitadel v4** as a single container, with its login-v2 feature
+turned off (`ZITADEL_DEFAULTINSTANCE_FEATURES_LOGINV2_REQUIRED: "false"`). v4
+otherwise routes all interactive login through a *separate* login container that
+has to share an origin with the API, which would mean adding a reverse proxy to
+this file; without both, the console redirects to `/ui/v2/login` and answers
+`{"code":5,"message":"Not Found"}`, so nobody can sign in. The flag keeps the
+built-in login and the authorization-code flow behaves exactly as it did on v2.
+
+That setting only applies when the instance is first created. If you have an
+older volume — in particular one from v2.65.1, which could not start against
+Postgres 18 at all — the database has to be recreated:
+
+```bash
+docker compose stop zitadel
+docker compose exec -T postgres psql -U postgres -c 'DROP DATABASE zitadel'
+docker compose exec -T postgres psql -U postgres -c 'CREATE DATABASE zitadel'
+docker compose up -d zitadel
+```
+
+This drops every user, project and application in the dev IdP. It does not touch
+`dmarc_analyzer`, which is a separate database in the same server.
+
 1. Open `http://localhost:8082/ui/console`, sign in as `zitadel-admin@zitadel.localhost` / `Password1!` (you'll be forced to set a new password on first login).
 2. **Projects → Create New Project** → name `dmarc-analyzer`.
-3. In the project, **Applications → New**: type **Web**, authentication method **PKCE**.
-4. Redirect URIs (enable **Development Mode** to allow http):
-   - `http://localhost:8081/api/v1/auth/oidc/callback` (compose API port)
-   - `http://localhost:5173/api/v1/auth/oidc/callback` (Vite dev proxy)
-5. Copy the generated **Client ID** (PKCE public client — no secret).
+3. In the project, under **APPLICATIONS**, click the **+** tile. That opens a
+   four-step wizard:
+   1. *Name and Type* — name `dmarc-analyzer`, type **Web** (preselected).
+   2. *Authentication Method* — **PKCE**, which is preselected and labelled
+      recommended. It sets the authentication method to `None`: no client secret
+      exists to copy, or to rotate later.
+   3. *Redirect URIs* — turn on **Development Mode** first, or an `http://` URI
+      is rejected. Then add, pressing **Enter** in the field (the **+** next to
+      it does not always register):
+      - `http://localhost:8081/api/v1/auth/oidc/callback` (compose API port)
+      - `http://localhost:5173/api/v1/auth/oidc/callback` (Vite dev proxy)
+   4. *Overview* — check `Authentication Method: None` and both URIs, then
+      **Create**.
+4. The **Client Details** dialog shows the **Client ID**. Copy it; it also states
+   that no secret is required, which is the difference from a provider like
+   Entra ID that insists on one.
+
+> Development Mode disables redirect-URI validation entirely — that is what
+> allows plain `http://`. Fine here, never on an instance that matters.
 
 ## Running the app with OIDC
 
