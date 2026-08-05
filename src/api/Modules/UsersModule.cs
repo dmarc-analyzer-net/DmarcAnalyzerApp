@@ -43,6 +43,19 @@ public sealed class UsersModule : ICarterModule
             return Results.Ok(result.Value);
         }).RequireAgencyAdmin();
 
+        app.MapDelete("/api/v1/users/{id:guid}", async (Guid id, IUserAdminService service, IAuditLog audit, CancellationToken ct) =>
+        {
+            var result = await service.DeleteAsync(id, ct);
+            if (!result.IsSuccess)
+            {
+                return Results.Json(new { error = result.Error }, statusCode: result.StatusCode);
+            }
+
+            await audit.RecordAsync(AuditEvents.UserDeleted,
+                $"Deleted user {result.Value!.Email}", "user", id, ct: ct);
+            return Results.NoContent();
+        }).RequireAgencyAdmin();
+
         app.MapPut("/api/v1/users/{id:guid}/grants", async (Guid id, ReplaceUserGrantsRequest request, IUserAdminService service, IAuditLog audit, CancellationToken ct) =>
         {
             var result = await service.ReplaceGrantsAsync(id, request, ct);

@@ -9,4 +9,5 @@ public interface IUserAdminService
     Task<ServiceResult<UserAdminDto>> CreateAsync(CreateUserRequest request, CancellationToken ct);
     Task<ServiceResult<UserAdminDto>> UpdateAsync(Guid id, UpdateUserRequest request, CancellationToken ct);
     Task<ServiceResult<UserAdminDto>> ReplaceGrantsAsync(Guid id, ReplaceUserGrantsRequest request, CancellationToken ct);
+    Task<ServiceResult<UserAdminDto>> DeleteAsync(Guid id, CancellationToken ct);
 }

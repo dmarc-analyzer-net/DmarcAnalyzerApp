@@ -158,4 +158,81 @@ public sealed class UserAdminServiceTests
         Assert.Empty(result.Value!.GrantedClientIds);
         Assert.Equal(0, await db.UserClientGrants.CountAsync());
     }
+
+    [Fact]
+    public async Task Delete_NotFound_Returns404()
+    {
+        await using var db = NewDb();
+        var service = new UserAdminService(db, TestCurrentUserContext.Admin());
+
+        var result = await service.DeleteAsync(Guid.NewGuid(), CancellationToken.None);
+
+        Assert.Equal(404, result.StatusCode);
+    }
+
+    [Fact]
+    public async Task Delete_OwnAccount_IsRejected()
+    {
+        await using var db = NewDb();
+        var admin = NewUser("admin@agency.tld", Roles.AgencyAdmin);
+        var other = NewUser("other-admin@agency.tld", Roles.AgencyAdmin);
+        db.AgencyUsers.AddRange(admin, other);
+        await db.SaveChangesAsync();
+
+        var service = new UserAdminService(db, new TestCurrentUserContext { UserId = admin.Id });
+        var result = await service.DeleteAsync(admin.Id, CancellationToken.None);
+
+        Assert.Equal(400, result.StatusCode);
+        Assert.Equal(2, await db.AgencyUsers.CountAsync());
+    }
+
+    [Fact]
+    public async Task Delete_LastActiveAdmin_IsRejected()
+    {
+        await using var db = NewDb();
+        var admin = NewUser("admin@agency.tld", Roles.AgencyAdmin);
+        db.AgencyUsers.Add(admin);
+        await db.SaveChangesAsync();
+
+        // Acting as a different identity so the self-delete guard doesn't mask
+        // the last-active-admin guard this test targets.
+        var service = new UserAdminService(db, TestCurrentUserContext.Admin());
+        var result = await service.DeleteAsync(admin.Id, CancellationToken.None);
+
+        Assert.Equal(409, result.StatusCode);
+        Assert.Equal(1, await db.AgencyUsers.CountAsync());
+    }
+
+    [Fact]
+    public async Task Delete_NonAdmin_Succeeds()
+    {
+        await using var db = NewDb();
+        var admin = NewUser("admin@agency.tld", Roles.AgencyAdmin);
+        var analyst = NewUser("analyst@agency.tld", Roles.AgencyAnalyst);
+        db.AgencyUsers.AddRange(admin, analyst);
+        await db.SaveChangesAsync();
+
+        var service = new UserAdminService(db, TestCurrentUserContext.Admin());
+        var result = await service.DeleteAsync(analyst.Id, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(analyst.Email, result.Value!.Email);
+        Assert.Equal(0, await db.AgencyUsers.CountAsync(x => x.Id == analyst.Id));
+    }
+
+    [Fact]
+    public async Task Delete_SecondAdmin_SucceedsWhenAnotherActiveAdminRemains()
+    {
+        await using var db = NewDb();
+        var admin1 = NewUser("admin1@agency.tld", Roles.AgencyAdmin);
+        var admin2 = NewUser("admin2@agency.tld", Roles.AgencyAdmin);
+        db.AgencyUsers.AddRange(admin1, admin2);
+        await db.SaveChangesAsync();
+
+        var service = new UserAdminService(db, new TestCurrentUserContext { UserId = admin1.Id });
+        var result = await service.DeleteAsync(admin2.Id, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(1, await db.AgencyUsers.CountAsync());
+    }
 }

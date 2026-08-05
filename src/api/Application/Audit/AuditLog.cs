@@ -25,6 +25,7 @@ public static class AuditEvents
     public const string UserCreated = "user.created";
     public const string UserUpdated = "user.updated";
     public const string UserGrantsChanged = "user.grants.changed";
+    public const string UserDeleted = "user.deleted";
 
     public const string AlertStatusChanged = "alert.status.changed";
     public const string RetentionPurgeRan = "retention.purge.ran";

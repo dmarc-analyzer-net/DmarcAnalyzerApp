@@ -192,6 +192,37 @@ public sealed class UserAdminService(DmarcAnalyzerDbContext db, ICurrentUserCont
         return ServiceResult<UserAdminDto>.Success(ToDto(user, requestedIds));
     }
 
+    public async Task<ServiceResult<UserAdminDto>> DeleteAsync(Guid id, CancellationToken ct)
+    {
+        var user = await db.AgencyUsers.SingleOrDefaultAsync(x => x.Id == id, ct);
+        if (user is null)
+        {
+            return ServiceResult<UserAdminDto>.Failure("user not found", 404);
+        }
+
+        if (currentUser.IsAuthenticated && currentUser.UserId == id)
+        {
+            return ServiceResult<UserAdminDto>.Failure("cannot delete your own account", 400);
+        }
+
+        if (user.Role == Roles.AgencyAdmin && user.IsActive && await IsLastActiveAdminAsync(user.Id, ct))
+        {
+            return ServiceResult<UserAdminDto>.Failure("cannot delete the last active administrator", 409);
+        }
+
+        // Snapshot before deleting — the module needs the email for the audit
+        // message. Sessions, OIDC identity links, and client grants all cascade
+        // at the DB level (see DmarcAnalyzerDbContext). Audit entries do not:
+        // ActorUserId is deliberately unconstrained so the trail outlives the
+        // row it names.
+        var dto = ToDto(user, await GrantsForAsync(user.Id, ct));
+
+        db.AgencyUsers.Remove(user);
+        await db.SaveChangesAsync(ct);
+
+        return ServiceResult<UserAdminDto>.Success(dto);
+    }
+
     private async Task<bool> IsLastActiveAdminAsync(Guid userId, CancellationToken ct)
         => !await db.AgencyUsers.AnyAsync(
             x => x.Id != userId && x.Role == Roles.AgencyAdmin && x.IsActive, ct);

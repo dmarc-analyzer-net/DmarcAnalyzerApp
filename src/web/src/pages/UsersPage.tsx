@@ -228,6 +228,17 @@ export function UsersPage() {
     }
   }
 
+  const deleteUser = async (account: ManagedUser) => {
+    if (!window.confirm(`Delete ${account.email}? This cannot be undone.`)) return
+    setError(null)
+    try {
+      await fetchJson(`/api/v1/users/${account.id}`, { method: 'DELETE' })
+      await loadData()
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Failed to delete user')
+    }
+  }
+
   const subtitle = `${users.length} ${users.length === 1 ? 'user' : 'users'} · roles gate what each account can see`
 
   return (
@@ -317,14 +328,24 @@ export function UsersPage() {
                         </Badge>
                       </TableCell>
                       <TableCell align="right">
-                        <Button
-                          variant="secondary"
-                          size="sm"
-                          icon="pencil"
-                          onClick={() => openEditDialog(account)}
-                        >
-                          Edit
-                        </Button>
+                        <div className="flex justify-end gap-2">
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            icon="pencil"
+                            onClick={() => openEditDialog(account)}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            icon="trash-2"
+                            onClick={() => void deleteUser(account)}
+                          >
+                            Delete
+                          </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   )
