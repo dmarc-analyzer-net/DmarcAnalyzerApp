@@ -99,6 +99,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - roles: `agency_admin`, `agency_analyst`, `client_viewer` with deny-by-default endpoint enforcement (`RoleAuthorizationMiddleware` + route metadata)
   - per-request `ICurrentUserContext` with client grants (`user_client_grant`) scoping all reads for viewers; cross-tenant ids read as 404
   - admin user management endpoints + Users page; registration locked to first-run bootstrap (`GET /auth/setup`)
+  - user delete (`DELETE /users/{id}`), guarded against deleting your own account or the last active `agency_admin`; sessions, OIDC identity links, and client grants cascade at the DB level
   - authN/authZ split: authorization is always in-app, authentication is pluggable
 
 - Optional OIDC login (pluggable authentication):
