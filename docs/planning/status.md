@@ -108,6 +108,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - hybrid flow (Microsoft OIDC handler → short-lived cookie → app-minted `dmarc_session`); local password and OIDC are interchangeable front doors by default
   - `user_identity` mapping with JIT provisioning (verified-email linking; configurable auto-provision + default role)
   - `Auth:Oidc` config, off by default; dev Zitadel in compose + `docs/ops/oidc-zitadel.md`
+  - verified against Microsoft Entra ID as well as Zitadel. Entra needs a client secret (a Web-platform redirect URI is a confidential client), and the callback is pinned to a redirect rather than the handler's default form_post — a form_post callback is a cross-site POST, which carries no `SameSite=Lax` correlation cookie and failed every login with "Correlation failed" up to and including 0.7.0 (#114)
   - `Auth:Oidc:DisableLocalLogin` turns off password sign-in and auto-redirects the login page to the provider, for deployments that want SSO-only; registration stays open until the first account exists, so bootstrap is unaffected; refused at startup without `Enabled`
   - admins can create passwordless (SSO-only) accounts: `password` is optional on `POST /api/v1/users`, which stores an empty hash that no password can satisfy — how you pre-provision at a chosen role with `AutoProvision=false`. `hasPassword` on the users list drives a "Sign-in" column that warns when such an account exists with no provider configured
   - see ADR 0007
