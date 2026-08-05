@@ -109,13 +109,13 @@ export function ClientsPage() {
   }
 
   // The API can't distinguish an omitted threshold from "clear it", so a blank
-  // field sends the explicit clear flag instead of a bare null.
+  // field sends the explicit clear flag instead of a bare null. Slug is absent
+  // here and added only on create — it is immutable once the client exists.
   const clientPayload = () => {
     const drop = clientForm.alertComplianceDropPercent.trim()
     const min = clientForm.alertMinMessages.trim()
     return {
       name: clientForm.name,
-      slug: clientForm.slug,
       timezone: clientForm.timezone,
       retentionMonths: clientForm.retentionMonths,
       isActive: clientForm.isActive,
@@ -141,7 +141,7 @@ export function ClientsPage() {
         await fetchJson('/api/v1/clients', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(clientPayload()),
+          body: JSON.stringify({ ...clientPayload(), slug: clientForm.slug }),
         })
       }
 
@@ -259,15 +259,25 @@ export function ClientsPage() {
                 required
               />
             </label>
-            <label className="grid gap-1.5 text-sm font-medium text-body">
-              Slug
-              <Input
-                mono
-                value={clientForm.slug}
-                onChange={(e) => setClientForm((x) => ({ ...x, slug: e.target.value }))}
-                required
-              />
-            </label>
+            {editingClientId ? (
+              <div className="grid gap-1.5 text-sm font-medium text-body">
+                Slug
+                <span className="font-mono text-sm text-secondary">{clientForm.slug}</span>
+                <span className="text-xs text-faint">
+                  Fixed at creation. It is what a configuration import matches this client on.
+                </span>
+              </div>
+            ) : (
+              <label className="grid gap-1.5 text-sm font-medium text-body">
+                Slug
+                <Input
+                  mono
+                  value={clientForm.slug}
+                  onChange={(e) => setClientForm((x) => ({ ...x, slug: e.target.value }))}
+                  required
+                />
+              </label>
+            )}
             <label className="grid gap-1.5 text-sm font-medium text-body">
               Timezone
               <Input

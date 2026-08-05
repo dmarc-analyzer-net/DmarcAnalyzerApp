@@ -45,7 +45,9 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - `domain`
   - `mailbox_source`
 - API vertical slice endpoints:
-  - clients: list/get/create/patch
+  - clients: list/get/create/patch, plus `POST /clients/default` — the catch-all
+    client the first-run step creates when the operator sets the install up by
+    hand instead of restoring an export. `slug` is immutable after creation.
   - domains: list/get/create/patch
   - mailbox sources: list/create/patch/sync
   - mailbox health: list

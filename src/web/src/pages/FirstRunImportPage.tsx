@@ -37,6 +37,30 @@ export function FirstRunImportPage() {
    * the one screen saying which credentials to use next.
    */
   const [imported, setImported] = useState(false)
+  const [skipping, setSkipping] = useState(false)
+
+  /**
+   * Setting up by hand needs a client to hang things off: a domain and a mailbox source both
+   * require one, so without this the operator lands on a console whose two obvious next steps
+   * are blocked by a required select with nothing in it. The endpoint is idempotent and does
+   * nothing once clients exist, which is why creating it here rather than at bootstrap keeps
+   * the restore path — which only accepts an empty install — intact.
+   */
+  const skipToDashboard = async () => {
+    setSkipping(true)
+    setError(null)
+    try {
+      await fetchJson('/api/v1/clients/default', { method: 'POST' })
+      navigate('/dashboard')
+    } catch (skipError) {
+      setError(
+        skipError instanceof Error
+          ? skipError.message
+          : 'Could not create the default client',
+      )
+      setSkipping(false)
+    }
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -108,13 +132,19 @@ export function FirstRunImportPage() {
 
           {!imported ? (
             <div className="flex flex-wrap items-center gap-3">
-              <Button type="button" variant="secondary" onClick={() => navigate('/dashboard')}>
-                <Icon name="arrow-right" size={16} />
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={skipping}
+                onClick={() => void skipToDashboard()}
+              >
+                <Icon name={skipping ? 'loader-circle' : 'arrow-right'} size={16} className={skipping ? 'animate-spin' : undefined} />
                 Skip — set this install up by hand
               </Button>
               <span className="text-xs text-faint">
-                Skipping changes nothing. You can import later from Backup and recovery, though only
-                in merge mode once clients or domains exist.
+                Skipping creates one client, <span className="font-mono">default</span>, so you have
+                somewhere to add a domain or a mailbox source. You can import later from Backup and
+                recovery, though only in merge mode once clients or domains exist.
               </span>
             </div>
           ) : null}

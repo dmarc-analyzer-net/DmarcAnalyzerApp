@@ -42,6 +42,7 @@ staff (`agency_admin` or `agency_analyst`).
 | GET | `/clients` | staff |
 | GET | `/clients/{id}` | staff |
 | POST | `/clients` | admin |
+| POST | `/clients/default` | admin — first-run catch-all; 204 once any client exists |
 | PATCH | `/clients/{id}` | admin |
 | GET | `/domains` | staff |
 | GET | `/domains/{id}` | staff |
@@ -205,8 +206,25 @@ Request:
 }
 ```
 
+### POST `/clients/default`
+
+Creates the catch-all client (`name: "Default"`, `slug: "default"`) that a hand-built
+install needs before a domain or a mailbox source can be added — both require a client,
+so without it the console dead-ends. Takes no body.
+
+Idempotent, and a no-op the moment *any* client exists: `201` with the new client, or
+`204` if this install already has clients. That is what lets the first-run step call it
+on "skip" without breaking the other way out of that step — a restore only accepts an
+install with no clients and no domains, and since import never deletes, a client created
+at bootstrap would both block the restore and strand an undeletable empty row.
+
 ### GET `/clients/{clientId}`
 ### PATCH `/clients/{clientId}`
+
+`slug` is **not** accepted: it is set once at creation and immutable after, because a
+configuration import matches clients on it and the domain list keys the "needs client"
+flag off the default client's slug.
+
 ### DELETE `/clients/{clientId}`
 
 Soft-delete/deactivate behavior is preferred over hard delete in MVP.

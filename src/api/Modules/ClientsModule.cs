@@ -39,6 +39,22 @@ public sealed class ClientsModule : ICarterModule
             return Results.Created($"/api/v1/clients/{client.Id}", client);
         }).RequireAgencyAdmin();
 
+        // The first-run step calls this when the operator chooses to set the install up by hand
+        // rather than restore an export, so they land on a console that can actually add a
+        // domain or a mailbox source. Idempotent: 204 means this install already had clients.
+        app.MapPost("/api/v1/clients/default", async (IClientService service, IAuditLog audit, CancellationToken ct) =>
+        {
+            var client = await service.EnsureDefaultAsync(ct);
+            if (client is null)
+            {
+                return Results.NoContent();
+            }
+
+            await audit.RecordAsync(AuditEvents.ClientCreated, $"Created client {client.Name}",
+                "client", client.Id, client.Id, ct: ct);
+            return Results.Created($"/api/v1/clients/{client.Id}", client);
+        }).RequireAgencyAdmin();
+
         app.MapPatch("/api/v1/clients/{id:guid}", async (Guid id, UpdateClientRequest request, IClientService service, IAuditLog audit, CancellationToken ct) =>
         {
             var result = await service.UpdateAsync(id, request, ct);
