@@ -75,3 +75,23 @@ you want OIDC inside compose.
   passwordless account exists on an instance with no provider configured, since
   it can then sign in by no route at all.
 - The app logout revokes only the app session; the IdP session is left intact (single logout is out of scope).
+
+## Other providers
+
+Zitadel is what this dev stack ships, but nothing here is Zitadel-specific. Two
+things learned from wiring up **Microsoft Entra ID**, both of which bite on the
+first login rather than later:
+
+- **Entra needs a client secret.** Register the callback under the *Web*
+  platform and Entra treats the app as a confidential client, so the token
+  exchange requires `Auth__Oidc__ClientSecret` no matter what PKCE does —
+  without one it fails `AADSTS7000218`. "Allow public client flows" is for
+  device-code and native apps; it does not make a Web-platform registration
+  secretless.
+- **The callback must come back as a redirect, not a form post.** The handler
+  defaults `ResponseMode` to `form_post`, which arrives as a cross-site POST
+  that carries no `SameSite=Lax` cookie — so the correlation cookie goes
+  missing and every login dies with "Correlation failed" (issue #114). The app
+  now pins `ResponseMode = "query"`; the failure is worth recognising because
+  the log names a cookie, which reads like a cookie bug rather than a response
+  mode one.
