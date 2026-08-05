@@ -238,6 +238,7 @@ export type ConfigImportEntityResult = {
 
 /** Shape of POST /api/v1/admin/config/import?mode=…&source=… */
 export type ConfigImportResult = {
+  dryRun: boolean
   mode: ConfigImportMode
   /** Rows inserted, across every collection. */
   created: number
@@ -258,10 +259,18 @@ export type ConfigImportResult = {
    */
   signedInSessionInvalidated: boolean
   /**
+   * True when the artifact's mailbox credentials were imported under a key
+   * fingerprint mismatch the operator chose to override. Every mailbox source in
+   * the artifact needs its password re-entered by hand before it will sync.
+   */
+  mailboxCredentialsWillNotDecrypt: boolean
+  /**
    * Id-versus-natural-key collisions the import reported instead of resolving
    * silently (merge mode). Human-readable, one line each.
    */
   conflicts: string[]
+  /** Free-text caveats about the import that are not conflicts — e.g. the key mismatch above. */
+  warnings: string[]
 }
 
 /**

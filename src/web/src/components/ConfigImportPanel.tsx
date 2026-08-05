@@ -82,6 +82,14 @@ export function ConfigImportPanel({ preview, onImported }: ConfigImportPanelProp
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<ConfigImportResult | null>(null)
 
+  /**
+   * A key mismatch is not fatal: the artifact's other configuration is still good,
+   * and the server accepts it via `allowKeyFingerprintMismatch` — the cost is
+   * re-entering every mailbox password by hand afterward. Reset per artifact so an
+   * acknowledgement for one file does not silently carry over to the next.
+   */
+  const [acknowledgeKeyMismatch, setAcknowledgeKeyMismatch] = useState(false)
+
   const candidate = useMemo<ImportCandidate | null>(() => {
     if (source === 'bucket') {
       const bucket = preview.bucket
@@ -118,31 +126,32 @@ export function ConfigImportPanel({ preview, onImported }: ConfigImportPanelProp
     }
   }, [source, preview, parsed, fileName, user])
 
-  /** Reasons the import cannot run. Each one is a refusal the server would also make. */
+  /** Reasons the import cannot run at all — the server would refuse these outright too. */
   const blockers: string[] = []
+  /**
+   * A key mismatch is reported separately from `blockers`: unlike them, it is not
+   * fatal. The server accepts it given `allowKeyFingerprintMismatch=true`, and the
+   * cost is re-entering every mailbox password afterward — not a refusal. Three
+   * different explanations, because the fix differs for each and a single "key
+   * mismatch" line would send an operator looking for the wrong thing.
+   */
+  let keyMismatchReason: string | null = null
   if (candidate) {
     if (candidate.formatVersion !== preview.supportedFormatVersion) {
       blockers.push(
         `This artifact declares format version ${candidate.formatVersion}, and this build reads version ${preview.supportedFormatVersion}. Importing it would mean guessing at the difference.`,
       )
     }
-    // Three different failures, and the fix differs for each — a single "key
-    // mismatch" line would send an operator looking for the wrong thing. Unchecked,
-    // any of them surfaces days later as a mailbox sync failing to authenticate,
-    // long after the restore looked successful.
     if (!candidate.keyFingerprintMatches) {
       if (preview.keyFingerprint === null) {
-        blockers.push(
-          'This artifact was written by an install that had a credential encryption key, and this one has none, so its mailbox passwords could never be decrypted. Set Security__CredentialEncryptionKey to the key that produced the artifact, restart, and import again.',
-        )
+        keyMismatchReason =
+          'This artifact was written by an install that had a credential encryption key, and this one has none, so its mailbox passwords cannot be decrypted.'
       } else if (!candidate.hasKeyFingerprint) {
-        blockers.push(
-          'This artifact was exported without a credential encryption key, so it carries plaintext mailbox passwords, while this install expects ciphertext under the key it holds. The import refuses rather than mixing the two.',
-        )
+        keyMismatchReason =
+          'This artifact was exported without a credential encryption key, so it carries plaintext mailbox passwords, while this install expects ciphertext under the key it holds.'
       } else {
-        blockers.push(
-          'This artifact was encrypted with a different key than this install holds, so its mailbox sources could never connect.',
-        )
+        keyMismatchReason =
+          'This artifact was encrypted with a different key than this install holds, so its mailbox sources cannot be decrypted with the key here.'
       }
     }
     if (mode === 'restore' && !preview.isEmptyInstall) {
@@ -152,11 +161,14 @@ export function ConfigImportPanel({ preview, onImported }: ConfigImportPanelProp
     }
   }
 
+  const needsKeyOverride = keyMismatchReason !== null && !acknowledgeKeyMismatch
+
   const pickFile = async (file: File | null) => {
     setError(null)
     setFileError(null)
     setParsed(null)
     setFileName(file?.name ?? null)
+    setAcknowledgeKeyMismatch(false)
     if (!file) return
 
     const read = await readConfigArtifact(file)
@@ -165,7 +177,7 @@ export function ConfigImportPanel({ preview, onImported }: ConfigImportPanelProp
   }
 
   const runImport = async () => {
-    if (!candidate || blockers.length > 0 || busy) return
+    if (!candidate || blockers.length > 0 || needsKeyOverride || busy) return
     if (source === 'upload' && !parsed) return
 
     // The one genuinely surprising outcome, so it is confirmed rather than
@@ -183,6 +195,9 @@ export function ConfigImportPanel({ preview, onImported }: ConfigImportPanelProp
     setError(null)
     try {
       const query = new URLSearchParams({ mode, source })
+      if (keyMismatchReason !== null) {
+        query.set('allowKeyFingerprintMismatch', 'true')
+      }
       const payload = await fetchJson<ConfigImportResult>(
         `/api/v1/admin/config/import?${query}`,
         source === 'upload'
@@ -235,6 +250,7 @@ export function ConfigImportPanel({ preview, onImported }: ConfigImportPanelProp
                   onChange={(event) => {
                     setSource(event.target.value as ConfigImportSourceKind)
                     setError(null)
+                    setAcknowledgeKeyMismatch(false)
                   }}
                 >
                   <option value="bucket">From object storage</option>
@@ -309,11 +325,37 @@ export function ConfigImportPanel({ preview, onImported }: ConfigImportPanelProp
             </Notice>
           ))}
 
+          {/* Not a blocker: the config underneath — clients, domains, users, grants —
+              is still good, and the server accepts this given the checkbox below. The
+              cost is real but bounded: every mailbox source in the artifact needs its
+              password re-entered by hand before it will sync again. */}
+          {candidate && blockers.length === 0 && keyMismatchReason ? (
+            <Notice tone="warn" title="Mailbox credentials will not carry over">
+              <p>{keyMismatchReason}</p>
+              <label className="mt-2 flex items-start gap-2 text-sm text-body">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={acknowledgeKeyMismatch}
+                  onChange={(event) => setAcknowledgeKeyMismatch(event.target.checked)}
+                />
+                <span>
+                  Import anyway, and re-enter every mailbox password by hand afterward.
+                  <span className="block text-xs text-secondary">
+                    Everything else in the artifact — clients, domains, recipients, users and grants —
+                    imports normally. Only the mailbox sources' passwords are affected.
+                  </span>
+                </span>
+              </label>
+            </Notice>
+          ) : null}
+
           {/* Reachable only when this install has no key either: an artifact written
               without one carries no fingerprint, and a missing fingerprint against a
-              configured key is already a blocker above. So the passwords are
-              plaintext at both ends, and saying anything softer would be untrue. */}
-          {candidate && blockers.length === 0 && !candidate.credentialsProtected ? (
+              configured key is already covered by the key-mismatch notice above. So
+              the passwords are plaintext at both ends, and saying anything softer
+              would be untrue. */}
+          {candidate && blockers.length === 0 && keyMismatchReason === null && !candidate.credentialsProtected ? (
             <Notice tone="warn" title="This artifact contains plaintext mailbox passwords">
               It was exported by an install with no credential encryption key, and this one has none
               either, so the passwords stay readable here too. Delete the file once you are done with
@@ -333,7 +375,7 @@ export function ConfigImportPanel({ preview, onImported }: ConfigImportPanelProp
           <div className="flex items-center gap-3">
             <Button
               type="button"
-              disabled={!candidate || blockers.length > 0 || busy}
+              disabled={!candidate || blockers.length > 0 || needsKeyOverride || busy}
               onClick={() => void runImport()}
             >
               <Icon name={busy ? 'loader-circle' : 'upload'} size={16} className={busy ? 'animate-spin' : undefined} />
@@ -441,6 +483,26 @@ function ImportResultView({
           break-glass administrator alongside the restored users.
         </Notice>
       )}
+
+      {result.mailboxCredentialsWillNotDecrypt ? (
+        <Notice tone="warn" title="Re-enter every mailbox password by hand">
+          This artifact's mailbox credentials were imported under a different encryption key, so they
+          cannot be decrypted here. Every mailbox source above needs its password typed in again
+          before it will sync.
+        </Notice>
+      ) : null}
+
+      {result.warnings.length > 0 ? (
+        <Notice tone="warn" title="Warnings">
+          <ul className="mt-1 grid gap-1">
+            {result.warnings.map((warning) => (
+              <li key={warning} className="text-xs">
+                {warning}
+              </li>
+            ))}
+          </ul>
+        </Notice>
+      ) : null}
 
       {result.usersWithChangedPasswords.length > 0 ? (
         <div className="rounded-md border border-border bg-surface-sunken p-3.5">
