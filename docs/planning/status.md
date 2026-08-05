@@ -99,9 +99,10 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - authN/authZ split: authorization is always in-app, authentication is pluggable
 
 - Optional OIDC login (pluggable authentication):
-  - hybrid flow (Microsoft OIDC handler → short-lived cookie → app-minted `dmarc_session`); local password and OIDC are interchangeable front doors
+  - hybrid flow (Microsoft OIDC handler → short-lived cookie → app-minted `dmarc_session`); local password and OIDC are interchangeable front doors by default
   - `user_identity` mapping with JIT provisioning (verified-email linking; configurable auto-provision + default role)
   - `Auth:Oidc` config, off by default; dev Zitadel in compose + `docs/ops/oidc-zitadel.md`
+  - `Auth:Oidc:DisableLocalLogin` turns off password sign-in and auto-redirects the login page to the provider, for deployments that want SSO-only; registration stays open until the first account exists, so bootstrap is unaffected; refused at startup without `Enabled`
   - see ADR 0007
 
 - Authentication baseline:
