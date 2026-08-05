@@ -74,6 +74,11 @@ public static class OidcAuthenticationExtensions
                 // happens to answer with a query redirect, which is why the dev
                 // setup never showed it. Keep this next to the Lax cookies below:
                 // the two settings only work as a pair.
+                //
+                // Setting this drops response_mode from the authorize request
+                // entirely rather than sending "query" — an omitted response_mode
+                // already means query for response_type=code, so the effect is to
+                // stop asking for form_post. Don't go looking for the parameter.
                 oidc.ResponseMode = "query";
                 oidc.UsePkce = true;
                 oidc.CallbackPath = CallbackPath;
