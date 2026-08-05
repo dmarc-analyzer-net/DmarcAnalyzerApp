@@ -19,9 +19,9 @@ type TrendChartProps = {
  */
 export function TrendChart({ data = [], height = 160, showLabels = true, className }: TrendChartProps) {
   const w = 100
-  const gap = 1.2
+  const gap = data.length > 1 ? Math.min(1.2, (w / data.length) * 0.25) : 0
   const max = Math.max(1, ...data.map((d) => d.pass + d.fail))
-  const bw = data.length ? (w - gap * (data.length - 1)) / data.length : 0
+  const bw = data.length ? Math.max(0, (w - gap * (data.length - 1)) / data.length) : 0
 
   return (
     <div className={className}>
