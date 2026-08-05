@@ -363,19 +363,31 @@ export function MailboxSourcesPage() {
                           </Badge>
                         </TableCell>
                         <TableCell align="right">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            disabled={isSyncing}
-                            onClick={() => void syncNow(source.id)}
-                          >
-                            <Icon
-                              name="refresh-cw"
-                              size={14}
-                              className={isSyncing ? 'animate-spin' : undefined}
-                            />
-                            {isSyncing ? 'Syncing' : 'Sync now'}
-                          </Button>
+                          <div className="flex justify-end gap-2">
+                            {canManage && (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                icon="pencil"
+                                onClick={() => openMailboxDialog(source)}
+                              >
+                                Edit
+                              </Button>
+                            )}
+                            <Button
+                              variant="secondary"
+                              size="sm"
+                              disabled={isSyncing}
+                              onClick={() => void syncNow(source.id)}
+                            >
+                              <Icon
+                                name="refresh-cw"
+                                size={14}
+                                className={isSyncing ? 'animate-spin' : undefined}
+                              />
+                              {isSyncing ? 'Syncing' : 'Sync now'}
+                            </Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )
