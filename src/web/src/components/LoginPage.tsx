@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { ApiError, fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
+import { usePageTitle } from '@/lib/use-page-title'
 
 type OidcProvider = {
   enabled: boolean
@@ -30,6 +31,7 @@ export function LoginPage() {
 
   // null = setup check in flight; falls back to the login form if it fails.
   const [requiresBootstrap, setRequiresBootstrap] = useState<boolean | null>(null)
+  usePageTitle(requiresBootstrap ? 'Welcome' : 'Sign in')
   const [oidcProvider, setOidcProvider] = useState<OidcProvider | null>(null)
 
   const [displayName, setDisplayName] = useState('')

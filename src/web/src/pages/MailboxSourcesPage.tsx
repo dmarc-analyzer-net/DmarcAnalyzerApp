@@ -27,6 +27,7 @@ import type {
   SyncRunStatus,
 } from '@/lib/entities'
 import { formatRelativeOrDate } from '@/lib/format'
+import { usePageTitle } from '@/lib/use-page-title'
 
 type MailboxOpsFilter = 'all' | 'failed' | 'parse-failures' | 'stale-success'
 
@@ -73,6 +74,7 @@ const formatWhen = (value: string | null) => {
 }
 
 export function MailboxSourcesPage() {
+  usePageTitle('Mailbox sources')
   const { user } = useAuth()
   const canManage = isAdmin(user)
 

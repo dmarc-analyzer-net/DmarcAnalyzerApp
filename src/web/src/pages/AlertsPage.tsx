@@ -21,6 +21,7 @@ import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin, isStaff } from '@/lib/authz'
 import { formatRelativeOrDate } from '@/lib/format'
+import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
 
 /**
@@ -28,6 +29,7 @@ import { cn } from '@/lib/utils'
  * force an evaluation here rather than waiting for the next pass.
  */
 export function AlertsPage() {
+  usePageTitle('Alerts')
   const { user } = useAuth()
   const admin = isAdmin(user)
   const staff = isStaff(user)

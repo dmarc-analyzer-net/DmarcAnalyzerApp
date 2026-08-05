@@ -14,6 +14,7 @@ import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isStaff } from '@/lib/authz'
 import { formatCompact, formatFullDate, formatPercent, formatShortDate } from '@/lib/format'
+import { usePageTitle } from '@/lib/use-page-title'
 
 type BadgeVariant = 'success' | 'warning' | 'danger'
 
@@ -25,6 +26,7 @@ function complianceVariant(rate: number): BadgeVariant {
 }
 
 export function DashboardPage() {
+  usePageTitle('Dashboard')
   const { user } = useAuth()
   const staff = isStaff(user)
   const navigate = useNavigate()

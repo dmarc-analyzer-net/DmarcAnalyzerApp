@@ -19,6 +19,7 @@ import { fetchJson } from '@/lib/api'
 import { USER_ROLES, type UserRole } from '@/lib/auth-context'
 import type { Client, ManagedUser } from '@/lib/entities'
 import { formatRelativeOrDate } from '@/lib/format'
+import { usePageTitle } from '@/lib/use-page-title'
 
 type BadgeVariant = 'brand' | 'neutral'
 
@@ -69,6 +70,7 @@ function RoleOptions({ currentRole }: { currentRole?: string }) {
 }
 
 export function UsersPage() {
+  usePageTitle('Users')
   const [users, setUsers] = useState<ManagedUser[]>([])
   const [clients, setClients] = useState<Client[]>([])
   const [search, setSearch] = useState('')

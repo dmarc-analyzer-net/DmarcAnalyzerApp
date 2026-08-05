@@ -31,6 +31,7 @@ import {
 } from '@/lib/analytics'
 import { ApiError, fetchJson } from '@/lib/api'
 import { formatCompact, formatFullDate, formatPercent, formatRelativeOrDate, formatShortDate } from '@/lib/format'
+import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
 
 // --- Sources table sorting (same interaction pattern as DomainsPage) ---
@@ -757,6 +758,8 @@ export function DomainDetailPage() {
   const [notFound, setNotFound] = useState(false)
   const [sortKey, setSortKey] = useState<SourceSortKey | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('desc')
+
+  usePageTitle(drilldown?.domain?.name ?? 'Domain')
   const [hostnames, setHostnames] = useState<Record<string, string | null>>({})
   const requestSeq = useRef(0)
 

@@ -10,6 +10,7 @@ import { Icon } from '@/components/ui/icon'
 import { fetchJson } from '@/lib/api'
 import type { BackupStatus, ConfigImportPreview } from '@/lib/entities'
 import { formatRelativeOrDate, formatUtcDateTime } from '@/lib/format'
+import { usePageTitle } from '@/lib/use-page-title'
 
 /**
  * Backup and recovery, in one admin page rather than a card bolted onto an existing
@@ -20,6 +21,7 @@ import { formatRelativeOrDate, formatUtcDateTime } from '@/lib/format'
  * under someone else's heading.
  */
 export function BackupPage() {
+  usePageTitle('Backup and recovery')
   const [status, setStatus] = useState<BackupStatus | null>(null)
   const [preview, setPreview] = useState<ConfigImportPreview | null>(null)
   const [busy, setBusy] = useState(true)

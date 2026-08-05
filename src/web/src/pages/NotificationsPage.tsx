@@ -13,6 +13,7 @@ import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin } from '@/lib/authz'
 import type { Client } from '@/lib/entities'
+import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
 
 const KIND_LABEL: Record<NotificationKind, string> = {
@@ -26,6 +27,7 @@ const KIND_LABEL: Record<NotificationKind, string> = {
  * notifications for every client — useful for an internal ops address.
  */
 export function NotificationsPage() {
+  usePageTitle('Notifications')
   const { user } = useAuth()
   const admin = isAdmin(user)
 

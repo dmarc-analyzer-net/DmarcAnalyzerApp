@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { parseAnalyticsDays, type AnalyticsDays, type ThreatFeed } from '@/lib/analytics'
 import { fetchJson } from '@/lib/api'
 import { formatCompact, formatFullDate, formatPercent, formatRelativeOrDate } from '@/lib/format'
+import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
 
 /**
@@ -20,6 +21,7 @@ import { cn } from '@/lib/utils'
  * the source pre-expanded (`?source=`).
  */
 export function ThreatsPage() {
+  usePageTitle('Threats')
   const [searchParams, setSearchParams] = useSearchParams()
   const days = parseAnalyticsDays(searchParams.get('days'))
 

@@ -18,6 +18,7 @@ import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin } from '@/lib/authz'
 import type { Client } from '@/lib/entities'
+import { usePageTitle } from '@/lib/use-page-title'
 
 const initialClientForm = {
   name: '',
@@ -33,6 +34,7 @@ const initialClientForm = {
 }
 
 export function ClientsPage() {
+  usePageTitle('Clients')
   const { user } = useAuth()
   const canManage = isAdmin(user)
 

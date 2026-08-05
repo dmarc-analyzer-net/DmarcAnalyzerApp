@@ -34,6 +34,7 @@ import { useAuth } from '@/lib/auth-context'
 import { isAdmin } from '@/lib/authz'
 import type { Client, Domain } from '@/lib/entities'
 import { formatCompact } from '@/lib/format'
+import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
 
 const initialDomainForm = {
@@ -134,6 +135,7 @@ function compareRows(a: DomainRow, b: DomainRow, key: SortKey, dir: SortDir): nu
 }
 
 export function DomainsPage() {
+  usePageTitle('Domains')
   const { user } = useAuth()
   const canManage = isAdmin(user)
   const navigate = useNavigate()

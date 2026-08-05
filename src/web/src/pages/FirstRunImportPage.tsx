@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Icon } from '@/components/ui/icon'
 import { fetchJson } from '@/lib/api'
 import type { ConfigImportPreview } from '@/lib/entities'
+import { usePageTitle } from '@/lib/use-page-title'
 
 /**
  * The first thing the first administrator does on a clean install: put the previous
@@ -24,6 +25,7 @@ import type { ConfigImportPreview } from '@/lib/entities'
  * truth.
  */
 export function FirstRunImportPage() {
+  usePageTitle('Restore configuration')
   const navigate = useNavigate()
   const [preview, setPreview] = useState<ConfigImportPreview | null>(null)
   const [busy, setBusy] = useState(true)

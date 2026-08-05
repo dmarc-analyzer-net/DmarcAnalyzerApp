@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { fetchJson } from '@/lib/api'
 import type { AuditEvent, AuditEventPage, Client } from '@/lib/entities'
 import { formatRelativeOrDate } from '@/lib/format'
+import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
 
 const PAGE_SIZE = 100
@@ -72,6 +73,7 @@ function eventTone(eventType: string): 'danger' | 'warning' | 'neutral' {
  * console it audits isn't evidence.
  */
 export function AuditPage() {
+  usePageTitle('Audit trail')
   const [searchParams, setSearchParams] = useSearchParams()
   const days = Number(searchParams.get('days') ?? 30)
   const eventType = searchParams.get('event') ?? ''
