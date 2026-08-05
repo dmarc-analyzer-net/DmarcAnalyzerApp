@@ -103,6 +103,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - `user_identity` mapping with JIT provisioning (verified-email linking; configurable auto-provision + default role)
   - `Auth:Oidc` config, off by default; dev Zitadel in compose + `docs/ops/oidc-zitadel.md`
   - `Auth:Oidc:DisableLocalLogin` turns off password sign-in and auto-redirects the login page to the provider, for deployments that want SSO-only; registration stays open until the first account exists, so bootstrap is unaffected; refused at startup without `Enabled`
+  - admins can create passwordless (SSO-only) accounts: `password` is optional on `POST /api/v1/users`, which stores an empty hash that no password can satisfy — how you pre-provision at a chosen role with `AutoProvision=false`. `hasPassword` on the users list drives a "Sign-in" column that warns when such an account exists with no provider configured
   - see ADR 0007
 
 - Authentication baseline:

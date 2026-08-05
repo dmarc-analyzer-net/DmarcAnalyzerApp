@@ -37,6 +37,16 @@ Content-Type: application/json
   "role": "client_viewer"
 }
 
+### Create an SSO-only user (admin only; no password, signs in through OIDC)
+POST {{baseUrl}}/api/v1/users
+Content-Type: application/json
+
+{
+  "email": "sso.staff@agency.tld",
+  "displayName": "SSO Staff",
+  "role": "agency_analyst"
+}
+
 ### Update user (admin only)
 PATCH {{baseUrl}}/api/v1/users/00000000-0000-0000-0000-000000000000
 Content-Type: application/json

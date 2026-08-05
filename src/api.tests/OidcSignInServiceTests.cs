@@ -77,6 +77,32 @@ public sealed class OidcSignInServiceTests
     }
 
     [Fact]
+    public async Task LinksToPasswordlessUser_PreProvisionedByAnAdmin()
+    {
+        // The point of admin-created passwordless accounts: with AutoProvision off,
+        // an admin pre-creates the account at the role they want, and the user's
+        // first OIDC login lands on it instead of being refused as no_account.
+        await using var db = NewDb();
+        var created = await new Application.Users.UserAdminService(db, TestCurrentUserContext.Admin())
+            .CreateAsync(new Contracts.Users.CreateUserRequest
+            {
+                Email = "sso.staff@agency.tld",
+                DisplayName = "SSO Staff",
+                Role = Roles.AgencyAnalyst,
+            }, CancellationToken.None);
+        Assert.True(created.IsSuccess);
+
+        var result = await NewService(db, autoProvision: false)
+            .SignInAsync(Principal("sub-sso", "sso.staff@agency.tld", emailVerified: true), null, null, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        var identity = await db.UserIdentities.SingleAsync();
+        Assert.Equal(created.Value!.Id, identity.UserId);
+        // Still no password door after the link.
+        Assert.Equal(string.Empty, (await db.AgencyUsers.SingleAsync()).PasswordHash);
+    }
+
+    [Fact]
     public async Task RefusesToLink_OnUnverifiedEmail()
     {
         await using var db = NewDb();

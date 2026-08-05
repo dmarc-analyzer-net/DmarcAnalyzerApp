@@ -66,4 +66,12 @@ you want OIDC inside compose.
 - `RequireHttpsMetadata=true` (the default) in real deployments; the dev flag only exists for plain-http localhost.
 - Losing/rotating the provider is safe — identities re-link by verified email.
 - `AutoProvision=false` is the safer production default: users must be created by an admin first, then SSO links to them by verified email.
+- **Pre-provision those accounts without a password.** `POST /api/v1/users`
+  treats `password` as optional (Users → Add user leaves the field empty), and an
+  omitted one stores an empty hash rather than a hash of `""` — no password can
+  open the account, which is the same guarantee auto-provisioning gives. That is
+  how you pick the role up front instead of accepting `DefaultRole`. The Users
+  table's "Sign-in" column shows which shape each account is, and warns when a
+  passwordless account exists on an instance with no provider configured, since
+  it can then sign in by no route at all.
 - The app logout revokes only the app session; the IdP session is left intact (single logout is out of scope).

@@ -47,6 +47,9 @@ const initialCreateForm = {
   role: 'client_viewer' as UserRole,
 }
 
+/** Only the part of GET /api/v1/auth/providers this page needs. */
+type SsoProvider = { displayName: string } | null
+
 const initialEditForm = {
   displayName: '',
   role: 'client_viewer' as ManagedUser['role'],
@@ -73,6 +76,7 @@ export function UsersPage() {
   usePageTitle('Users')
   const [users, setUsers] = useState<ManagedUser[]>([])
   const [clients, setClients] = useState<Client[]>([])
+  const [sso, setSso] = useState<SsoProvider>(null)
   const [search, setSearch] = useState('')
   const [busy, setBusy] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -88,12 +92,19 @@ export function UsersPage() {
     setBusy(true)
     setError(null)
     try {
-      const [userData, clientData] = await Promise.all([
+      const [userData, clientData, providers] = await Promise.all([
         fetchJson<ManagedUser[]>('/api/v1/users'),
         fetchJson<Client[]>('/api/v1/clients'),
+        // Whether SSO exists decides if a passwordless account can sign in at
+        // all, so this page says so rather than letting an admin create a dead
+        // account. A failure here must not block the user list.
+        fetchJson<{ oidc: { displayName: string } | null }>('/api/v1/auth/providers').catch(
+          () => ({ oidc: null }),
+        ),
       ])
       setUsers(userData)
       setClients(clientData)
+      setSso(providers.oidc)
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load users')
     } finally {
@@ -118,6 +129,11 @@ export function UsersPage() {
   const sortedUsers = useMemo(
     () => [...users].sort((a, b) => a.email.localeCompare(b.email)),
     [users],
+  )
+
+  const editingUser = useMemo(
+    () => users.find((x) => x.id === editingUserId) ?? null,
+    [users, editingUserId],
   )
 
   const filteredUsers = useMemo(() => {
@@ -174,10 +190,12 @@ export function UsersPage() {
     setDialogError(null)
     setSaving(true)
     try {
+      // An omitted password is the SSO-only account shape, not a blank one.
+      const { password, ...rest } = createForm
       await fetchJson('/api/v1/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(createForm),
+        body: JSON.stringify(password ? { ...rest, password } : rest),
       })
       resetDialog()
       await loadData()
@@ -269,6 +287,7 @@ export function UsersPage() {
                 <TableRow>
                   <TableHead>User</TableHead>
                   <TableHead>Role</TableHead>
+                  <TableHead>Sign-in</TableHead>
                   <TableHead>Client access</TableHead>
                   <TableHead>Last login</TableHead>
                   <TableHead>Status</TableHead>
@@ -290,6 +309,17 @@ export function UsersPage() {
                       </TableCell>
                       <TableCell>
                         <Badge variant={roleMeta.badgeVariant}>{roleMeta.label}</Badge>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">
+                        {/* A passwordless account with no provider configured cannot
+                            sign in by any route, which is worth flagging. */}
+                        {account.hasPassword ? (
+                          <span className="text-sm text-secondary">Password</span>
+                        ) : sso ? (
+                          <span className="text-sm text-secondary">{sso.displayName} only</span>
+                        ) : (
+                          <Badge variant="warning">No sign-in method</Badge>
+                        )}
                       </TableCell>
                       <TableCell>
                         {account.role === 'client_viewer' ? (
@@ -375,15 +405,26 @@ export function UsersPage() {
                   <RoleOptions currentRole={editForm.role} />
                 </Select>
               </label>
-              <label className="grid gap-1.5 text-sm font-medium text-body">
-                New password (optional)
-                <Input
-                  type="password"
-                  autoComplete="new-password"
-                  value={editForm.password}
-                  onChange={(e) => setEditForm((x) => ({ ...x, password: e.target.value }))}
-                />
-              </label>
+              <div className="grid gap-1.5">
+                <label className="grid gap-1.5 text-sm font-medium text-body">
+                  {editingUser?.hasPassword === false
+                    ? 'Set a password (optional)'
+                    : 'New password (optional)'}
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    value={editForm.password}
+                    onChange={(e) => setEditForm((x) => ({ ...x, password: e.target.value }))}
+                  />
+                </label>
+                {editingUser?.hasPassword === false ? (
+                  <p className="text-xs text-secondary">
+                    This account has no password and signs in through
+                    {sso ? ` ${sso.displayName}` : ' single sign-on'}. Setting one here adds
+                    password sign-in as well.
+                  </p>
+                ) : null}
+              </div>
               <label className="flex items-center gap-2 text-sm text-secondary">
                 <input
                   type="checkbox"
@@ -453,16 +494,22 @@ export function UsersPage() {
                   required
                 />
               </label>
-              <label className="grid gap-1.5 text-sm font-medium text-body">
-                Password
-                <Input
-                  type="password"
-                  autoComplete="new-password"
-                  value={createForm.password}
-                  onChange={(e) => setCreateForm((x) => ({ ...x, password: e.target.value }))}
-                  required
-                />
-              </label>
+              <div className="grid gap-1.5">
+                <label className="grid gap-1.5 text-sm font-medium text-body">
+                  Password (optional)
+                  <Input
+                    type="password"
+                    autoComplete="new-password"
+                    value={createForm.password}
+                    onChange={(e) => setCreateForm((x) => ({ ...x, password: e.target.value }))}
+                  />
+                </label>
+                <p className="text-xs text-secondary">
+                  {sso
+                    ? `Leave empty for a single sign-on account. The user signs in with ${sso.displayName} and gets no password; their account is matched on first sign-in by verified email address.`
+                    : 'Leave empty for a single sign-on account. No identity provider is configured on this instance, so such an account cannot sign in until SSO is set up or a password is added.'}
+                </p>
+              </div>
               <label className="grid gap-1.5 text-sm font-medium text-body">
                 Role
                 <Select

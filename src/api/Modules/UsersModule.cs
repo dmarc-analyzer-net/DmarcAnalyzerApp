@@ -25,8 +25,11 @@ public sealed class UsersModule : ICarterModule
             }
 
             var user = result.Value!;
+            // Whether the account has a password decides which sign-in paths can
+            // reach it, so the trail says which of the two was created.
             await audit.RecordAsync(AuditEvents.UserCreated,
-                $"Created user {user.Email} with role {user.Role}", "user", user.Id, ct: ct);
+                $"Created user {user.Email} with role {user.Role}", "user", user.Id,
+                details: user.HasPassword ? "password sign-in" : "single sign-on only (no password set)", ct: ct);
             return Results.Created($"/api/v1/users/{user.Id}", user);
         }).RequireAgencyAdmin();
 

@@ -32,13 +32,17 @@ public sealed class UserAdminService(DmarcAnalyzerDbContext db, ICurrentUserCont
     public async Task<ServiceResult<UserAdminDto>> CreateAsync(CreateUserRequest request, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Email) ||
-            string.IsNullOrWhiteSpace(request.Password) ||
             string.IsNullOrWhiteSpace(request.DisplayName))
         {
-            return ServiceResult<UserAdminDto>.Failure("email, password, and displayName are required", 400);
+            return ServiceResult<UserAdminDto>.Failure("email and displayName are required", 400);
         }
 
-        if (request.Password.Length < 10)
+        // No password is a deliberate account shape, not a missing field: the user
+        // signs in through OIDC. An empty hash can never pass verification (see
+        // PasswordHasher.Verify), so such an account has no password door at all —
+        // the same guarantee auto-provisioned OIDC users get.
+        var hasPassword = !string.IsNullOrWhiteSpace(request.Password);
+        if (hasPassword && request.Password!.Length < 10)
         {
             return ServiceResult<UserAdminDto>.Failure("password must be at least 10 characters", 400);
         }
@@ -59,7 +63,7 @@ public sealed class UserAdminService(DmarcAnalyzerDbContext db, ICurrentUserCont
         var user = new AgencyUser
         {
             Email = normalizedEmail,
-            PasswordHash = PasswordHasher.Hash(request.Password),
+            PasswordHash = hasPassword ? PasswordHasher.Hash(request.Password!) : string.Empty,
             DisplayName = request.DisplayName.Trim(),
             Role = role,
             CreatedAtUtc = now,
@@ -210,6 +214,7 @@ public sealed class UserAdminService(DmarcAnalyzerDbContext db, ICurrentUserCont
             x.DisplayName,
             x.Role,
             x.IsActive,
+            !string.IsNullOrEmpty(x.PasswordHash),
             x.LastLoginAtUtc,
             x.CreatedAtUtc,
             x.UpdatedAtUtc,

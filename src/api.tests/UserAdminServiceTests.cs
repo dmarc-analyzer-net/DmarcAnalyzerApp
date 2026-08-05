@@ -69,6 +69,89 @@ public sealed class UserAdminServiceTests
     }
 
     [Fact]
+    public async Task Create_WithoutPassword_MakesAnSsoOnlyAccount()
+    {
+        await using var db = NewDb();
+        var service = new UserAdminService(db, TestCurrentUserContext.Admin());
+
+        var result = await service.CreateAsync(new CreateUserRequest
+        {
+            Email = "Sso.User@agency.tld",
+            DisplayName = "SSO User",
+            Role = Roles.AgencyAnalyst,
+        }, CancellationToken.None);
+
+        Assert.True(result.IsSuccess);
+        Assert.False(result.Value!.HasPassword);
+
+        // The stored hash must be empty rather than a hash of "" — and no password,
+        // not even the empty one, may open the account.
+        var stored = await db.AgencyUsers.SingleAsync();
+        Assert.Equal(string.Empty, stored.PasswordHash);
+        Assert.False(PasswordHasher.Verify(string.Empty, stored.PasswordHash));
+
+        var auth = new AuthService(db);
+        var login = await auth.LoginAsync(
+            new LoginRequest { Email = "sso.user@agency.tld", Password = "password-123456" },
+            null, null, CancellationToken.None);
+        Assert.False(login.IsSuccess);
+        Assert.Equal(401, login.StatusCode);
+    }
+
+    [Fact]
+    public async Task Create_WithPassword_KeepsTheLengthRuleAndAllowsSignIn()
+    {
+        await using var db = NewDb();
+        var service = new UserAdminService(db, TestCurrentUserContext.Admin());
+
+        var tooShort = await service.CreateAsync(new CreateUserRequest
+        {
+            Email = "local@agency.tld",
+            DisplayName = "Local",
+            Role = Roles.AgencyAnalyst,
+            Password = "short",
+        }, CancellationToken.None);
+        Assert.Equal(400, tooShort.StatusCode);
+
+        var created = await service.CreateAsync(new CreateUserRequest
+        {
+            Email = "local@agency.tld",
+            DisplayName = "Local",
+            Role = Roles.AgencyAnalyst,
+            Password = "password-123456",
+        }, CancellationToken.None);
+        Assert.True(created.IsSuccess);
+        Assert.True(created.Value!.HasPassword);
+
+        var auth = new AuthService(db);
+        var login = await auth.LoginAsync(
+            new LoginRequest { Email = "local@agency.tld", Password = "password-123456" },
+            null, null, CancellationToken.None);
+        Assert.True(login.IsSuccess);
+    }
+
+    [Fact]
+    public async Task Create_StillRequiresEmailAndDisplayName()
+    {
+        await using var db = NewDb();
+        var service = new UserAdminService(db, TestCurrentUserContext.Admin());
+
+        var noEmail = await service.CreateAsync(new CreateUserRequest
+        {
+            DisplayName = "No Email",
+            Role = Roles.AgencyAnalyst,
+        }, CancellationToken.None);
+        Assert.Equal(400, noEmail.StatusCode);
+
+        var noName = await service.CreateAsync(new CreateUserRequest
+        {
+            Email = "nameless@agency.tld",
+            Role = Roles.AgencyAnalyst,
+        }, CancellationToken.None);
+        Assert.Equal(400, noName.StatusCode);
+    }
+
+    [Fact]
     public async Task Update_CannotDemoteLastActiveAdmin()
     {
         await using var db = NewDb();

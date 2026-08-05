@@ -14,6 +14,8 @@ export type ManagedUser = {
   displayName: string
   role: AuthUser['role']
   isActive: boolean
+  /** False for accounts created without a password — they can only sign in through SSO. */
+  hasPassword: boolean
   lastLoginAtUtc: string | null
   createdAtUtc: string
   updatedAtUtc: string
