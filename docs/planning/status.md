@@ -132,6 +132,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
 - Threat feed (spoofing investigation):
   - `GET /api/v1/analytics/threats` — tenant-scoped list of (source IP, domain) pairs with fully unauthenticated volume (DKIM and SPF both failed), worst first, with first/last-seen
   - Threats page in the sidebar: reverse-DNS enrichment, policy badges, rows deep-link into the domain drill-down with the source pre-expanded
+  - optional `clientId` filter, applied before the top-N ranking so one client's worst offenders can't be pushed out of view by another client's larger volume
 
 - Record inspection (published vs observed):
   - `IDnsTxtResolver` (DnsClient against the host's configured resolver — no third-party DoH) with short-lived caching
