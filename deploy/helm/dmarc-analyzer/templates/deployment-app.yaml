@@ -7,6 +7,15 @@ metadata:
     app.kubernetes.io/component: app
 spec:
   replicas: {{ .Values.app.replicas }}
+  {{- if eq .Values.mode "combined" }}
+  # Recreate, not RollingUpdate: in combined mode this pod also runs the
+  # ingestion loop, so a rolling update would briefly run old and new together
+  # — the same overlap the worker Deployment's Recreate strategy exists to
+  # avoid. Split mode's app pod is API-only and takes no lock, so it keeps the
+  # default RollingUpdate for zero-downtime console deploys.
+  strategy:
+    type: Recreate
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "dmarc.name" . }}
