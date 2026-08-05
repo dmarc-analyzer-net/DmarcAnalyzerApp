@@ -16,6 +16,9 @@ public sealed class EmailOptions
     public string FromAddress { get; set; } = string.Empty;
     public string FromName { get; set; } = "DMARC Analyzer";
 
+    /// <summary>Optional. Empty means no Reply-To header — replies go to FromAddress.</summary>
+    public string ReplyToAddress { get; set; } = string.Empty;
+
     /// <summary>Absolute base URL used to build links in emails, e.g. https://dmarc.example.com.</summary>
     public string BaseUrl { get; set; } = string.Empty;
 

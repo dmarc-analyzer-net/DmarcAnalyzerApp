@@ -47,6 +47,11 @@ public sealed class EmailSender(IOptions<EmailOptions> options, ILogger<EmailSen
         {
             var message = new MimeMessage();
             message.From.Add(new MailboxAddress(_options.FromName, _options.FromAddress));
+            if (!string.IsNullOrWhiteSpace(_options.ReplyToAddress))
+            {
+                message.ReplyTo.Add(new MailboxAddress(_options.FromName, _options.ReplyToAddress));
+            }
+
             foreach (var address in recipients)
             {
                 message.To.Add(MailboxAddress.Parse(address));

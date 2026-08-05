@@ -142,6 +142,7 @@ features are inert regardless of their own settings.
 | `Email__Password` | *(empty)* | SMTP password. |
 | `Email__FromAddress` | *(empty)* | Envelope sender. Required for mail to send. |
 | `Email__FromName` | `DMARC Analyzer` | Display name on outbound mail. |
+| `Email__ReplyToAddress` | *(empty)* | Optional Reply-To header. Empty means replies go to `Email__FromAddress` — useful when the sender is a no-reply transactional address (e.g. Scaleway TEM) but replies should land somewhere read. |
 | `Email__BaseUrl` | *(empty)* | Public URL of this instance, used to build links in mail. Without it, links in alerts point nowhere useful. |
 
 ## Alerts (`Alerts`)
