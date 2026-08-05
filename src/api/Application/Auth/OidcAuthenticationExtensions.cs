@@ -22,6 +22,14 @@ public static class OidcAuthenticationExtensions
         services.Configure<OidcOptions>(configuration.GetSection(OidcOptions.SectionName));
 
         var options = configuration.GetSection(OidcOptions.SectionName).Get<OidcOptions>() ?? new OidcOptions();
+
+        if (options.DisableLocalLogin && !options.Enabled)
+        {
+            throw new InvalidOperationException(
+                "Auth:Oidc:DisableLocalLogin is set but Auth:Oidc:Enabled is false — that would leave no way " +
+                "to sign in. Enable OIDC, or turn DisableLocalLogin off.");
+        }
+
         if (!options.Enabled)
         {
             return services;

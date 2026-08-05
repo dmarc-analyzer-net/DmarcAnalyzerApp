@@ -186,6 +186,7 @@ Off by default; local accounts work with no identity provider. See
 | `Auth__Oidc__DefaultRole` | `client_viewer` | Role given to auto-provisioned users. The least-privileged role is deliberate. |
 | `Auth__Oidc__AutoProvision` | `false` | Create an account on first successful SSO login. Off means users must exist already. |
 | `Auth__Oidc__RequireHttpsMetadata` | `true` | Only turn off against a local test provider over plain HTTP. |
+| `Auth__Oidc__DisableLocalLogin` | `false` | Turn off password sign-in and redirect the login page straight to this provider. Requires `Enabled=true` — refused at startup otherwise, since that combination would leave no way to sign in. Registration is unaffected: it already refuses itself once the first account exists, so the first admin can still bootstrap locally before this is turned on. |
 
 ## Behind a reverse proxy (`Network`)
 

@@ -31,6 +31,7 @@ export function LoginPage() {
   // null = setup check in flight; falls back to the login form if it fails.
   const [requiresBootstrap, setRequiresBootstrap] = useState<boolean | null>(null)
   const [oidcProvider, setOidcProvider] = useState<OidcProvider | null>(null)
+  const [localLoginEnabled, setLocalLoginEnabled] = useState(true)
 
   const [displayName, setDisplayName] = useState('')
   const [email, setEmail] = useState('')
@@ -56,6 +57,7 @@ export function LoginPage() {
         if (!cancelled) {
           setRequiresBootstrap(setup.requiresBootstrap)
           setOidcProvider(providers.oidc)
+          setLocalLoginEnabled(providers.local)
         }
       } catch {
         if (!cancelled) setRequiresBootstrap(false)
@@ -74,6 +76,19 @@ export function LoginPage() {
       `${oidcProvider!.loginUrl}?returnUrl=${encodeURIComponent(returnUrl === '/' ? '/dashboard' : returnUrl)}`,
     )
   }
+
+  // Auth:Oidc:DisableLocalLogin server-side: no password form to fall back to,
+  // so skip straight to the provider instead of showing a login page with
+  // nothing usable on it. Bootstrap is exempt — it's the one path that still
+  // works locally on a fresh instance (see AuthModule's /register comment).
+  const shouldAutoRedirectToSso = requiresBootstrap === false && !localLoginEnabled && !!oidcProvider?.enabled
+
+  useEffect(() => {
+    if (shouldAutoRedirectToSso) {
+      startSso()
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldAutoRedirectToSso])
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -126,7 +141,7 @@ export function LoginPage() {
     }
   }
 
-  if (requiresBootstrap === null) {
+  if (requiresBootstrap === null || shouldAutoRedirectToSso) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-secondary" aria-label="Loading" />

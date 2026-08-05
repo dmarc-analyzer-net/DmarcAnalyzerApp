@@ -3,6 +3,7 @@ using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Contracts.Auth;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Modules;
 
@@ -10,6 +11,10 @@ public sealed class AuthModule : ICarterModule
 {
     public void AddRoutes(IEndpointRouteBuilder app)
     {
+        // Deliberately not gated by Auth:Oidc:DisableLocalLogin: RegisterAsync already
+        // refuses itself once the first account exists, so leaving this open is how the
+        // very first admin gets in on a deployment that turns local login off — there
+        // would otherwise be no way to reach that setting without already being signed in.
         app.MapPost("/api/v1/auth/register", async (RegisterRequest request, IAuthService service, IAuditLog audit, CancellationToken ct) =>
         {
             var result = await service.RegisterAsync(request, ct);
@@ -30,8 +35,13 @@ public sealed class AuthModule : ICarterModule
             return Results.Ok(new { requiresBootstrap });
         });
 
-        app.MapPost("/api/v1/auth/login", async (LoginRequest request, IAuthService service, IAuditLog audit, HttpContext http, CancellationToken ct) =>
+        app.MapPost("/api/v1/auth/login", async (LoginRequest request, IAuthService service, IAuditLog audit, HttpContext http, IOptions<OidcOptions> oidc, CancellationToken ct) =>
         {
+            if (oidc.Value.DisableLocalLogin)
+            {
+                return Results.Json(new { error = "password sign-in is disabled; use single sign-on" }, statusCode: 403);
+            }
+
             var ipAddress = http.Connection.RemoteIpAddress?.ToString();
             var userAgent = http.Request.Headers.UserAgent.ToString();
 

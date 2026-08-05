@@ -14,7 +14,7 @@ public sealed class OidcAuthModule : ICarterModule
             var options = oidc.Value;
             return Results.Ok(new
             {
-                local = true,
+                local = !options.DisableLocalLogin,
                 oidc = options.Enabled
                     ? new { enabled = true, displayName = options.DisplayName, loginUrl = "/api/v1/auth/oidc/login" }
                     : null,

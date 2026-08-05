@@ -19,4 +19,13 @@ public sealed class OidcOptions
     public bool AutoProvision { get; set; }
 
     public bool RequireHttpsMetadata { get; set; } = true;
+
+    /// <summary>
+    /// Turns off password sign-in (<c>/api/v1/auth/login</c>) and has the login
+    /// page redirect straight to this provider. Registration is untouched — it
+    /// already refuses itself once the first account exists, so the very first
+    /// admin can still bootstrap locally before this is turned on. Requires
+    /// <see cref="Enabled"/>; otherwise there would be no way to sign in at all.
+    /// </summary>
+    public bool DisableLocalLogin { get; set; }
 }
