@@ -529,8 +529,12 @@ override and set `credentialsProtected: false`. This matters more than it looks:
 that setting as having "no usable default", so operators may believe they are
 protected when they are not.
 
-Import must reject an artifact whose `encryptionKeyFingerprint` does not match the
-running key, rather than importing sources that can never decrypt.
+Import refuses an artifact whose `encryptionKeyFingerprint` does not match the
+running key by default, rather than silently importing sources that can never
+decrypt. `allowKeyFingerprintMismatch` lets an operator proceed anyway — the
+rest of the artifact still imports, and every mailbox source under the old key
+needs its password re-entered by hand afterward. The console surfaces this as
+an acknowledgeable warning rather than a dead end.
 
 Every export, offload failure, import, and mailbox-deletion pass writes an audit
 event.

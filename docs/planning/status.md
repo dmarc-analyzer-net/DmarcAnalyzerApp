@@ -32,7 +32,10 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     overlap window so a row committed mid-pass is never skipped.
   - Import as a first-run console action, `restore` (empty install only) or `merge`.
     **Additive: never deletes a row.** On an email collision the imported user wins and
-    only that account's sessions are revoked.
+    only that account's sessions are revoked. An encryption-key fingerprint mismatch is
+    an acknowledgeable warning, not a hard block — the rest of the artifact still
+    imports, and the console reports which mailbox sources need their password
+    re-entered by hand.
   - Optional report-mail archive to the same bucket, and **opt-in mailbox retention
     deletion** so the system has one retention window instead of two — cut on the widest
     window the source serves, suspended entirely for any source serving a client under

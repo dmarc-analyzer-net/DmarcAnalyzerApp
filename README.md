@@ -59,7 +59,7 @@ variables.
   `linux/arm64`. Mirrored to Docker Hub as `dmarcanalyzernet/dmarc-analyzer`;
   GHCR is recommended because it has no anonymous pull rate limits.
 - Tags: **`latest`** is the most recent release (what the compose file uses), or
-  pin a version such as `0.4.0`. **`edge`** tracks `main` and is unreleased —
+  pin a version such as `0.5.0`. **`edge`** tracks `main` and is unreleased —
   useful for trying a fix early, not for production.
 - Next steps: add a client, a domain, and a mailbox source (the inbox your
   `rua=` reports arrive in) — see `docs/ops/mailbox-sync.md`.

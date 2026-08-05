@@ -9,7 +9,7 @@ single list of settings for both.
 
 ```bash
 helm install dmarc oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer \
-  --version 0.4.0 \
+  --version 0.5.0 \
   --namespace dmarc --create-namespace \
   --set auth.encryptionKey="$(openssl rand -base64 32)"
 ```
@@ -55,7 +55,7 @@ helm install dmarc ./deploy/helm/dmarc-analyzer -n dmarc \
   --set postgres.enabled=false \
   --set externalDatabase.host=db.internal \
   --set externalDatabase.username=dmarc \
-  --set image.tag=0.4.0
+  --set image.tag=0.5.0
 ```
 
 Five things worth doing deliberately:
