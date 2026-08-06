@@ -466,12 +466,15 @@ step is independently shippable.
       legal-hold-safe orphan sweep, and backup exclusions + a ledger history
       stream. `ResolveOrCreateDomainIdAsync` hoisted to `DomainIngestResolver`
       as the backlog item anticipated.
-- [ ] (step 3b) **TLS-RPT surface and rollout gate.** The per-domain TLS-RPT
-      panel (sessions, failure categories, receiving MX) with its own window
-      anchor, and the testing→enforce readiness gate: monitoring checks green
-      + no STS-category failure sessions in the window, with a time-in-testing
-      fallback for domains no reporter covers; one-click promote reuses the
-      hosted-policy PUT.
+- [x] (step 3b, done 2026-08-06) **TLS-RPT surface and rollout gate.** The
+      per-domain TLS-RPT panel (sessions, failure categories, receiving MX)
+      with its own window anchor, and the testing→enforce readiness gate:
+      monitoring checks green + no STS-category failure sessions in 14
+      wall-clock days, a 28-clean-day time-in-testing fallback for domains no
+      reporter covers (the verdict names its basis), one-click promote through
+      the audited hosted-policy PUT. **The arc is complete** — follow-ups live
+      below as ordinary items (fleet-wide MTA-STS overview page; a TLS-RPT
+      failure-spike alert rule; digest coverage for MTA-STS/TLS-RPT).
 
 ## Parking Lot
 

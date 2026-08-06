@@ -271,8 +271,21 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     retention any client has — which makes legal hold safe by construction
   - the three report tables join the backup exclusion list (replayable from
     the mailbox); the ledger ships as its own history stream
-  - the analytics surface and the MTA-STS rollout gate are the next step of
-    the arc (see the backlog)
+  - the analytics surface: `GET /api/v1/analytics/domains/{id}/tls-rpt` —
+    sessions, success rate, failure breakdown by category and result type,
+    failures per receiving MX — anchored to the newest **TLS** data the caller
+    can see (TLS reporting lags DMARC; anchoring to DMARC's anchor would blank
+    the panel), rendered in the Transport security card with the page's window
+    selector; the no-reporter case renders quietly, it is the norm
+  - the **testing→enforce gate**: a pure evaluator combining the monitoring
+    checks (TXT, fetch, syntax, MX coverage), the hosted policy's
+    time-in-testing clock (`ModeChangedAtUtc`), and the TLS-RPT evidence — no
+    STS-category failure sessions in 14 wall-clock days (promotion is a
+    decision about *now*, so the gate deliberately does not use data-anchored
+    windows). Domains no reporter covers fall back to 28 clean days, and the
+    verdict names its basis (`tls_rpt` vs `time_in_testing`). The ready state
+    renders a promote button that reuses the audited hosted-policy PUT;
+    readiness rides inside the mta-sts GET, null when no policy is hosted here
 
 - Client addresses behind a proxy: `Network:UseForwardedHeaders` (off by
   default) makes the audit trail record the real caller instead of the proxy,

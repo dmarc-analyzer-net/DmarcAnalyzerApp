@@ -34,10 +34,12 @@ import {
   type DrilldownTotals,
   type EnforcementGuidance,
   type EvaluatedCombo,
+  type MtaStsReadiness,
   type MtaStsState,
   type RecordComparison,
   type RecordInspection,
   type SourceDetail,
+  type TlsRptSummary,
   type ValueCount,
 } from '@/lib/analytics'
 import { ApiError, fetchJson } from '@/lib/api'
@@ -573,12 +575,13 @@ function formatMaxAge(seconds: number): string {
  * plain database read, so unlike the record inspection card nothing here waits
  * on live DNS or an HTTPS fetch. Recheck (staff only) runs those on demand.
  */
-function TransportSecurityCard({ domainId }: { domainId: string }) {
+function TransportSecurityCard({ domainId, days }: { domainId: string; days: AnalyticsDays }) {
   const { user } = useAuth()
   const staff = isStaff(user)
   const admin = isAdmin(user)
   const [state, setState] = useState<MtaStsState | null>(null)
   const [policyResponse, setPolicyResponse] = useState<MtaStsPolicyResponse | null>(null)
+  const [tlsSummary, setTlsSummary] = useState<TlsRptSummary | null>(null)
   const [busy, setBusy] = useState(true)
   const [rechecking, setRechecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -589,13 +592,15 @@ function TransportSecurityCard({ domainId }: { domainId: string }) {
     setBusy(true)
     setError(null)
     try {
-      const [statePayload, policyPayload] = await Promise.all([
+      const [statePayload, policyPayload, tlsPayload] = await Promise.all([
         fetchJson<MtaStsState>(`/api/v1/analytics/domains/${domainId}/mta-sts`),
         fetchJson<MtaStsPolicyResponse>(`/api/v1/domains/${domainId}/mta-sts-policy`),
+        fetchJson<TlsRptSummary>(`/api/v1/analytics/domains/${domainId}/tls-rpt?days=${days}`),
       ])
       if (seq === requestSeq.current) {
         setState(statePayload)
         setPolicyResponse(policyPayload)
+        setTlsSummary(tlsPayload)
       }
     } catch (loadError) {
       if (seq === requestSeq.current) {
@@ -604,7 +609,7 @@ function TransportSecurityCard({ domainId }: { domainId: string }) {
     } finally {
       if (seq === requestSeq.current) setBusy(false)
     }
-  }, [domainId])
+  }, [domainId, days])
 
   useEffect(() => {
     void load()
@@ -787,10 +792,12 @@ function TransportSecurityCard({ domainId }: { domainId: string }) {
         <HostedPolicySection
           response={policyResponse}
           monitoring={state}
+          readiness={state?.readiness ?? null}
           admin={admin}
           onChanged={() => void load()}
         />
       ) : null}
+      {!busy && !error && tlsSummary ? <TlsRptSection summary={tlsSummary} /> : null}
     </Card>
   )
 }
@@ -844,18 +851,52 @@ function PublishRow({ label, name, value }: { label: string; name: string; value
 function HostedPolicySection({
   response,
   monitoring,
+  readiness,
   admin,
   onChanged,
 }: {
   response: MtaStsPolicyResponse
   monitoring: MtaStsState | null
+  readiness: MtaStsReadiness | null
   admin: boolean
   onChanged: () => void
 }) {
   const [editorOpen, setEditorOpen] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [promoting, setPromoting] = useState(false)
   const policy = response.policy
+
+  const promote = async () => {
+    if (!policy) return
+    if (!window.confirm(
+      `Move ${response.domainName} to enforce? Conforming senders will refuse delivery via any MX ` +
+      'the policy does not cover, or when TLS fails. The record id changes — the TXT record needs updating.',
+    )) {
+      return
+    }
+
+    setPromoting(true)
+    setDeleteError(null)
+    try {
+      await fetchJson<MtaStsPolicyResponse>(`/api/v1/domains/${response.domainId}/mta-sts-policy`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: true,
+          mode: 'enforce',
+          maxAgeSeconds: policy.maxAgeSeconds,
+          mxPatterns: policy.mxPatterns,
+        }),
+      })
+      setNotice('Promoted to enforce — the id changed; update the TXT record above.')
+      onChanged()
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Failed to promote the policy')
+    } finally {
+      setPromoting(false)
+    }
+  }
 
   // Hosted and enabled, but the checker has never once fetched it: that is a
   // setup window (CNAME or proxy not wired yet), rendered as guidance rather
@@ -926,6 +967,29 @@ function HostedPolicySection({
         </p>
       ) : (
         <div className="mt-3 space-y-3">
+          {readiness && readiness.status !== 'not_applicable' ? (
+            <Notice
+              tone={readiness.status === 'ready' ? 'ok' : readiness.status === 'not_ready' ? 'danger' : 'warn'}
+            >
+              <span className="flex flex-wrap items-center gap-2">
+                {readiness.status === 'ready' ? (
+                  <>
+                    Ready to enforce
+                    {readiness.evidenceBasis === 'tls_rpt'
+                      ? ` — reporters saw no STS failures across ${readiness.totalSessions.toLocaleString()} sessions in the last ${readiness.gateWindowDays} days.`
+                      : ` — no TLS reporter covers this domain; based on ${readiness.daysInTesting} clean days in testing.`}
+                    {admin ? (
+                      <Button size="sm" onClick={() => void promote()} disabled={promoting}>
+                        Promote to enforce
+                      </Button>
+                    ) : null}
+                  </>
+                ) : (
+                  (readiness.blockedReason ?? 'Not ready to enforce yet.')
+                )}
+              </span>
+            </Notice>
+          ) : null}
           {notice ? <Notice tone="warn">{notice}</Notice> : null}
           {deleteError ? <Notice tone="danger">{deleteError}</Notice> : null}
           {waitingForDns ? (
@@ -978,6 +1042,85 @@ function HostedPolicySection({
             onChanged()
           }}
         />
+      ) : null}
+    </div>
+  )
+}
+
+const TLS_CATEGORY_BADGE: Record<string, 'danger' | 'warning' | 'neutral'> = {
+  sts: 'danger',       // this policy breaking delivery — the gate's blocker
+  dane: 'warning',
+  transport: 'warning', // a receiving MX misconfigured — not this policy's fault
+  other: 'neutral',
+}
+
+/**
+ * Encryption in transit, as reporters saw it. Empty is the norm — TLS-RPT has
+ * far fewer reporters than DMARC — so no data renders quietly, not as an error.
+ */
+function TlsRptSection({ summary }: { summary: TlsRptSummary }) {
+  if (summary.totalSessions === 0) {
+    return (
+      <div className="mt-5 border-t border-border pt-4">
+        <PanelSectionTitle>Encryption in transit (TLS-RPT)</PanelSectionTitle>
+        <p className="mt-2 text-xs leading-relaxed text-secondary">
+          No TLS reports received for this domain in this window. Reporters are opt-in on the
+          sender side (a `_smtp._tls` record invites them), and most domains never attract any.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-5 border-t border-border pt-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <PanelSectionTitle>Encryption in transit (TLS-RPT)</PanelSectionTitle>
+        <Badge variant={summary.failedSessions === 0 ? 'success' : 'warning'}>
+          {formatPercent(summary.successRate)} encrypted
+        </Badge>
+        <span className="text-xs text-secondary">
+          {formatCompact(summary.totalSessions)} sessions · {summary.reporterCount} reporter
+          {summary.reporterCount === 1 ? '' : 's'} · {formatShortDate(summary.window.beginUtc)} –{' '}
+          {formatShortDate(summary.window.endUtc)}
+        </span>
+      </div>
+
+      {summary.failuresByType.length > 0 ? (
+        <div className="mt-3">
+          <div className="text-xs font-semibold text-body">
+            {formatCompact(summary.failedSessions)} failed session
+            {summary.failedSessions === 1 ? '' : 's'}
+          </div>
+          <ul className="mt-1.5 space-y-1">
+            {summary.failuresByType.map((failure) => (
+              <li key={failure.resultType} className="flex flex-wrap items-center gap-2 text-xs">
+                <Badge variant={TLS_CATEGORY_BADGE[failure.category] ?? 'neutral'}>
+                  {failure.category}
+                </Badge>
+                <span className="font-mono text-body">{failure.resultType}</span>
+                <span className="text-secondary">
+                  {formatCompact(failure.failedSessions)} session{failure.failedSessions === 1 ? '' : 's'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {summary.byReceivingMx.length > 0 ? (
+        <div className="mt-3">
+          <div className="text-xs font-semibold text-body">Failures by receiving MX</div>
+          <ul className="mt-1.5 space-y-1">
+            {summary.byReceivingMx.map((mx) => (
+              <li key={mx.receivingMxHostname} className="flex flex-wrap items-center gap-2 text-xs">
+                <span className="font-mono text-body">{mx.receivingMxHostname}</span>
+                <span className="text-secondary">
+                  {formatCompact(mx.failedSessions)} · {mx.resultTypes.join(', ')}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
       ) : null}
     </div>
   )
@@ -1805,7 +1948,7 @@ export function DomainDetailPage() {
 
           <RecordInspectionCard domainId={domainId} />
 
-          <TransportSecurityCard domainId={domainId} />
+          <TransportSecurityCard domainId={domainId} days={days} />
 
           {/* The centerpiece: per-source breakdown */}
           <Card>

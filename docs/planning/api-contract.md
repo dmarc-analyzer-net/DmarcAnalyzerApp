@@ -79,6 +79,7 @@ cross-tenant ids return **404**, never 403.
 | GET | `/analytics/domains/{domainId}/records` | Live DNS DMARC/SPF records parsed tag-by-tag, compared against the observed `policy_published` |
 | GET | `/analytics/domains/{domainId}/mta-sts` | The domain's persisted MTA-STS state (record, policy file, MX coverage) — database only, no live lookups |
 | POST | `/analytics/domains/{domainId}/mta-sts/recheck` | **staff** — runs the MTA-STS check live (DNS + HTTPS) and persists it; returns the updated state |
+| GET | `/analytics/domains/{domainId}/tls-rpt` | TLS-RPT summary: sessions, success rate, failures by category/result-type/receiving MX. Windows anchor to the newest **TLS** data the caller can see |
 | GET | `/analytics/threats` | Sources with fully unauthenticated volume across visible domains. Accepts `limit` (default 100, max 500) |
 | GET | `/analytics/hostnames` | Best-effort reverse DNS. Requires `ips` (comma-separated, max 100) |
 
@@ -456,6 +457,15 @@ validation error). `mxHosts[]` is the live MX at check time, each with
 `matched` — null when the cross-check was not evaluable. After a failed
 lookup the state holds the **last known** values; `lastCheckedAtUtc` still
 advances.
+
+The response also carries `readiness` — the testing→enforce promotion gate —
+when (and only when) a policy is hosted here: `status` of `ready`, `not_ready`,
+`insufficient_data` or `not_applicable` (already enforcing), the named
+monitoring checks, the TLS-RPT evidence over a 14-day **wall-clock** window
+(promotion is a decision about now, not about the newest data), and
+`evidenceBasis` — `tls_rpt`, or `time_in_testing` for the 28-clean-day fallback
+when no reporter covers the domain. Promotion itself is the ordinary
+hosted-policy `PUT` with `mode: "enforce"`; there is no separate endpoint.
 
 ### POST `/analytics/domains/{domainId}/mta-sts/recheck`
 

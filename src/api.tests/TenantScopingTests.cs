@@ -149,7 +149,9 @@ public sealed class TenantScopingTests
             TestCurrentUserContext.Viewer(granted.Id),
             checkService,
             new MtaStsStateCache(db, checkService,
-                Options.Create(new MtaStsOptions()), NullLogger<MtaStsStateCache>.Instance));
+                Options.Create(new MtaStsOptions()), NullLogger<MtaStsStateCache>.Instance),
+            new MtaStsReadinessService(db,
+                new TlsRptQueryService(db, TestCurrentUserContext.Viewer(granted.Id))));
 
         // Cross-tenant reads as not-found — 404, not 403 — on both paths.
         Assert.Null(await service.GetAsync(otherDomain.Id, CancellationToken.None));

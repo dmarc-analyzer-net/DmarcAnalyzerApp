@@ -105,6 +105,16 @@ public sealed class AnalyticsModule : ICarterModule
             return state is null ? Results.NotFound() : Results.Ok(state);
         }).RequireAgencyStaff();
 
+        app.MapGet("/api/v1/analytics/domains/{domainId:guid}/tls-rpt", async (
+            Guid domainId,
+            int? days,
+            ITlsRptQueryService service,
+            CancellationToken ct) =>
+        {
+            var summary = await service.GetDomainSummaryAsync(domainId, days ?? 30, ct);
+            return summary is null ? Results.NotFound() : Results.Ok(summary);
+        }).AllowClientViewer();
+
         app.MapGet("/api/v1/analytics/threats", async (
             int? days,
             int? limit,

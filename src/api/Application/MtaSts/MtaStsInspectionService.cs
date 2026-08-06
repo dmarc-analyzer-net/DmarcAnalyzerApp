@@ -25,7 +25,8 @@ public sealed class MtaStsInspectionService(
     DmarcAnalyzerDbContext db,
     ICurrentUserContext currentUser,
     IMtaStsCheckService checkService,
-    IMtaStsStateCache stateCache) : IMtaStsInspectionService
+    IMtaStsStateCache stateCache,
+    IMtaStsReadinessService readiness) : IMtaStsInspectionService
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -41,7 +42,8 @@ public sealed class MtaStsInspectionService(
             .AsNoTracking()
             .SingleOrDefaultAsync(s => s.DomainId == domainId, ct);
 
-        return ToDto(domain.Value.Id, domain.Value.Name, state);
+        return ToDto(domain.Value.Id, domain.Value.Name, state,
+            await readiness.GetForDomainAsync(domainId, ct));
     }
 
     public async Task<MtaStsStateDto?> RecheckAsync(Guid domainId, CancellationToken ct)
@@ -54,7 +56,8 @@ public sealed class MtaStsInspectionService(
 
         var result = await checkService.CheckAsync(domain.Value.Name, ct);
         var state = await stateCache.ApplyAsync(domain.Value.Id, result, ct);
-        return ToDto(domain.Value.Id, domain.Value.Name, state);
+        return ToDto(domain.Value.Id, domain.Value.Name, state,
+            await readiness.GetForDomainAsync(domainId, ct));
     }
 
     private async Task<(Guid Id, string Name)?> ResolveAccessibleDomainAsync(Guid domainId, CancellationToken ct)
@@ -74,14 +77,15 @@ public sealed class MtaStsInspectionService(
         return (domain.Id, domain.Name);
     }
 
-    private static MtaStsStateDto ToDto(Guid domainId, string name, MtaStsState? state)
+    private static MtaStsStateDto ToDto(
+        Guid domainId, string name, MtaStsState? state, MtaStsReadinessDto? readiness)
     {
         if (state is null)
         {
             return new MtaStsStateDto(
                 domainId, name, Checked: false,
                 null, null, null, null, null, null, null, null, null, null, null, null,
-                [], null, [], [], null, null);
+                [], null, [], [], null, null, readiness);
         }
 
         // mx patterns re-parse from the stored body rather than being stored
@@ -109,7 +113,8 @@ public sealed class MtaStsInspectionService(
             Deserialize<List<MtaStsMxHostDto>>(state.MxHostsJson) ?? [],
             Deserialize<List<string>>(state.IssuesJson) ?? [],
             state.LastCheckedAtUtc,
-            state.LastChangedAtUtc);
+            state.LastChangedAtUtc,
+            readiness);
     }
 
     private static T? Deserialize<T>(string? json) where T : class

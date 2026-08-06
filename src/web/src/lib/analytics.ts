@@ -455,6 +455,69 @@ export type MtaStsState = {
   issues: string[]
   lastCheckedAtUtc: string | null
   lastChangedAtUtc: string | null
+  /** The promotion gate; null when no policy is hosted here. */
+  readiness: MtaStsReadiness | null
+}
+
+// --- TLS-RPT (GET /api/v1/analytics/domains/{domainId}/tls-rpt) ---
+
+export type TlsRptPolicyTypeStat = {
+  policyType: string
+  successfulSessions: number
+  failedSessions: number
+}
+
+export type TlsRptCategoryStat = { category: string; failedSessions: number }
+
+export type TlsRptFailureTypeStat = {
+  resultType: string
+  category: string
+  failedSessions: number
+}
+
+export type TlsRptMxHostStat = {
+  receivingMxHostname: string
+  failedSessions: number
+  resultTypes: string[]
+}
+
+/** Windows anchor to the newest TLS data the caller can see — TLS reporting usually lags DMARC. */
+export type TlsRptSummary = {
+  window: AnalyticsWindow
+  totalSessions: number
+  successfulSessions: number
+  failedSessions: number
+  successRate: number
+  reportCount: number
+  reporterCount: number
+  byPolicyType: TlsRptPolicyTypeStat[]
+  failuresByCategory: TlsRptCategoryStat[]
+  failuresByType: TlsRptFailureTypeStat[]
+  byReceivingMx: TlsRptMxHostStat[]
+}
+
+// --- MTA-STS promotion gate (embedded in the mta-sts GET) ---
+
+export type MtaStsReadinessStatus = 'ready' | 'not_ready' | 'insufficient_data' | 'not_applicable'
+export type MtaStsReadinessEvidence = 'tls_rpt' | 'time_in_testing' | 'none'
+
+export type MtaStsReadinessCheck = {
+  name: string
+  status: 'pass' | 'fail' | 'unknown'
+  detail: string | null
+}
+
+export type MtaStsReadiness = {
+  status: MtaStsReadinessStatus
+  blockedReason: string | null
+  /** What the verdict rests on — time_in_testing says out loud that no reporter vouched for it. */
+  evidenceBasis: MtaStsReadinessEvidence
+  daysInTesting: number | null
+  gateWindowDays: number
+  totalSessions: number
+  stsFailureSessions: number
+  reportCount: number
+  checks: MtaStsReadinessCheck[]
 }
 
 // --- Alerts (GET /api/v1/alerts) ---

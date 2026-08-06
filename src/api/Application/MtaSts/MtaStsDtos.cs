@@ -114,4 +114,6 @@ public sealed record MtaStsStateDto(
     IReadOnlyList<MtaStsMxHostDto> MxHosts,
     IReadOnlyList<string> Issues,
     DateTime? LastCheckedAtUtc,
-    DateTime? LastChangedAtUtc);
+    DateTime? LastChangedAtUtc,
+    /// <summary>The promotion gate; null when no policy is hosted here.</summary>
+    MtaStsReadinessDto? Readiness = null);
