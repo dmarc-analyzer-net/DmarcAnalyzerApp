@@ -24,6 +24,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<UserIdentity> UserIdentities => Set<UserIdentity>();
     public DbSet<BackupStreamState> BackupStreamStates => Set<BackupStreamState>();
     public DbSet<MtaStsState> MtaStsStates => Set<MtaStsState>();
+    public DbSet<MtaStsPolicy> MtaStsPolicies => Set<MtaStsPolicy>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -372,6 +373,26 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             // The check pass picks the least-recently-checked domains first.
             entity.HasIndex(x => x.LastCheckedAtUtc);
 
+            entity.HasOne(x => x.Domain)
+                .WithMany()
+                .HasForeignKey(x => x.DomainId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<MtaStsPolicy>(entity =>
+        {
+            entity.ToTable("mta_sts_policy");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Enabled).HasDefaultValue(true);
+            entity.Property(x => x.Mode).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.MxPatterns).HasMaxLength(2000).IsRequired();
+            entity.Property(x => x.PolicyId).HasMaxLength(32).IsRequired();
+            // One hosted policy per domain.
+            entity.HasIndex(x => x.DomainId).IsUnique();
+
+            // Cascade, unlike dmarc_report's Restrict: the policy is dependent
+            // config with no independent value. No domain-delete path exists
+            // today, so this is future-proofing rather than live behavior.
             entity.HasOne(x => x.Domain)
                 .WithMany()
                 .HasForeignKey(x => x.DomainId)

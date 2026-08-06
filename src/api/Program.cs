@@ -136,6 +136,71 @@ if (mode == AppMode.Worker)
     return;
 }
 
+if (mode == AppMode.MtaSts)
+{
+    // The dedicated public policy host: an internet-facing container serving
+    // exactly two anonymous routes plus health probes. Deliberately absent:
+    // Carter (MapCarter would map the entire console API), static files and the
+    // SPA fallback (unmapped paths must 404, not serve the console), the auth
+    // middlewares (nothing here is under /api/v1), CORS, startup migration
+    // (never migrate from an internet-facing, replica-able pod — the console or
+    // a migrate Job owns the schema), hosted services, and credential handling.
+    var mtaStsBuilder = WebApplication.CreateBuilder(args);
+    var mtaStsTelemetry = mtaStsBuilder.AddTelemetry("mta-sts");
+
+    // No localhost fallback, unlike api/worker: this mode exists to face the
+    // internet, and a policy host silently reading an empty local database
+    // would 404 every client domain while looking healthy.
+    var mtaStsConnectionString = ConnectionStringResolver.Resolve(mtaStsBuilder.Configuration)
+        ?? throw new InvalidOperationException(
+            "ConnectionStrings:Default or DATABASE_URL is required in mta-sts mode.");
+
+    mtaStsBuilder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
+        options.UseNpgsql(mtaStsConnectionString));
+    mtaStsBuilder.Services.AddMemoryCache();
+    mtaStsBuilder.Services.Configure<MtaStsOptions>(mtaStsBuilder.Configuration.GetSection("MtaSts"));
+    mtaStsBuilder.Services.AddScoped<IMtaStsPolicyHostService, MtaStsPolicyHostService>();
+
+    var mtaStsNetworkOptions = mtaStsBuilder.Configuration.GetSection("Network").Get<NetworkOptions>() ?? new NetworkOptions();
+    var mtaStsForwardedHeaders = new ForwardedHeadersOptions();
+    var mtaStsUseForwardedHeaders = ForwardedHeadersSetup.TryConfigure(
+        mtaStsNetworkOptions,
+        mtaStsForwardedHeaders,
+        LoggerFactory.Create(b => b.AddConsole()).CreateLogger(nameof(ForwardedHeadersSetup)));
+
+    var mtaStsApp = mtaStsBuilder.Build();
+    mtaStsApp.Services.GetRequiredService<ILoggerFactory>()
+        .CreateLogger("Telemetry").LogTelemetryStatus(mtaStsTelemetry);
+
+    if (mtaStsUseForwardedHeaders)
+    {
+        mtaStsApp.UseForwardedHeaders(mtaStsForwardedHeaders);
+    }
+
+    mtaStsApp.MapGet("/health/live", () => Results.Ok(new { status = "live" }));
+
+    // Readiness probes the policies table rather than bare CanConnectAsync:
+    // this mode never migrates, so "connects but the schema isn't there yet"
+    // must read as not-ready, not as a healthy host that 500s on traffic.
+    mtaStsApp.MapGet("/health/ready", async (DmarcAnalyzerDbContext db, CancellationToken ct) =>
+    {
+        try
+        {
+            await db.MtaStsPolicies.Select(x => x.Id).FirstOrDefaultAsync(ct);
+            return Results.Ok(new { status = "ready" });
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return Results.Json(new { status = "unavailable" }, statusCode: 503);
+        }
+    });
+
+    mtaStsApp.MapMtaStsPublicEndpoints();
+
+    await mtaStsApp.RunAsync();
+    return;
+}
+
 var builder = WebApplication.CreateBuilder(args);
 var apiTelemetry = builder.AddTelemetry(mode == AppMode.All ? "all" : "api");
 var connectionString = ConnectionStringResolver.Resolve(builder.Configuration)
@@ -186,6 +251,8 @@ builder.Services.AddScoped<IDmarcPolicyResolver, DmarcPolicyResolver>();
 builder.Services.Configure<DnsOptions>(builder.Configuration.GetSection("Dns"));
 builder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
 builder.Services.AddMtaStsMonitoring(builder.Configuration);
+builder.Services.AddScoped<IMtaStsPolicyHostService, MtaStsPolicyHostService>();
+builder.Services.AddScoped<IMtaStsPolicyAdminService, MtaStsPolicyAdminService>();
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
 builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection("Network"));
 builder.Services.Configure<BackupOptions>(builder.Configuration.GetSection("Backup"));
@@ -291,6 +358,10 @@ app.MapGet("/health/ready", async (DmarcAnalyzerDbContext db, CancellationToken 
     await db.Database.CanConnectAsync(ct)
         ? Results.Ok(new { status = "ready" })
         : Results.Json(new { status = "unavailable" }, statusCode: 503));
+
+// Explicit routes win over MapFallbackToFile, so without this the well-known
+// path would answer with the SPA — 200, text/html, and silently wrong.
+app.MapMtaStsPublicEndpoints();
 
 app.MapCarter();
 app.MapFallbackToFile("index.html");

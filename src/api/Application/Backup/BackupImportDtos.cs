@@ -77,6 +77,7 @@ public static class BackupImportEntities
     public const string UserIdentity = "user_identity";
     public const string UserClientGrant = "user_client_grant";
     public const string NotificationRecipient = "notification_recipient";
+    public const string MtaStsPolicy = "mta_sts_policy";
 }
 
 /// <summary>What the import did about a conflict, rather than leaving the reader to infer it.</summary>

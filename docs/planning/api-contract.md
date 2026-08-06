@@ -82,6 +82,21 @@ cross-tenant ids return **404**, never 403.
 | GET | `/analytics/threats` | Sources with fully unauthenticated volume across visible domains. Accepts `limit` (default 100, max 500) |
 | GET | `/analytics/hostnames` | Best-effort reverse DNS. Requires `ips` (comma-separated, max 100) |
 
+### Hosted MTA-STS policies
+| Method | Path | Access |
+|---|---|---|
+| GET | `/domains/{domainId}/mta-sts-policy` | any — the hosted policy (null when none) plus the CNAME/TXT publish instructions; client-scoped |
+| PUT | `/domains/{domainId}/mta-sts-policy` | admin — upsert; the policy id bumps exactly when the rendered content changes. Audited |
+| DELETE | `/domains/{domainId}/mta-sts-policy` | admin — stop hosting (the client's DNS records should be removed too). Audited |
+| POST | `/clients/{clientId}/mta-sts-policy/apply` | admin — apply one policy shape to several of the client's active domains; per-domain outcomes (`created`/`updated`/`unchanged`) with each changed domain's TXT value. Audited |
+
+Two anonymous routes exist **outside** `/api/v1` (same mechanism as
+`/health/*`), in api, all and the dedicated `mta-sts` mode:
+`GET /.well-known/mta-sts.txt` (the policy file, keyed on the Host header —
+200 `text/plain` with `Cache-Control`, or a plain-text 404; HEAD supported;
+never a redirect) and `GET /mta-sts/ask?domain=` (Caddy's on-demand-TLS gate —
+200 to issue a certificate, 403 to refuse, 400 without the parameter).
+
 ### System and admin
 | Method | Path | Access |
 |---|---|---|

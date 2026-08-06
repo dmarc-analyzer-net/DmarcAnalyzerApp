@@ -15,6 +15,8 @@ public sealed class AppRuntimeModeTests
     [InlineData("api", AppMode.Api)]
     [InlineData("worker", AppMode.Worker)]
     [InlineData("all", AppMode.All)]
+    [InlineData("migrate", AppMode.Migrate)]
+    [InlineData("mta-sts", AppMode.MtaSts)]
     public void ParsesEachDocumentedMode(string value, AppMode expected)
         => Assert.Equal(expected, AppRuntimeMode.Parse(value));
 
@@ -32,6 +34,7 @@ public sealed class AppRuntimeModeTests
     [InlineData("API", AppMode.Api)]
     [InlineData("Worker", AppMode.Worker)]
     [InlineData("  All  ", AppMode.All)]
+    [InlineData("MTA-STS", AppMode.MtaSts)]
     public void CaseAndSurroundingSpaceDoNotMatter(string value, AppMode expected)
         => Assert.Equal(expected, AppRuntimeMode.Parse(value));
 
@@ -40,6 +43,7 @@ public sealed class AppRuntimeModeTests
     [InlineData("both")]       // a plausible guess at the combined mode's name
     [InlineData("combined")]   // ditto — the ADR calls it this in prose
     [InlineData("api,worker")] // treating it like a list
+    [InlineData("mtasts")]     // the hyphen is part of the name
     [InlineData("true")]
     public void AnythingElseFailsStartup(string value)
     {
@@ -58,14 +62,18 @@ public sealed class AppRuntimeModeTests
         Assert.False(AppMode.Api.RunsWorker());
         Assert.True(AppMode.Worker.RunsWorker());
         Assert.True(AppMode.All.RunsWorker());
+        // The public policy host serves; it must never ingest.
+        Assert.False(AppMode.MtaSts.RunsWorker());
     }
 
     [Fact]
-    public void HttpIsServedInApiAndAllOnly()
+    public void HttpIsServedInApiAllAndMtaStsOnly()
     {
         Assert.True(AppMode.Api.RunsHttp());
         Assert.False(AppMode.Worker.RunsHttp());
         Assert.True(AppMode.All.RunsHttp());
+        Assert.True(AppMode.MtaSts.RunsHttp());
+        Assert.False(AppMode.Migrate.RunsHttp());
     }
 
     [Fact]

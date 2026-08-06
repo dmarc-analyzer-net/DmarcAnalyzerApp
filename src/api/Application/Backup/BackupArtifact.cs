@@ -19,7 +19,11 @@ public sealed record BackupArtifact(
     IReadOnlyList<BackupNotificationRecipient> NotificationRecipients,
     IReadOnlyList<BackupUser> Users,
     IReadOnlyList<BackupUserIdentity> UserIdentities,
-    IReadOnlyList<BackupUserClientGrant> Grants);
+    IReadOnlyList<BackupUserClientGrant> Grants,
+    // Null-tolerant on read: artifacts written before hosted MTA-STS existed
+    // lack the property, and FormatVersion is bumped only for changes an older
+    // reader could not handle — an ignorable extra list is not one.
+    IReadOnlyList<BackupMtaStsPolicy>? MtaStsPolicies = null);
 
 /// <summary>
 /// What this artifact is, and — as importantly — what it is not.
@@ -166,3 +170,22 @@ public sealed record BackupUserClientGrant(
     Guid ClientId,
     DateTime CreatedAtUtc,
     Guid? CreatedByUserId);
+
+/// <summary>
+/// A hosted MTA-STS policy — DNS-load-bearing configuration, which is exactly
+/// what the artifact exists to preserve. <c>PolicyId</c> travels verbatim so a
+/// restore serves the same id and forces no TXT record update on any client
+/// domain. The monitoring state (<c>mta_sts_state</c>) is deliberately absent:
+/// it is a cache the check pass rebuilds within one interval.
+/// </summary>
+public sealed record BackupMtaStsPolicy(
+    Guid Id,
+    Guid DomainId,
+    bool Enabled,
+    string Mode,
+    int MaxAgeSeconds,
+    string MxPatterns,
+    string PolicyId,
+    DateTime ModeChangedAtUtc,
+    DateTime CreatedAtUtc,
+    DateTime UpdatedAtUtc);

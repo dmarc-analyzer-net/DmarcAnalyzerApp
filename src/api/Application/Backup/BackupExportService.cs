@@ -116,6 +116,16 @@ public sealed class BackupExportService(
                 x.Id, x.UserId, x.ClientId, x.CreatedAtUtc, x.CreatedByUserId))
             .ToListAsync(ct);
 
+        // PolicyId travels verbatim so a restore forces no TXT update; the
+        // monitoring state stays behind — the check pass rebuilds it.
+        var mtaStsPolicies = await db.MtaStsPolicies
+            .AsNoTracking()
+            .OrderBy(x => x.DomainId)
+            .Select(x => new BackupMtaStsPolicy(
+                x.Id, x.DomainId, x.Enabled, x.Mode, x.MaxAgeSeconds, x.MxPatterns,
+                x.PolicyId, x.ModeChangedAtUtc, x.CreatedAtUtc, x.UpdatedAtUtc))
+            .ToListAsync(ct);
+
         var (migrationId, migrationCount) = await MigrationStateAsync(ct);
 
         var manifest = new BackupManifest(
@@ -149,7 +159,8 @@ public sealed class BackupExportService(
         }
 
         return ServiceResult<BackupArtifact>.Success(new BackupArtifact(
-            manifest, clients, domains, mailboxSources, recipients, users, identities, grants));
+            manifest, clients, domains, mailboxSources, recipients, users, identities, grants,
+            mtaStsPolicies));
     }
 
     /// <summary>

@@ -165,6 +165,7 @@ public sealed class BackupImportService(
         var identityTally = new Tally(BackupImportEntities.UserIdentity);
         var grantTally = new Tally(BackupImportEntities.UserClientGrant);
         var recipientTally = new Tally(BackupImportEntities.NotificationRecipient);
+        var mtaStsPolicyTally = new Tally(BackupImportEntities.MtaStsPolicy);
 
         var state = await LoadStateAsync(ct);
         BackupImportUserReport userReport;
@@ -178,6 +179,7 @@ public sealed class BackupImportService(
             // Id out of the map the parent pass just filled in.
             ImportClients(artifact, state, clientTally);
             ImportDomains(artifact, state, domainTally);
+            ImportMtaStsPolicies(artifact, state, mtaStsPolicyTally);
             ImportMailboxSources(artifact, state, sourceTally);
             userReport = ImportUsers(artifact, state, userTally);
             ImportUserIdentities(artifact, state, identityTally);
@@ -216,6 +218,7 @@ public sealed class BackupImportService(
             identityTally.Freeze(),
             grantTally.Freeze(),
             recipientTally.Freeze(),
+            mtaStsPolicyTally.Freeze(),
         };
 
         logger.LogInformation(
@@ -362,6 +365,74 @@ public sealed class BackupImportService(
             db.Domains.Add(row);
             state.DomainIdsInUse.Add(row.Id);
             state.DomainsByName[name] = row;
+            tally.Created++;
+        }
+    }
+
+    /// <summary>
+    /// Hosted policies resolve their domain through the artifact's own domain list — the
+    /// artifact's DomainId names a row in the same file, and the domain pass just decided
+    /// what that row's effective identity here is. A policy whose domain was skipped is
+    /// skipped with it, for the skipped domain's reason.
+    /// </summary>
+    private void ImportMtaStsPolicies(BackupArtifact artifact, ImportState state, Tally tally)
+    {
+        foreach (var policy in artifact.MtaStsPolicies ?? [])
+        {
+            var artifactDomain = artifact.Domains.FirstOrDefault(d => d.Id == policy.DomainId);
+            var label = artifactDomain is null ? policy.DomainId.ToString() : NormalizeText(artifactDomain.Name);
+
+            if (artifactDomain is null
+                || !state.DomainsByName.TryGetValue(NormalizeText(artifactDomain.Name), out var domainRow))
+            {
+                Skip(tally, BackupImportEntities.MtaStsPolicy, label, policy.Id, Guid.Empty,
+                    artifactDomain is null
+                        ? "its domain is not in this artifact, so there is nothing to attach it to"
+                        : "its domain was not imported, so the policy has no row to attach to");
+                continue;
+            }
+
+            if (state.MtaStsPoliciesByDomainId.TryGetValue(domainRow.Id, out var existing))
+            {
+                NoteKeptExistingId(tally, BackupImportEntities.MtaStsPolicy, label, policy.Id, existing.Id);
+
+                existing.Enabled = policy.Enabled;
+                existing.Mode = policy.Mode;
+                existing.MaxAgeSeconds = policy.MaxAgeSeconds;
+                existing.MxPatterns = policy.MxPatterns;
+                // Verbatim, so a restore never forces a TXT record update.
+                existing.PolicyId = policy.PolicyId;
+                existing.ModeChangedAtUtc = policy.ModeChangedAtUtc;
+                existing.CreatedAtUtc = policy.CreatedAtUtc;
+                existing.UpdatedAtUtc = policy.UpdatedAtUtc;
+                tally.Updated++;
+                continue;
+            }
+
+            if (state.MtaStsPolicyIdsInUse.Contains(policy.Id))
+            {
+                Skip(tally, BackupImportEntities.MtaStsPolicy, label, policy.Id, policy.Id,
+                    "that id already belongs to a policy for a different domain here");
+                continue;
+            }
+
+            var row = new MtaStsPolicy
+            {
+                Id = policy.Id,
+                DomainId = domainRow.Id,
+                Enabled = policy.Enabled,
+                Mode = policy.Mode,
+                MaxAgeSeconds = policy.MaxAgeSeconds,
+                MxPatterns = policy.MxPatterns,
+                PolicyId = policy.PolicyId,
+                ModeChangedAtUtc = policy.ModeChangedAtUtc,
+                CreatedAtUtc = policy.CreatedAtUtc,
+                UpdatedAtUtc = policy.UpdatedAtUtc,
+            };
+
+            db.MtaStsPolicies.Add(row);
+            state.MtaStsPolicyIdsInUse.Add(row.Id);
+            state.MtaStsPoliciesByDomainId[domainRow.Id] = row;
             tally.Created++;
         }
     }
@@ -704,6 +775,7 @@ public sealed class BackupImportService(
         var identities = await db.UserIdentities.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
         var grants = await db.UserClientGrants.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
         var recipients = await db.NotificationRecipients.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
+        var mtaStsPolicies = await db.MtaStsPolicies.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
 
         return new ImportState
         {
@@ -720,6 +792,8 @@ public sealed class BackupImportService(
             GrantIdsInUse = [.. grants.Select(x => x.Id)],
             RecipientsByScopeEmail = Index(recipients, x => RecipientKey(x.ClientId, x.Email)),
             RecipientIdsInUse = [.. recipients.Select(x => x.Id)],
+            MtaStsPoliciesByDomainId = mtaStsPolicies.ToDictionary(x => x.DomainId),
+            MtaStsPolicyIdsInUse = [.. mtaStsPolicies.Select(x => x.Id)],
         };
     }
 
@@ -859,6 +933,9 @@ public sealed class BackupImportService(
         public required Dictionary<string, UserClientGrant> GrantsByUserClient { get; init; }
         public required Dictionary<string, NotificationRecipient> RecipientsByScopeEmail { get; init; }
 
+        /// <summary>Keyed by DomainId — the unique index the table itself enforces.</summary>
+        public required Dictionary<Guid, MtaStsPolicy> MtaStsPoliciesByDomainId { get; init; }
+
         /// <summary>
         /// Ids already spoken for, per table, including the ones this pass has just added. They
         /// are what turns "the artifact wants to insert an Id that is taken by a row with a
@@ -870,6 +947,7 @@ public sealed class BackupImportService(
         public required HashSet<Guid> IdentityIdsInUse { get; init; }
         public required HashSet<Guid> GrantIdsInUse { get; init; }
         public required HashSet<Guid> RecipientIdsInUse { get; init; }
+        public required HashSet<Guid> MtaStsPolicyIdsInUse { get; init; }
 
         /// <summary>
         /// Artifact client Id → the Id this install actually uses. Identical for everything a

@@ -6,8 +6,9 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
 
 - Repository structure and planning docs baseline under `docs/planning`.
 - Single image runtime model for API and worker (`APP_MODE=api|worker`).
-- **Deployment**: one image, four `APP_MODE` values (`api`, `worker`, `all`,
-  `migrate`). Docker Compose ships as a single combined container plus PostgreSQL,
+- **Deployment**: one image, five `APP_MODE` values (`api`, `worker`, `all`,
+  `migrate`, `mta-sts` — the last a dedicated internet-facing MTA-STS policy
+  host serving only the public routes and health probes). Docker Compose ships as a single combined container plus PostgreSQL,
   with overlays for an external database and for splitting console from worker.
   A Helm chart (`deploy/helm/dmarc-analyzer`) exposes the same two axes, applies
   migrations via a pre-install Job, and is published to
@@ -164,6 +165,30 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - Domain Detail "Transport security (MTA-STS)" card; domains without a
     record render a deliberately quiet "Not configured" line — publishing
     MTA-STS is optional and most domains don't
+
+- Hosted MTA-STS policies (RFC 8461 serving):
+  - per-domain policy rows (`mta_sts_policy`: mode, max_age, mx patterns,
+    server-generated id) served anonymously at `/.well-known/mta-sts.txt`,
+    keyed on the request's Host header — paths outside `/api/v1/` are
+    anonymous by construction, and the explicit route beats the SPA fallback
+  - the id bumps exactly when the rendered policy content changes (senders
+    only refetch on an id move); the console surfaces the CNAME + TXT records
+    to publish, with the new TXT called out after every content change
+  - `/mta-sts/ask` answers Caddy's on-demand-TLS gate, so certificate issuance
+    is limited to hostnames this instance actually serves
+  - CRUD (`GET`/`PUT`/`DELETE /api/v1/domains/{id}/mta-sts-policy`, writes
+    admin-only, audited) plus client-level bulk apply
+    (`POST /api/v1/clients/{id}/mta-sts-policy/apply`) for same-provider
+    fleets — per-domain outcomes report exactly which TXT records changed
+  - `APP_MODE=mta-sts` runs a dedicated internet-facing policy host (no
+    console, no API, no auth stack, no migrations; readiness probes the
+    policy table); the default remains serving from the api/all process
+  - hosted policies are validated by the monitoring pass like any external
+    one; a policy that has never been fetched successfully reads as setup
+    guidance, not breakage, and the `mta_sts_broken` alert is suppressed for
+    that window
+  - policies ride in the backup artifact (id verbatim, so a restore forces no
+    TXT updates); ops doc: `docs/ops/mta-sts-hosting.md`
 
 - Retention enforcement:
   - `RetentionPurgeService` deletes DMARC data whose **reporting window end**

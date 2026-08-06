@@ -233,7 +233,7 @@ public sealed class BackupExportTests
 
         Assert.Equal(
             ["manifest", "clients", "domains", "mailboxSources", "notificationRecipients",
-             "users", "userIdentities", "grants"],
+             "users", "userIdentities", "grants", "mtaStsPolicies"],
             root.EnumerateObject().Select(p => p.Name).ToArray());
 
         Assert.Equal(

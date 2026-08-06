@@ -363,6 +363,30 @@ unprotected); only a definitive `missing` clears them. Excluded from the
 backup config artifact and history streams — it is a cache the pass rebuilds
 within one interval.
 
+### `mta_sts_policy`
+A hosted MTA-STS policy: what this instance serves at
+`https://mta-sts.{domain}/.well-known/mta-sts.txt` for a domain whose mta-sts
+CNAME points here. Inside-out serving config, deliberately separate from
+`mta_sts_state` (outside-in monitoring): once the CNAME is live, the check
+pass validates a hosted policy exactly like an external one.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK |
+| `DomainId` | FK → `domain`, **cascade**, unique — one hosted policy per domain |
+| `Enabled` | serving requires this and `domain.IsActive`; off keeps the settings and answers 404 |
+| `Mode` | max 16 — `enforce` \| `testing` \| `none` |
+| `MaxAgeSeconds` | validated 3600–31557600 (the RFC cap) |
+| `MxPatterns` | max 2000 — newline-joined, normalized lowercase. Empty is legal only for mode `none`, but stored lines survive a mode switch |
+| `PolicyId` | max 32 — server-generated `yyyyMMddHHmmss` UTC, bumped **exactly** when the rendered policy content changes (senders only refetch on an id move; a same-second double save formats one second later) |
+| `ModeChangedAtUtc` | when `Mode` last changed (set on create) — the testing-clock input for the promotion gate |
+| `CreatedAtUtc`, `UpdatedAtUtc` | operator actions; an identical save touches neither |
+
+Included in the backup artifact (`mtaStsPolicies`, ids and `PolicyId`
+verbatim so a restore forces no TXT updates); the import attaches policies
+through the artifact's own domain list and skips ones whose domain was
+skipped.
+
 ## A.5.1 What is deliberately *not* a table
 
 - **No pre-aggregated metrics table.** Dashboard figures are computed on demand

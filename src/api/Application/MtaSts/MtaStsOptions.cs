@@ -25,4 +25,20 @@ public sealed class MtaStsOptions
     /// own network. Turn on for instances that monitor intranet mail domains.
     /// </summary>
     public bool AllowPrivateNetworks { get; set; }
+
+    /// <summary>
+    /// The hostname client CNAMEs point at for hosted policies — what the
+    /// console shows as the CNAME target in publish instructions. Empty means
+    /// the console shows a hint to configure it instead. Serving itself never
+    /// reads this; it keys on the request's Host header.
+    /// </summary>
+    public string PolicyHost { get; set; } = string.Empty;
+
+    /// <summary>
+    /// In-memory TTL for served policy bodies, and the Cache-Control max-age on
+    /// the public endpoint. Also the propagation bound for a dedicated
+    /// APP_MODE=mta-sts container after a console edit — negligible against
+    /// max_age values measured in days.
+    /// </summary>
+    public int ServeCacheSeconds { get; set; } = 60;
 }

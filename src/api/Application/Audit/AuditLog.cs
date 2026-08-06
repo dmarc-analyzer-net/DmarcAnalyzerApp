@@ -27,6 +27,11 @@ public static class AuditEvents
     public const string UserGrantsChanged = "user.grants.changed";
     public const string UserDeleted = "user.deleted";
 
+    public const string MtaStsPolicyCreated = "mta_sts_policy.created";
+    public const string MtaStsPolicyUpdated = "mta_sts_policy.updated";
+    public const string MtaStsPolicyDeleted = "mta_sts_policy.deleted";
+    public const string MtaStsPolicyBulkApplied = "mta_sts_policy.bulk_applied";
+
     public const string AlertStatusChanged = "alert.status.changed";
     public const string RetentionPurgeRan = "retention.purge.ran";
     public const string NotificationRecipientAdded = "notification_recipient.added";

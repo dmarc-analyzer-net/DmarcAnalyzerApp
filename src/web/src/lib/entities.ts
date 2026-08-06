@@ -289,3 +289,50 @@ export type ConfigExportManifest = {
   /** False means this file contains plaintext mailbox passwords. */
   credentialsProtected: boolean
 }
+
+// --- Hosted MTA-STS policies (/api/v1/domains/{domainId}/mta-sts-policy) ---
+
+export type MtaStsPolicyMode = 'enforce' | 'testing' | 'none'
+
+export type MtaStsHostedPolicy = {
+  id: string
+  domainId: string
+  enabled: boolean
+  mode: MtaStsPolicyMode
+  maxAgeSeconds: number
+  mxPatterns: string[]
+  policyId: string
+  txtRecordName: string
+  txtRecordValue: string
+  policyUrl: string
+  modeChangedAtUtc: string
+  createdAtUtc: string
+  updatedAtUtc: string
+}
+
+/**
+ * One response for the whole hosted-policy section. policy is null when the
+ * domain hosts no policy here (a 200 — hosting simply isn't set up).
+ * cnameTarget is null until MtaSts__PolicyHost is configured.
+ */
+export type MtaStsPolicyResponse = {
+  domainId: string
+  domainName: string
+  clientId: string
+  policy: MtaStsHostedPolicy | null
+  cnameRecordName: string
+  cnameTarget: string | null
+}
+
+export type MtaStsPolicyApplyOutcome = {
+  domainId: string
+  domainName: string
+  outcome: 'created' | 'updated' | 'unchanged'
+  policyId: string
+  txtRecordName: string
+  txtRecordValue: string
+}
+
+export type MtaStsPolicyBulkApplyResponse = {
+  results: MtaStsPolicyApplyOutcome[]
+}

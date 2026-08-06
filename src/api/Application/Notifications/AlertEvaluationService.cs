@@ -299,6 +299,7 @@ public sealed class AlertEvaluationService(
                 s.PolicyIdChangedAtUtc,
                 s.FetchStatus,
                 s.FetchDetail,
+                s.LastFetchOkAtUtc,
                 s.PolicyValid,
                 s.Mode,
                 s.UnmatchedMxHostsJson,
@@ -340,6 +341,18 @@ public sealed class AlertEvaluationService(
         var fetchBroken = state.DnsRecordStatus == MtaStsRecordStatus.Found
             && state.FetchStatus is not null && state.FetchStatus != MtaStsFetchStatus.Ok;
         var policyBroken = state.DnsRecordStatus == MtaStsRecordStatus.Found && state.PolicyValid == false;
+
+        // The setup window: a hosted policy whose fetch has never once succeeded
+        // is a domain mid-onboarding (TXT published, CNAME or proxy not wired
+        // yet), and the card renders that as actionable setup guidance. Alerting
+        // "broken" would be crying wolf about work in progress. Once the fetch
+        // has succeeded even once, breakage is real news again.
+        if (fetchBroken && state.LastFetchOkAtUtc is null
+            && await db.MtaStsPolicies.AsNoTracking()
+                .AnyAsync(p => p.DomainId == domainId && p.Enabled, ct))
+        {
+            fetchBroken = false;
+        }
 
         if (txtBroken || fetchBroken || policyBroken)
         {

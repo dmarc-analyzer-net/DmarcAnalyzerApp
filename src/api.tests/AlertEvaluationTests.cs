@@ -495,6 +495,74 @@ public sealed class AlertEvaluationTests
     }
 
     [Fact]
+    public async Task MtaStsBroken_IsSuppressedDuringHostedPolicySetup()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        // Hosted here, TXT already published, but the CNAME/proxy isn't wired
+        // yet: the fetch has never once succeeded. That's onboarding, not
+        // breakage — the card shows setup guidance instead.
+        db.Add(new MtaStsPolicy
+        {
+            DomainId = domain.Id, Enabled = true, Mode = "testing",
+            MaxAgeSeconds = 86400, MxPatterns = "mx1.acme.example", PolicyId = "20260801000000",
+        });
+        SeedMtaSts(db, domain.Id, s =>
+        {
+            s.FetchStatus = "connect_failed";
+            s.LastFetchOkAtUtc = null;
+        });
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(0, result.AlertsRaised);
+    }
+
+    [Fact]
+    public async Task MtaStsBroken_FiresOnceTheHostedPolicyWasEverReachable()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        db.Add(new MtaStsPolicy
+        {
+            DomainId = domain.Id, Enabled = true, Mode = "testing",
+            MaxAgeSeconds = 86400, MxPatterns = "mx1.acme.example", PolicyId = "20260801000000",
+        });
+        SeedMtaSts(db, domain.Id, s =>
+        {
+            s.FetchStatus = "connect_failed";
+            s.LastFetchOkAtUtc = DateTime.UtcNow.AddDays(-1); // worked yesterday — real breakage
+        });
+        await db.SaveChangesAsync();
+
+        await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        var alert = Assert.Single(await db.AlertEvents.ToListAsync());
+        Assert.Equal(AlertRuleTypes.MtaStsBroken, alert.RuleType);
+    }
+
+    [Fact]
+    public async Task MtaStsBroken_StillFiresForExternallyHostedDomains_EvenIfNeverFetched()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        // No hosted policy row: the domain advertises MTA-STS hosted elsewhere,
+        // and it is broken. The setup-window suppression must not cover this.
+        SeedMtaSts(db, domain.Id, s =>
+        {
+            s.FetchStatus = "http_error";
+            s.LastFetchOkAtUtc = null;
+        });
+        await db.SaveChangesAsync();
+
+        await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        var alert = Assert.Single(await db.AlertEvents.ToListAsync());
+        Assert.Equal(AlertRuleTypes.MtaStsBroken, alert.RuleType);
+    }
+
+    [Fact]
     public async Task NoMtaStsStateRow_ProducesNoCandidates()
     {
         await using var db = NewDb();

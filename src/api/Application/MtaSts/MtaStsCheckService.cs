@@ -344,6 +344,56 @@ public sealed class MtaStsCheckService(
     private static string Truncate(string line)
         => line.Length <= 60 ? line : line[..57] + "…";
 
+    // --- Policy rendering (the hosted-policy half; the parser above is the other) ---
+
+    /// <summary>
+    /// Renders a policy file exactly as the public endpoint serves it: CRLF line
+    /// endings (the RFC's ABNF and examples), trailing CRLF, fields in the
+    /// RFC's example order, one mx line per pattern (none for an empty list —
+    /// legal only under mode none). A round-trip through <see cref="ParsePolicy"/>
+    /// is asserted in tests, which is what keeps the serving and checking halves
+    /// from ever disagreeing about the format.
+    /// </summary>
+    public static string RenderPolicyFile(string mode, int maxAgeSeconds, IReadOnlyList<string> mxPatterns)
+    {
+        var builder = new System.Text.StringBuilder();
+        builder.Append("version: STSv1\r\n");
+        builder.Append("mode: ").Append(mode).Append("\r\n");
+        foreach (var pattern in mxPatterns)
+        {
+            builder.Append("mx: ").Append(pattern).Append("\r\n");
+        }
+
+        builder.Append("max_age: ").Append(maxAgeSeconds).Append("\r\n");
+        return builder.ToString();
+    }
+
+    /// <summary>
+    /// Whether a string is a well-formed mx pattern worth persisting: an optional
+    /// leading <c>*.</c> (the whole leftmost label), then at least two hostname
+    /// labels of letters, digits and interior hyphens. Stricter than the parser,
+    /// which reads whatever the wild publishes — this validates what *we* write.
+    /// </summary>
+    public static bool IsValidMxPattern(string pattern)
+    {
+        var p = pattern.Trim().TrimEnd('.').ToLowerInvariant();
+        if (p.StartsWith("*.", StringComparison.Ordinal))
+        {
+            p = p[2..];
+        }
+
+        if (p.Length is 0 or > 253 || p.Contains('*'))
+        {
+            return false;
+        }
+
+        var labels = p.Split('.');
+        return labels.Length >= 2 && labels.All(label =>
+            label.Length is >= 1 and <= 63
+            && label[0] != '-' && label[^1] != '-'
+            && label.All(c => char.IsAsciiLetterOrDigit(c) || c == '-'));
+    }
+
     // --- MX pattern matching (RFC 8461 §4.1) ---
 
     /// <summary>

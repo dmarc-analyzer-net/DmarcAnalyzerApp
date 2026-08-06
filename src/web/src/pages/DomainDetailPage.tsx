@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { ComplianceBar } from '@/components/data/ComplianceBar'
@@ -8,10 +8,20 @@ import { SortHeader, type SortDir } from '@/components/data/SortHeader'
 import { StatCard } from '@/components/data/StatCard'
 import { TrendChart } from '@/components/data/TrendChart'
 import { DaysSelector } from '@/components/DaysSelector'
+import { Notice } from '@/components/Notice'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Icon, type IconName } from '@/components/ui/icon'
+import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
   ENFORCEMENT_STATUS_META,
@@ -32,7 +42,14 @@ import {
 } from '@/lib/analytics'
 import { ApiError, fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
-import { isStaff } from '@/lib/authz'
+import { isAdmin, isStaff } from '@/lib/authz'
+import type {
+  Domain,
+  MtaStsPolicyApplyOutcome,
+  MtaStsPolicyBulkApplyResponse,
+  MtaStsPolicyMode,
+  MtaStsPolicyResponse,
+} from '@/lib/entities'
 import { formatCompact, formatFullDate, formatPercent, formatRelativeOrDate, formatShortDate } from '@/lib/format'
 import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
@@ -559,7 +576,9 @@ function formatMaxAge(seconds: number): string {
 function TransportSecurityCard({ domainId }: { domainId: string }) {
   const { user } = useAuth()
   const staff = isStaff(user)
+  const admin = isAdmin(user)
   const [state, setState] = useState<MtaStsState | null>(null)
+  const [policyResponse, setPolicyResponse] = useState<MtaStsPolicyResponse | null>(null)
   const [busy, setBusy] = useState(true)
   const [rechecking, setRechecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -570,8 +589,14 @@ function TransportSecurityCard({ domainId }: { domainId: string }) {
     setBusy(true)
     setError(null)
     try {
-      const payload = await fetchJson<MtaStsState>(`/api/v1/analytics/domains/${domainId}/mta-sts`)
-      if (seq === requestSeq.current) setState(payload)
+      const [statePayload, policyPayload] = await Promise.all([
+        fetchJson<MtaStsState>(`/api/v1/analytics/domains/${domainId}/mta-sts`),
+        fetchJson<MtaStsPolicyResponse>(`/api/v1/domains/${domainId}/mta-sts-policy`),
+      ])
+      if (seq === requestSeq.current) {
+        setState(statePayload)
+        setPolicyResponse(policyPayload)
+      }
     } catch (loadError) {
       if (seq === requestSeq.current) {
         setError(loadError instanceof Error ? loadError.message : 'Failed to load MTA-STS state')
@@ -758,7 +783,441 @@ function TransportSecurityCard({ domainId }: { domainId: string }) {
           </p>
         </div>
       )}
+      {!busy && !error && policyResponse ? (
+        <HostedPolicySection
+          response={policyResponse}
+          monitoring={state}
+          admin={admin}
+          onChanged={() => void load()}
+        />
+      ) : null}
     </Card>
+  )
+}
+
+const MAX_AGE_PRESETS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: '86400', label: '1 day' },
+  { value: '604800', label: '1 week' },
+  { value: '1209600', label: '2 weeks' },
+  { value: '2592000', label: '30 days' },
+  { value: 'custom', label: 'Custom (seconds)' },
+]
+
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = useState(false)
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      aria-label={`Copy ${label}`}
+      onClick={() => {
+        void navigator.clipboard?.writeText(value).then(() => {
+          setCopied(true)
+          window.setTimeout(() => setCopied(false), 1500)
+        })
+      }}
+    >
+      <Icon name={copied ? 'circle-check' : 'copy'} size={13} />
+    </Button>
+  )
+}
+
+/** A labeled DNS record with its value in mono and a copy affordance. */
+function PublishRow({ label, name, value }: { label: string; name: string; value: string }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+      <span className="w-16 shrink-0 text-secondary">{label}</span>
+      <span className="font-mono font-semibold text-body">{name}</span>
+      <Icon name="arrow-right" size={12} className="shrink-0 text-secondary" aria-hidden />
+      <span className="break-all font-mono text-body">{value}</span>
+      <CopyButton value={value} label={label} />
+    </div>
+  )
+}
+
+/**
+ * The hosted-policy half of the card: this instance serving the policy file for
+ * the domain. Deliberately renders in every monitoring state — a domain with no
+ * MTA-STS record yet is exactly the one worth hosting a policy for.
+ */
+function HostedPolicySection({
+  response,
+  monitoring,
+  admin,
+  onChanged,
+}: {
+  response: MtaStsPolicyResponse
+  monitoring: MtaStsState | null
+  admin: boolean
+  onChanged: () => void
+}) {
+  const [editorOpen, setEditorOpen] = useState(false)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const policy = response.policy
+
+  // Hosted and enabled, but the checker has never once fetched it: that is a
+  // setup window (CNAME or proxy not wired yet), rendered as guidance rather
+  // than failure. The alert evaluator suppresses mta_sts_broken on the same rule.
+  const waitingForDns =
+    policy?.enabled === true && monitoring?.checked === true && monitoring.lastFetchOkAtUtc === null
+
+  const removePolicy = async () => {
+    if (!window.confirm(
+      `Stop hosting the MTA-STS policy for ${response.domainName}? The client's mta-sts CNAME ` +
+      'and _mta-sts TXT records should be removed too, or senders will see a broken policy host.',
+    )) {
+      return
+    }
+
+    setDeleteError(null)
+    try {
+      await fetchJson<void>(`/api/v1/domains/${response.domainId}/mta-sts-policy`, { method: 'DELETE' })
+      setNotice(null)
+      onChanged()
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Failed to delete the policy')
+    }
+  }
+
+  return (
+    <div className="mt-5 border-t border-border pt-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <PanelSectionTitle>Hosted policy</PanelSectionTitle>
+        {policy ? (
+          policy.enabled ? (
+            <Badge variant={MTA_STS_MODE_META[policy.mode].badge}>mode: {policy.mode}</Badge>
+          ) : (
+            <Badge variant="neutral">Hosting off</Badge>
+          )
+        ) : null}
+        {policy ? (
+          <span className="font-mono text-xs text-secondary">
+            id {policy.policyId} · max_age {formatMaxAge(policy.maxAgeSeconds)}
+          </span>
+        ) : null}
+        {admin ? (
+          <span className="ml-auto flex gap-1.5">
+            {policy ? (
+              <>
+                <Button variant="outline" size="sm" onClick={() => setEditorOpen(true)}>
+                  <Icon name="pencil" size={13} />
+                  Edit
+                </Button>
+                <Button variant="ghost" size="sm" onClick={() => void removePolicy()}>
+                  <Icon name="trash-2" size={13} />
+                </Button>
+              </>
+            ) : (
+              <Button variant="outline" size="sm" onClick={() => setEditorOpen(true)}>
+                <Icon name="plus" size={13} />
+                Host MTA-STS policy
+              </Button>
+            )}
+          </span>
+        ) : null}
+      </div>
+
+      {!policy ? (
+        <p className="mt-2 text-xs leading-relaxed text-secondary">
+          Not hosted here. This instance can serve the policy file for {response.domainName} — onboarding
+          is one CNAME plus one TXT record, no per-domain web hosting.
+        </p>
+      ) : (
+        <div className="mt-3 space-y-3">
+          {notice ? <Notice tone="warn">{notice}</Notice> : null}
+          {deleteError ? <Notice tone="danger">{deleteError}</Notice> : null}
+          {waitingForDns ? (
+            <Notice tone="warn">
+              Waiting for DNS — the policy file has never been fetched from the public endpoint yet.
+              Create the records below (and make sure the reverse proxy routes {response.cnameRecordName}),
+              then use Recheck now.
+            </Notice>
+          ) : null}
+          {!policy.enabled ? (
+            <p className="text-xs text-secondary">
+              Hosting is off — the settings are kept, but the public endpoint answers 404 for this domain.
+            </p>
+          ) : null}
+          <div>
+            <div className="text-xs font-semibold text-body">Records to publish on {response.domainName}</div>
+            <div className="mt-1.5 space-y-1.5">
+              <PublishRow
+                label="CNAME"
+                name={response.cnameRecordName}
+                value={response.cnameTarget ?? 'set MtaSts__PolicyHost to show the target'}
+              />
+              <PublishRow label="TXT" name={policy.txtRecordName} value={policy.txtRecordValue} />
+            </div>
+            <p className="mt-1.5 text-xs text-secondary">
+              Served at{' '}
+              <a className="font-mono underline" href={policy.policyUrl} target="_blank" rel="noreferrer">
+                {policy.policyUrl}
+              </a>
+            </p>
+          </div>
+          {policy.mxPatterns.length > 0 ? (
+            <div className="text-xs text-secondary">
+              mx patterns:{' '}
+              <span className="font-mono text-body">{policy.mxPatterns.join(', ')}</span>
+            </div>
+          ) : null}
+        </div>
+      )}
+
+      {editorOpen ? (
+        <MtaStsPolicyEditor
+          response={response}
+          onClose={() => setEditorOpen(false)}
+          onSaved={(idChanged) => {
+            setEditorOpen(false)
+            setNotice(idChanged
+              ? 'Policy content changed, so the id moved — update the TXT record above or senders keep the old policy until max_age expires.'
+              : null)
+            onChanged()
+          }}
+        />
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * Create/edit dialog, with the bulk expander for same-provider fleets: apply
+ * the same shape to sibling domains in one save. Only domains whose rendered
+ * policy actually changes get a new id, and the results view lists exactly the
+ * TXT records that now need updating.
+ */
+function MtaStsPolicyEditor({
+  response,
+  onClose,
+  onSaved,
+}: {
+  response: MtaStsPolicyResponse
+  onClose: () => void
+  onSaved: (idChanged: boolean) => void
+}) {
+  const existing = response.policy
+  const presetValue = existing && MAX_AGE_PRESETS.some((p) => p.value === String(existing.maxAgeSeconds))
+    ? String(existing.maxAgeSeconds)
+    : existing
+      ? 'custom'
+      : '604800'
+
+  const [enabled, setEnabled] = useState(existing?.enabled ?? true)
+  const [mode, setMode] = useState<MtaStsPolicyMode>(existing?.mode ?? 'testing')
+  const [maxAgePreset, setMaxAgePreset] = useState(presetValue)
+  const [maxAgeCustom, setMaxAgeCustom] = useState(String(existing?.maxAgeSeconds ?? 604800))
+  const [patternsText, setPatternsText] = useState(existing?.mxPatterns.join('\n') ?? '')
+  const [bulkOpen, setBulkOpen] = useState(false)
+  const [siblings, setSiblings] = useState<Domain[] | null>(null)
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [bulkResults, setBulkResults] = useState<MtaStsPolicyApplyOutcome[] | null>(null)
+
+  const toggleBulk = async (open: boolean) => {
+    setBulkOpen(open)
+    if (open && siblings === null) {
+      try {
+        const domains = await fetchJson<Domain[]>(`/api/v1/domains?clientId=${response.clientId}`)
+        setSiblings(domains.filter((d) => d.isActive && d.id !== response.domainId))
+      } catch {
+        setSiblings([])
+      }
+    }
+  }
+
+  const save = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setError(null)
+    setSaving(true)
+    const body = {
+      enabled,
+      mode,
+      maxAgeSeconds: maxAgePreset === 'custom' ? Number(maxAgeCustom) : Number(maxAgePreset),
+      mxPatterns: patternsText.split('\n').map((line) => line.trim()).filter(Boolean),
+    }
+
+    try {
+      if (selected.size > 0) {
+        const bulk = await fetchJson<MtaStsPolicyBulkApplyResponse>(
+          `/api/v1/clients/${response.clientId}/mta-sts-policy/apply`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...body, domainIds: [response.domainId, ...selected] }),
+          },
+        )
+        setBulkResults(bulk.results)
+      } else {
+        const updated = await fetchJson<MtaStsPolicyResponse>(
+          `/api/v1/domains/${response.domainId}/mta-sts-policy`,
+          { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+        )
+        onSaved(existing !== null && updated.policy !== null && updated.policy.policyId !== existing.policyId)
+      }
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Failed to save the policy')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const thisDomainResult = bulkResults?.find((r) => r.domainId === response.domainId)
+
+  return (
+    <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {existing ? `Edit hosted policy — ${response.domainName}` : `Host MTA-STS policy — ${response.domainName}`}
+          </DialogTitle>
+          <DialogDescription>
+            Served at the well-known URL for senders that honor MTA-STS. Start in testing; move to
+            enforce once TLS-RPT (or time) shows it clean.
+          </DialogDescription>
+        </DialogHeader>
+        {bulkResults ? (
+          <div className="space-y-3">
+            <Notice tone="ok">
+              Applied to {bulkResults.length} domain{bulkResults.length === 1 ? '' : 's'}. Each changed
+              domain has its own TXT record to publish or update:
+            </Notice>
+            <ul className="max-h-64 space-y-1.5 overflow-y-auto">
+              {bulkResults.map((result) => (
+                <li key={result.domainId} className="flex flex-wrap items-center gap-2 text-xs">
+                  <span className="font-mono font-semibold">{result.domainName}</span>
+                  <Badge variant={result.outcome === 'unchanged' ? 'neutral' : 'success'}>
+                    {result.outcome}
+                  </Badge>
+                  {result.outcome !== 'unchanged' ? (
+                    <>
+                      <span className="break-all font-mono text-secondary">
+                        {result.txtRecordName} → {result.txtRecordValue}
+                      </span>
+                      <CopyButton value={result.txtRecordValue} label={`TXT for ${result.domainName}`} />
+                    </>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                onClick={() => onSaved(thisDomainResult !== undefined && thisDomainResult.outcome !== 'unchanged' && existing !== null)}
+              >
+                Done
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <form className="grid gap-3" onSubmit={save}>
+            <label className="grid gap-1 text-xs text-secondary">
+              Mode
+              <Select value={mode} onChange={(e) => setMode(e.target.value as MtaStsPolicyMode)}>
+                <option value="testing">Testing — receivers report failures but still deliver</option>
+                <option value="enforce">Enforce — senders refuse delivery when MX or TLS does not match</option>
+                <option value="none">None — publish an explicit opt-out</option>
+              </Select>
+            </label>
+            <label className="grid gap-1 text-xs text-secondary">
+              Max age
+              <span className="flex gap-2">
+                <Select
+                  className="flex-1"
+                  value={maxAgePreset}
+                  onChange={(e) => setMaxAgePreset(e.target.value)}
+                >
+                  {MAX_AGE_PRESETS.map((preset) => (
+                    <option key={preset.value} value={preset.value}>
+                      {preset.label}
+                    </option>
+                  ))}
+                </Select>
+                {maxAgePreset === 'custom' ? (
+                  <Input
+                    mono
+                    className="w-32"
+                    value={maxAgeCustom}
+                    onChange={(e) => setMaxAgeCustom(e.target.value)}
+                    placeholder="seconds"
+                  />
+                ) : null}
+              </span>
+            </label>
+            <label className="grid gap-1 text-xs text-secondary">
+              mx patterns — one per line{mode === 'none' ? ' (optional for mode none)' : ''}
+              <textarea
+                className="min-h-20 rounded-md border border-border bg-surface-card px-3 py-2 font-mono text-xs text-body focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+                value={patternsText}
+                onChange={(e) => setPatternsText(e.target.value)}
+                placeholder={'mx1.example.com\n*.mail.example.com'}
+              />
+            </label>
+            <label className="flex items-center gap-2 text-sm text-secondary">
+              <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
+              Serve this policy (off keeps the settings but answers 404)
+            </label>
+
+            <div className="rounded-md border border-border px-3 py-2">
+              <label className="flex items-center gap-2 text-sm text-secondary">
+                <input type="checkbox" checked={bulkOpen} onChange={(e) => void toggleBulk(e.target.checked)} />
+                Also apply to other domains in this client
+              </label>
+              {bulkOpen ? (
+                siblings === null ? (
+                  <p className="mt-2 text-xs text-secondary">Loading domains…</p>
+                ) : siblings.length === 0 ? (
+                  <p className="mt-2 text-xs text-secondary">No other active domains in this client.</p>
+                ) : (
+                  <div className="mt-2 space-y-1">
+                    <label className="flex items-center gap-2 text-xs text-secondary">
+                      <input
+                        type="checkbox"
+                        checked={selected.size === siblings.length}
+                        onChange={(e) =>
+                          setSelected(e.target.checked ? new Set(siblings.map((d) => d.id)) : new Set())
+                        }
+                      />
+                      Select all ({siblings.length})
+                    </label>
+                    <div className="max-h-40 space-y-1 overflow-y-auto pl-5">
+                      {siblings.map((domain) => (
+                        <label key={domain.id} className="flex items-center gap-2 text-xs text-secondary">
+                          <input
+                            type="checkbox"
+                            checked={selected.has(domain.id)}
+                            onChange={(e) => {
+                              const next = new Set(selected)
+                              if (e.target.checked) next.add(domain.id)
+                              else next.delete(domain.id)
+                              setSelected(next)
+                            }}
+                          />
+                          <span className="font-mono">{domain.name}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )
+              ) : null}
+            </div>
+
+            {error ? <Notice tone="danger">{error}</Notice> : null}
+            <div className="flex justify-end gap-2 pt-1">
+              <Button type="button" variant="secondary" onClick={onClose}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={saving}>
+                {selected.size > 0 ? `Save and apply to ${selected.size + 1} domains` : 'Save'}
+              </Button>
+            </div>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
 

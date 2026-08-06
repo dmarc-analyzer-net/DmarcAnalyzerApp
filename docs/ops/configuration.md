@@ -39,7 +39,7 @@ Two settings have no usable default.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `APP_MODE` | `api` | `api` (console + HTTP), `worker` (ingestion loop only), `all` (both in one process), or `migrate` (apply pending migrations and exit). Any other value fails startup rather than falling back. |
+| `APP_MODE` | `api` | `api` (console + HTTP), `worker` (ingestion loop only), `all` (both in one process), `migrate` (apply pending migrations and exit), or `mta-sts` (only the public MTA-STS policy routes plus health probes — an internet-facing policy host separate from the console; see [mta-sts-hosting.md](./mta-sts-hosting.md)). Any other value fails startup rather than falling back. |
 | `Database__MigrateOnStartup` | `false` | Apply pending EF migrations at boot. The Compose files set it true. On Kubernetes leave it false and use the migration Job — with more than one replica, startup migration races. |
 | `ASPNETCORE_URLS` | `http://+:8080` | Set in the image; override only for an unusual port inside the container. |
 
@@ -186,6 +186,8 @@ publish one get the HTTPS fetch and MX lookup on top.
 | `MtaSts__FetchTimeoutSeconds` | `10` | Total budget for one policy-file fetch, connect included. |
 | `MtaSts__MaxConcurrentChecks` | `4` | Domains checked concurrently during a pass. |
 | `MtaSts__AllowPrivateNetworks` | `false` | Let the policy fetch connect to loopback/private/link-local addresses. Off because `mta-sts.<domain>` hostnames derive from operator-entered domains; turn on only for instances that monitor intranet mail domains. |
+| `MtaSts__PolicyHost` | *(empty)* | The hostname client CNAMEs point at for hosted policies — shown as the CNAME target in the console's publish instructions. Empty shows a configure-me hint instead. See [mta-sts-hosting.md](./mta-sts-hosting.md). |
+| `MtaSts__ServeCacheSeconds` | `60` | In-memory TTL and `Cache-Control: max-age` for served policy bodies; also how long a dedicated `mta-sts` container may serve a superseded body after a console edit. |
 
 ## Single sign-on (`Auth:Oidc`)
 

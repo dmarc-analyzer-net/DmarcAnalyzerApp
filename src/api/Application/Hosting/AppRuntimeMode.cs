@@ -26,6 +26,14 @@ public enum AppMode
     /// </para>
     /// </summary>
     Migrate,
+
+    /// <summary>
+    /// Serves only the public MTA-STS routes (the policy file and the
+    /// certificate-issuance ask) plus health probes — no console, no API, no
+    /// auth, no worker, no migrations. For running an internet-facing policy
+    /// host as its own container, structurally separate from the console.
+    /// </summary>
+    MtaSts,
 }
 
 public static class AppRuntimeMode
@@ -33,7 +41,7 @@ public static class AppRuntimeMode
     public const string EnvironmentVariable = "APP_MODE";
 
     /// <summary>Mode names accepted for <c>APP_MODE</c>, in the order they are documented.</summary>
-    public static readonly string[] Names = ["api", "worker", "all", "migrate"];
+    public static readonly string[] Names = ["api", "worker", "all", "migrate", "mta-sts"];
 
     /// <summary>
     /// Parses <c>APP_MODE</c>. Unset or blank means <see cref="AppMode.Api"/> —
@@ -58,6 +66,7 @@ public static class AppRuntimeMode
             "worker" => AppMode.Worker,
             "all" => AppMode.All,
             "migrate" => AppMode.Migrate,
+            "mta-sts" => AppMode.MtaSts,
             _ => throw new InvalidOperationException(
                 $"{EnvironmentVariable}='{value}' is not a valid runtime mode. " +
                 $"Expected one of: {string.Join(", ", Names)}."),
@@ -72,7 +81,7 @@ public static class AppRuntimeMode
     public static bool RunsWorker(this AppMode mode) => mode is AppMode.Worker or AppMode.All;
 
     /// <summary>Whether this mode serves HTTP.</summary>
-    public static bool RunsHttp(this AppMode mode) => mode is AppMode.Api or AppMode.All;
+    public static bool RunsHttp(this AppMode mode) => mode is AppMode.Api or AppMode.All or AppMode.MtaSts;
 
     /// <summary>Whether this mode runs to completion rather than staying up.</summary>
     public static bool IsOneShot(this AppMode mode) => mode is AppMode.Migrate;

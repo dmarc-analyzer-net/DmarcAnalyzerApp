@@ -74,7 +74,8 @@ public sealed class BackupImportTests
         IReadOnlyList<BackupNotificationRecipient>? recipients = null,
         IReadOnlyList<BackupUser>? users = null,
         IReadOnlyList<BackupUserIdentity>? identities = null,
-        IReadOnlyList<BackupUserClientGrant>? grants = null)
+        IReadOnlyList<BackupUserClientGrant>? grants = null,
+        IReadOnlyList<BackupMtaStsPolicy>? mtaStsPolicies = null)
         => new(
             manifest ?? Manifest(),
             clients ?? [],
@@ -83,7 +84,8 @@ public sealed class BackupImportTests
             recipients ?? [],
             users ?? [],
             identities ?? [],
-            grants ?? []);
+            grants ?? [],
+            mtaStsPolicies);
 
     private static BackupClient ExportedClient(
         Guid id, string slug, string? name = null, int retentionMonths = 12, bool legalHold = false)
@@ -91,6 +93,9 @@ public sealed class BackupImportTests
 
     private static BackupDomain ExportedDomain(Guid id, Guid clientId, string name)
         => new(id, clientId, name, true, Stamp, Stamp);
+
+    private static BackupMtaStsPolicy ExportedMtaStsPolicy(Guid id, Guid domainId)
+        => new(id, domainId, true, "testing", 86400, "mx1.acme.example", "20260101000000", Stamp, Stamp, Stamp);
 
     private static BackupMailboxSource ExportedSource(
         Guid id, Guid defaultClientId, string name = "Mailbox",
@@ -553,14 +558,16 @@ public sealed class BackupImportTests
 
         var clientId = Guid.NewGuid();
         var userId = Guid.NewGuid();
+        var domainId = Guid.NewGuid();
         var artifact = Artifact(
             clients: [ExportedClient(clientId, "acme")],
-            domains: [ExportedDomain(Guid.NewGuid(), clientId, "acme.example")],
+            domains: [ExportedDomain(domainId, clientId, "acme.example")],
             sources: [ExportedSource(Guid.NewGuid(), clientId)],
             recipients: [ExportedRecipient(Guid.NewGuid(), null, "agency@acme.example")],
             users: [ExportedUser(userId, "admin@acme.example")],
             identities: [ExportedIdentity(Guid.NewGuid(), userId, "sub-1")],
-            grants: [ExportedGrant(Guid.NewGuid(), userId, clientId)]);
+            grants: [ExportedGrant(Guid.NewGuid(), userId, clientId)],
+            mtaStsPolicies: [ExportedMtaStsPolicy(Guid.NewGuid(), domainId)]);
 
         var preview = await Service(db).PreviewAsync(artifact, BackupImportModes.Merge, false, default);
 
@@ -578,6 +585,7 @@ public sealed class BackupImportTests
         Assert.Equal(0, await db.UserIdentities.CountAsync());
         Assert.Equal(0, await db.UserClientGrants.CountAsync());
         Assert.Equal(0, await db.NotificationRecipients.CountAsync());
+        Assert.Equal(0, await db.MtaStsPolicies.CountAsync());
 
         var applied = await Service(db).ImportAsync(artifact, BackupImportModes.Merge, false, default);
 

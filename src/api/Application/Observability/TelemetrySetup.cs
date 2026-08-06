@@ -55,8 +55,12 @@ public static class TelemetrySetup
                     .AddAspNetCoreInstrumentation(o =>
                     {
                         // Probes fire every few seconds, forever, in every deployment shape.
-                        // Tracing them buries the requests worth looking at.
-                        o.Filter = context => !IsProbe(context.Request.Path);
+                        // Tracing them buries the requests worth looking at. The public
+                        // MTA-STS routes are the same class of noise: sender fleets and
+                        // Caddy's ask endpoint, high-volume, anonymous, individually
+                        // uninteresting. Metrics still count all of them.
+                        o.Filter = context => !IsProbe(context.Request.Path)
+                            && !IsMtaStsPublic(context.Request.Path);
                     })
                     .AddHttpClientInstrumentation()
                     // Npgsql emits its own activities, so command-level spans come from the
@@ -140,6 +144,11 @@ public static class TelemetrySetup
     private static bool IsProbe(PathString path)
         => path.StartsWithSegments("/health", StringComparison.OrdinalIgnoreCase)
            || path.Equals("/api/v1/auth/setup", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The anonymous MTA-STS routes: policy serving and Caddy's on_demand_tls ask.</summary>
+    private static bool IsMtaStsPublic(PathString path)
+        => path.Equals("/.well-known/mta-sts.txt", StringComparison.OrdinalIgnoreCase)
+           || path.Equals("/mta-sts/ask", StringComparison.OrdinalIgnoreCase);
 
     private static void Export(TelemetrySink sink, TracerProviderBuilder builder)
     {

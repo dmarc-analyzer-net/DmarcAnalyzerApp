@@ -445,15 +445,15 @@ step is independently shippable.
       failures as findings, private-address egress guard), syntax, and the
       MX cross-check. Three alert rules read the persisted state; the Domain
       Detail "Transport security" card renders it, with a staff-only recheck.
-- [ ] (step 2) **Hosted MTA-STS policies.** Per-domain policy rows (mode,
-      max_age, mx patterns, server-bumped id) served anonymously at
-      `/.well-known/mta-sts.txt` keyed on the Host header — paths outside
-      `/api/v1/` are already anonymous by construction. A new
+- [x] (step 2, done 2026-08-06) **Hosted MTA-STS policies.** Per-domain policy
+      rows (mode, max_age, mx patterns, server-bumped id) served anonymously
+      at `/.well-known/mta-sts.txt` keyed on the Host header. A new
       `APP_MODE=mta-sts` runs an internet-facing policy-host container
-      separate from the console; a Caddy on-demand-TLS `ask` endpoint gates
+      separate from the console; `/mta-sts/ask` gates Caddy's on-demand-TLS
       cert issuance; client-level bulk apply covers same-provider fleets;
-      ops doc with the reverse-proxy recipes. Onboarding a client domain
-      becomes one CNAME plus one TXT record.
+      policies ride in the backup artifact with ids verbatim; ops doc with
+      the reverse-proxy recipes (`docs/ops/mta-sts-hosting.md`). Onboarding a
+      client domain is one CNAME plus one TXT record.
 - [ ] (step 3) **TLS-RPT ingestion, surface and rollout gate.** The Parking
       Lot item below (scoped 2026-07-25), plus what issue #115 adds on top:
       STS-vs-transport failure classification stored per detail row, a
