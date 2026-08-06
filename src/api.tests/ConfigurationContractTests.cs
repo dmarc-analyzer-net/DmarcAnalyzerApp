@@ -33,6 +33,7 @@ public sealed class ConfigurationContractTests
         ("Alerts", typeof(DmarcAnalyzer.Api.Application.Notifications.AlertOptions)),
         ("Digest", typeof(DmarcAnalyzer.Api.Application.Notifications.DigestOptions)),
         ("Dns", typeof(DmarcAnalyzer.Api.Application.Analytics.DnsOptions)),
+        ("MtaSts", typeof(DmarcAnalyzer.Api.Application.MtaSts.MtaStsOptions)),
         ("Retention", typeof(DmarcAnalyzer.Api.Application.Retention.RetentionOptions)),
         ("Network", typeof(DmarcAnalyzer.Api.Application.Security.NetworkOptions)),
         ("Backup", typeof(DmarcAnalyzer.Api.Application.Backup.BackupOptions)),

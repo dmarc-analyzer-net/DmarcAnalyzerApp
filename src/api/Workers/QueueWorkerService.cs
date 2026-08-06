@@ -1,6 +1,7 @@
 using DmarcAnalyzer.Api.Application.Analytics;
 using DmarcAnalyzer.Api.Application.Backup;
 using DmarcAnalyzer.Api.Application.Ingestion;
+using DmarcAnalyzer.Api.Application.MtaSts;
 using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Application.Retention;
 using DmarcAnalyzer.Api.Application.Common;
@@ -41,6 +42,7 @@ public sealed class QueueWorkerService(
                 await RunDigestPassIfDueAsync(stoppingToken);
                 await RunRetentionPassIfDueAsync(stoppingToken);
                 await RunDnsRefreshPassIfDueAsync(stoppingToken);
+                await RunMtaStsPassIfDueAsync(stoppingToken);
                 await RunBackupOffloadPassIfDueAsync(stoppingToken);
                 await RunMailboxRetentionPassIfDueAsync(stoppingToken);
                 consecutiveFailures = 0;
@@ -208,6 +210,55 @@ public sealed class QueueWorkerService(
         // Only mark it done on success, so a failure retries on the next pass
         // instead of waiting out the whole interval.
         _lastRetentionRunUtc = DateTime.UtcNow;
+    }
+
+    private DateTime? _lastMtaStsRunUtc;
+
+    /// <summary>
+    /// Keeps each domain's MTA-STS state fresh: the `_mta-sts` TXT record, the
+    /// policy fetch, and the MX cross-check. The alert pass reads what this
+    /// writes, so this is also what makes an id change or a broken policy host
+    /// visible without anyone opening the domain.
+    /// <para>
+    /// Swallows its own exceptions, like the backup pass below and for the same
+    /// structural reason: it talks to third parties (every client's DNS and
+    /// policy host), which makes it likelier to fail than the passes after it —
+    /// and per-domain failures are already absorbed inside the refresh, so an
+    /// exception here means the pass itself broke, not a domain.
+    /// </para>
+    /// </summary>
+    private async Task RunMtaStsPassIfDueAsync(CancellationToken ct)
+    {
+        using var scope = scopeFactory.CreateScope();
+        var mtaStsOptions = scope.ServiceProvider
+            .GetRequiredService<IOptions<MtaStsOptions>>().Value;
+
+        if (!mtaStsOptions.Enabled)
+        {
+            return;
+        }
+
+        var interval = TimeSpan.FromHours(Math.Max(1, mtaStsOptions.CheckIntervalHours));
+        if (_lastMtaStsRunUtc is { } last && DateTime.UtcNow - last < interval)
+        {
+            return;
+        }
+
+        try
+        {
+            var cache = scope.ServiceProvider.GetRequiredService<IMtaStsStateCache>();
+            await cache.RefreshAllAsync(ct);
+            _lastMtaStsRunUtc = DateTime.UtcNow;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "MTA-STS check pass failed; ingestion is unaffected");
+            _lastMtaStsRunUtc = DateTime.UtcNow;
+        }
     }
 
     private DateTime? _lastBackupOffloadUtc;

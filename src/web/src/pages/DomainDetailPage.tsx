@@ -24,12 +24,15 @@ import {
   type DrilldownTotals,
   type EnforcementGuidance,
   type EvaluatedCombo,
+  type MtaStsState,
   type RecordComparison,
   type RecordInspection,
   type SourceDetail,
   type ValueCount,
 } from '@/lib/analytics'
 import { ApiError, fetchJson } from '@/lib/api'
+import { useAuth } from '@/lib/auth-context'
+import { isStaff } from '@/lib/authz'
 import { formatCompact, formatFullDate, formatPercent, formatRelativeOrDate, formatShortDate } from '@/lib/format'
 import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
@@ -502,6 +505,261 @@ function describeComparison(row: RecordComparison): string {
     default:
       return `${row.field}: ${row.published ?? 'nothing'}, matching reports`
   }
+}
+
+// --- Transport security (MTA-STS) ---
+
+const MTA_STS_RECORD_META: Record<
+  Exclude<MtaStsState['dnsRecordStatus'], null>,
+  { label: string; badge: 'success' | 'danger' | 'warning' | 'neutral' }
+> = {
+  found: { label: 'Published', badge: 'success' },
+  // Deliberately neutral, not danger: publishing MTA-STS is optional, and most
+  // domains don't. The card renders this state quietly.
+  missing: { label: 'Not configured', badge: 'neutral' },
+  lookup_failed: { label: 'Lookup failed', badge: 'warning' },
+  // Two or more STSv1 records, or one senders can't parse — RFC 8461 makes
+  // both read as "no available policy", so this is worse than it sounds.
+  invalid: { label: 'Invalid', badge: 'danger' },
+}
+
+const MTA_STS_MODE_META: Record<Exclude<MtaStsState['mode'], null>, { badge: 'success' | 'warning' | 'neutral' }> = {
+  enforce: { badge: 'success' },
+  testing: { badge: 'warning' },
+  none: { badge: 'neutral' },
+}
+
+const MTA_STS_FETCH_LABEL: Record<Exclude<MtaStsState['fetchStatus'], null | 'ok'>, string> = {
+  redirected: 'Redirected',
+  http_error: 'HTTP error',
+  tls_failed: 'TLS failed',
+  connect_failed: 'Unreachable',
+  timeout: 'Timed out',
+  too_large: 'Too large',
+}
+
+/** Seconds as the round unit an operator would say: 86400 → "1 day". */
+function formatMaxAge(seconds: number): string {
+  if (seconds % 604800 === 0 && seconds >= 604800) {
+    const weeks = seconds / 604800
+    return `${weeks} week${weeks === 1 ? '' : 's'}`
+  }
+  if (seconds % 86400 === 0 && seconds >= 86400) {
+    const days = seconds / 86400
+    return `${days} day${days === 1 ? '' : 's'}`
+  }
+  return `${seconds}s`
+}
+
+/**
+ * The domain's MTA-STS posture, from the state the worker pass persists — a
+ * plain database read, so unlike the record inspection card nothing here waits
+ * on live DNS or an HTTPS fetch. Recheck (staff only) runs those on demand.
+ */
+function TransportSecurityCard({ domainId }: { domainId: string }) {
+  const { user } = useAuth()
+  const staff = isStaff(user)
+  const [state, setState] = useState<MtaStsState | null>(null)
+  const [busy, setBusy] = useState(true)
+  const [rechecking, setRechecking] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const requestSeq = useRef(0)
+
+  const load = useCallback(async () => {
+    const seq = ++requestSeq.current
+    setBusy(true)
+    setError(null)
+    try {
+      const payload = await fetchJson<MtaStsState>(`/api/v1/analytics/domains/${domainId}/mta-sts`)
+      if (seq === requestSeq.current) setState(payload)
+    } catch (loadError) {
+      if (seq === requestSeq.current) {
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load MTA-STS state')
+      }
+    } finally {
+      if (seq === requestSeq.current) setBusy(false)
+    }
+  }, [domainId])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  const recheck = useCallback(async () => {
+    const seq = ++requestSeq.current
+    setRechecking(true)
+    setError(null)
+    try {
+      const payload = await fetchJson<MtaStsState>(
+        `/api/v1/analytics/domains/${domainId}/mta-sts/recheck`,
+        { method: 'POST' },
+      )
+      if (seq === requestSeq.current) setState(payload)
+    } catch (recheckError) {
+      if (seq === requestSeq.current) {
+        setError(recheckError instanceof Error ? recheckError.message : 'Recheck failed')
+      }
+    } finally {
+      if (seq === requestSeq.current) setRechecking(false)
+    }
+  }, [domainId])
+
+  const status = state?.dnsRecordStatus
+  const statusMeta = status ? MTA_STS_RECORD_META[status] : null
+  const fetchFailed = state?.fetchStatus != null && state.fetchStatus !== 'ok'
+
+  return (
+    <Card pad>
+      <div className="flex items-start justify-between gap-3">
+        <CardHeader
+          title="Transport security (MTA-STS)"
+          description="Whether senders are told to require verified TLS when delivering to this domain — the _mta-sts record, the policy file, and its MX coverage"
+        />
+        {staff && state?.checked !== undefined ? (
+          <Button variant="outline" size="sm" onClick={() => void recheck()} disabled={rechecking || busy}>
+            {rechecking ? (
+              <Icon name="loader-circle" size={14} className="animate-spin" />
+            ) : (
+              <Icon name="refresh-cw" size={14} />
+            )}
+            Recheck now
+          </Button>
+        ) : null}
+      </div>
+      {busy ? (
+        <div className="flex items-center gap-2 py-4 text-sm text-secondary">
+          <Icon name="loader-circle" size={16} className="animate-spin" />
+          Loading MTA-STS state…
+        </div>
+      ) : error ? (
+        <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+          {error}
+        </p>
+      ) : !state ? null : !state.checked ? (
+        <p className="py-2 text-sm text-secondary">
+          Not checked yet — the worker&apos;s MTA-STS pass hasn&apos;t reached this domain.
+        </p>
+      ) : status === 'missing' ? (
+        <div className="flex items-center gap-2 py-2">
+          <Badge variant="neutral">Not configured</Badge>
+          <p className="text-sm text-secondary">
+            This domain doesn&apos;t publish an MTA-STS policy. Optional — it tells senders to require
+            verified TLS when delivering here.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-5">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <PanelSectionTitle>MTA-STS record</PanelSectionTitle>
+              {statusMeta ? <Badge variant={statusMeta.badge}>{statusMeta.label}</Badge> : null}
+              {state.policyId ? (
+                <span className="font-mono text-xs text-secondary">id {state.policyId}</span>
+              ) : null}
+              {status === 'lookup_failed' && state.lastChangedAtUtc ? (
+                <span className="text-xs text-secondary">
+                  showing last known state · verified {formatRelativeOrDate(state.lastChangedAtUtc)}
+                </span>
+              ) : null}
+            </div>
+            {state.rawRecord ? (
+              <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-xs leading-relaxed text-body">
+                {state.rawRecord}
+              </pre>
+            ) : null}
+          </div>
+
+          {state.fetchStatus ? (
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <PanelSectionTitle>Policy file</PanelSectionTitle>
+                {state.fetchStatus === 'ok' ? (
+                  state.policyValid === false ? (
+                    <Badge variant="danger">Invalid</Badge>
+                  ) : (
+                    <Badge variant="success">Fetched</Badge>
+                  )
+                ) : (
+                  <Badge variant="danger">{MTA_STS_FETCH_LABEL[state.fetchStatus]}</Badge>
+                )}
+                {state.mode ? (
+                  <Badge variant={MTA_STS_MODE_META[state.mode].badge}>mode: {state.mode}</Badge>
+                ) : null}
+                {state.maxAgeSeconds != null ? (
+                  <span className="font-mono text-xs text-secondary">
+                    max_age {formatMaxAge(state.maxAgeSeconds)}
+                  </span>
+                ) : null}
+                {fetchFailed && state.lastFetchOkAtUtc ? (
+                  <span className="text-xs text-secondary">
+                    last fetched ok {formatRelativeOrDate(state.lastFetchOkAtUtc)}
+                  </span>
+                ) : null}
+              </div>
+              {state.policyBody ? (
+                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-xs leading-relaxed text-body">
+                  {state.policyBody}
+                </pre>
+              ) : null}
+            </div>
+          ) : null}
+
+          {state.mxHosts.length > 0 ? (
+            <div>
+              <PanelSectionTitle>MX coverage</PanelSectionTitle>
+              <ul className="mt-2 space-y-1.5">
+                {state.mxHosts.map((mx) => (
+                  <li
+                    key={`${mx.preference}-${mx.host}`}
+                    className={cn(
+                      'flex items-start gap-1.5 text-xs leading-relaxed',
+                      mx.matched === false ? 'text-[var(--status-danger-fg)]' : 'text-secondary',
+                    )}
+                  >
+                    <Icon
+                      name={mx.matched === false ? 'triangle-alert' : mx.matched === true ? 'circle-check' : 'info'}
+                      size={13}
+                      className="mt-px shrink-0"
+                    />
+                    <span>
+                      <span className="font-mono font-semibold">{mx.host}</span>
+                      <span className="font-mono"> · {mx.preference}</span>
+                      {mx.matched === false ? ' — not covered by any mx pattern' : null}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : state.mxLookupStatus === 'lookup_failed' ? (
+            <p className="text-xs text-[var(--status-warn-fg)]">
+              MX lookup failed — the policy&apos;s mx patterns could not be cross-checked.
+            </p>
+          ) : null}
+
+          {state.issues.length > 0 ? (
+            <ul className="space-y-1">
+              {state.issues.map((issue) => (
+                <li
+                  key={issue}
+                  className="flex items-start gap-1.5 text-xs leading-relaxed text-[var(--status-warn-fg)]"
+                >
+                  <Icon name="triangle-alert" size={13} className="mt-px shrink-0" />
+                  {issue}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+
+          <p className="text-xs text-secondary">
+            {state.lastCheckedAtUtc ? `Checked ${formatRelativeOrDate(state.lastCheckedAtUtc)}` : null}
+            {state.previousPolicyId && state.policyIdChangedAtUtc
+              ? ` · id changed ${formatRelativeOrDate(state.policyIdChangedAtUtc)} (${state.previousPolicyId} → ${state.policyId ?? '—'})`
+              : null}
+          </p>
+        </div>
+      )}
+    </Card>
+  )
 }
 
 // --- Expandable per-source detail panel ---
@@ -1087,6 +1345,8 @@ export function DomainDetailPage() {
           </div>
 
           <RecordInspectionCard domainId={domainId} />
+
+          <TransportSecurityCard domainId={domainId} />
 
           {/* The centerpiece: per-source breakdown */}
           <Card>

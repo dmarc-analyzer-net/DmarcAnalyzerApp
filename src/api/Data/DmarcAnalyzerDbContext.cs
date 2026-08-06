@@ -23,6 +23,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<UserClientGrant> UserClientGrants => Set<UserClientGrant>();
     public DbSet<UserIdentity> UserIdentities => Set<UserIdentity>();
     public DbSet<BackupStreamState> BackupStreamStates => Set<BackupStreamState>();
+    public DbSet<MtaStsState> MtaStsStates => Set<MtaStsState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -352,6 +353,29 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.LastError).HasMaxLength(4000);
             // One row per stream; the offload upserts on this.
             entity.HasIndex(x => x.Stream).IsUnique();
+        });
+
+        modelBuilder.Entity<MtaStsState>(entity =>
+        {
+            entity.ToTable("mta_sts_state");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.DnsRecordStatus).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.RawRecord).HasMaxLength(512);
+            entity.Property(x => x.PolicyId).HasMaxLength(64);
+            entity.Property(x => x.PreviousPolicyId).HasMaxLength(64);
+            entity.Property(x => x.FetchStatus).HasMaxLength(32);
+            entity.Property(x => x.FetchDetail).HasMaxLength(1000);
+            entity.Property(x => x.Mode).HasMaxLength(16);
+            entity.Property(x => x.MxLookupStatus).HasMaxLength(16);
+            // One row per domain, current state only.
+            entity.HasIndex(x => x.DomainId).IsUnique();
+            // The check pass picks the least-recently-checked domains first.
+            entity.HasIndex(x => x.LastCheckedAtUtc);
+
+            entity.HasOne(x => x.Domain)
+                .WithMany()
+                .HasForeignKey(x => x.DomainId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

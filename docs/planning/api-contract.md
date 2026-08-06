@@ -77,6 +77,8 @@ cross-tenant ids return **404**, never 403.
 | GET | `/analytics/domains/{domainId}/source-detail` | One source: evaluated DKIM×SPF combos, raw auth results, identifiers, reporters, trend. Requires `ip` (400 if missing) |
 | GET | `/analytics/domains/{domainId}/enforcement` | Guided next policy step, rationale, `readyToAdvance`, blocking sources |
 | GET | `/analytics/domains/{domainId}/records` | Live DNS DMARC/SPF records parsed tag-by-tag, compared against the observed `policy_published` |
+| GET | `/analytics/domains/{domainId}/mta-sts` | The domain's persisted MTA-STS state (record, policy file, MX coverage) — database only, no live lookups |
+| POST | `/analytics/domains/{domainId}/mta-sts/recheck` | **staff** — runs the MTA-STS check live (DNS + HTTPS) and persists it; returns the updated state |
 | GET | `/analytics/threats` | Sources with fully unauthenticated volume across visible domains. Accepts `limit` (default 100, max 500) |
 | GET | `/analytics/hostnames` | Best-effort reverse DNS. Requires `ips` (comma-separated, max 100) |
 
@@ -407,6 +409,33 @@ cannot disagree with anything. `not_reported` means the tag is published but the
 reporter sent no value for it. A published `sp` weaker than `p` is a genuine gap
 and surfaces in `dmarc.issues[]` rather than as a comparison difference.
 
+### GET `/analytics/domains/{domainId}/mta-sts`
+
+The domain's MTA-STS state as last persisted by the worker's check pass —
+deliberately a plain database read, because the full check includes an HTTPS
+fetch. `checked: false` (with null fields) means the pass has not reached the
+domain yet; that is a 200, not a 404, because the domain exists.
+
+`dnsRecordStatus` is `found`, `missing`, `lookup_failed`, or `invalid` — the
+last one is MTA-STS-specific: two or more `STSv1` records, or one senders
+cannot parse, read as *no available policy* per RFC 8461 §3.1, which must not
+be reported as `found`. There is no `inherited`: MTA-STS has no tree walk.
+
+`fetchStatus` is `ok`, `redirected` (senders never follow redirects here),
+`http_error`, `tls_failed`, `connect_failed`, `timeout`, or `too_large`, with
+`fetchDetail` carrying the reason (certificate failures include the specific
+validation error). `mxHosts[]` is the live MX at check time, each with
+`matched` — null when the cross-check was not evaluable. After a failed
+lookup the state holds the **last known** values; `lastCheckedAtUtc` still
+advances.
+
+### POST `/analytics/domains/{domainId}/mta-sts/recheck`
+
+Staff only. Runs the live check now (one TXT lookup; the policy fetch and MX
+lookup only when a single valid record exists), persists the outcome under the
+keep-last-known rules, and returns the same shape as the GET. A POST because it
+triggers server-side outbound requests and rewrites stored state.
+
 ### GET `/analytics/threats?days=30&limit=100`
 
 `totalFailedMessages`, `totalSources`, and `sources[]` of `(sourceIp, domain)`
@@ -422,10 +451,14 @@ and first/last seen.
 ### PATCH `/alerts/rules/{ruleId}`
 ### DELETE `/alerts/rules/{ruleId}`
 
-Rule types:
+Rule types (all shipped in the evaluator; this section describes only the
+unbuilt rules *CRUD*):
 
 - `failure_spike`
 - `policy_regression`
+- `mta_sts_policy_change`
+- `mta_sts_broken`
+- `mta_sts_mx_mismatch`
 
 Scope:
 

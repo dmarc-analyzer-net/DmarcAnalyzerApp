@@ -1,6 +1,7 @@
 using Carter;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Application.Analytics;
+using DmarcAnalyzer.Api.Application.MtaSts;
 
 namespace DmarcAnalyzer.Api.Modules;
 
@@ -80,6 +81,29 @@ public sealed class AnalyticsModule : ICarterModule
             var inspection = await service.InspectAsync(domainId, ct);
             return inspection is null ? Results.NotFound() : Results.Ok(inspection);
         }).AllowClientViewer();
+
+        app.MapGet("/api/v1/analytics/domains/{domainId:guid}/mta-sts", async (
+            Guid domainId,
+            IMtaStsInspectionService service,
+            CancellationToken ct) =>
+        {
+            // Database only — the panel must render instantly; freshness comes
+            // from the worker pass or an explicit recheck.
+            var state = await service.GetAsync(domainId, ct);
+            return state is null ? Results.NotFound() : Results.Ok(state);
+        }).AllowClientViewer();
+
+        // A recheck triggers server-side DNS and HTTPS requests and rewrites the
+        // stored state, so it is a POST and staff-only — not something a page
+        // load or a viewer should be able to fire.
+        app.MapPost("/api/v1/analytics/domains/{domainId:guid}/mta-sts/recheck", async (
+            Guid domainId,
+            IMtaStsInspectionService service,
+            CancellationToken ct) =>
+        {
+            var state = await service.RecheckAsync(domainId, ct);
+            return state is null ? Results.NotFound() : Results.Ok(state);
+        }).RequireAgencyStaff();
 
         app.MapGet("/api/v1/analytics/threats", async (
             int? days,

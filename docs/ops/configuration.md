@@ -171,6 +171,22 @@ features are inert regardless of their own settings.
 | `Dns__Enabled` | `true` | Resolve each domain's published DMARC record so the console can show live policy. |
 | `Dns__RefreshIntervalHours` | `6` | Gap between refreshes. |
 
+## MTA-STS checks (`MtaSts`)
+
+The worker checks each active domain's MTA-STS posture: the `_mta-sts` TXT
+record, the policy file at `https://mta-sts.<domain>/.well-known/mta-sts.txt`,
+and whether the policy's `mx` patterns cover the live MX records. Domains
+without an MTA-STS record cost one TXT query per pass; only domains that
+publish one get the HTTPS fetch and MX lookup on top.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `MtaSts__Enabled` | `true` | Run the check pass and keep per-domain MTA-STS state fresh. |
+| `MtaSts__CheckIntervalHours` | `6` | Gap between passes. |
+| `MtaSts__FetchTimeoutSeconds` | `10` | Total budget for one policy-file fetch, connect included. |
+| `MtaSts__MaxConcurrentChecks` | `4` | Domains checked concurrently during a pass. |
+| `MtaSts__AllowPrivateNetworks` | `false` | Let the policy fetch connect to loopback/private/link-local addresses. Off because `mta-sts.<domain>` hostnames derive from operator-entered domains; turn on only for instances that monitor intranet mail domains. |
+
 ## Single sign-on (`Auth:Oidc`)
 
 Off by default; local accounts work with no identity provider. See

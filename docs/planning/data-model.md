@@ -293,7 +293,7 @@ can see history.
 | `Id` | PK |
 | `ClientId` | FK → `client`, **cascade** |
 | `DomainId` | FK → `domain`, **set null**; null for client-wide alerts |
-| `RuleType` | max 32 — `failure_spike` \| `policy_regression` |
+| `RuleType` | max 32 — `failure_spike` \| `policy_regression` \| `mta_sts_policy_change` \| `mta_sts_broken` \| `mta_sts_mx_mismatch` |
 | `Severity` | max 16 — `info` \| `warning` \| `critical` |
 | `Status` | max 16 — `open` \| `acknowledged` \| `closed` |
 | `Title`, `Details` | max 300 / 4000 |
@@ -333,6 +333,35 @@ write time.
 
 Aged out on its own window (`Retention:AuditRetentionDays`, 2 years), not by a
 client's retention setting, and **not protected by legal hold**.
+
+### `mta_sts_state`
+The current MTA-STS posture of a domain, one row per domain, maintained by the
+worker's check pass (and the staff recheck endpoint). Current state only — no
+history table; change *notification* is `alert_event`'s job, via the three
+`mta_sts_*` rule types that read these columns.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK |
+| `DomainId` | FK → `domain`, **cascade**, unique — the 1:1 |
+| `DnsRecordStatus` | max 16 — `found` \| `missing` \| `lookup_failed` \| `invalid` (2+ STSv1 records or bad syntax: senders treat as no policy). Never `inherited` — MTA-STS has no tree walk |
+| `RawRecord` | max 512 — the STSv1 TXT as published |
+| `PolicyId`, `PreviousPolicyId` | max 64 each — current `id=` and the one before the last observed change |
+| `PolicyIdChangedAtUtc` | when the id last moved (both sides non-null); the alert window |
+| `FetchStatus` | max 32 — `ok` \| `redirected` \| `http_error` \| `tls_failed` \| `connect_failed` \| `timeout` \| `too_large` |
+| `FetchDetail` | max 1000 — human reason (HTTP status, certificate failure, …) |
+| `LastFetchOkAtUtc` | never cleared: tells "broken now" apart from "never reachable yet" (matters once hosted policies exist and a domain is mid-setup) |
+| `PolicyValid`, `Mode`, `MaxAgeSeconds`, `PolicyBody` | the last successfully fetched policy; kept when only the fetch fails |
+| `MxLookupStatus` | max 16 — `found` \| `missing` \| `lookup_failed` |
+| `MxHostsJson`, `UnmatchedMxHostsJson`, `IssuesJson` | JSON blobs: live MX with per-host match verdicts, hosts no pattern covers (`[]` = all covered), and the rendered findings |
+| `LastCheckedAtUtc` | indexed — the pass picks least-recently-checked first; always advances |
+| `LastChangedAtUtc` | last material change, for "last verified" copy |
+
+Same doctrine as the `domain.Dns*` columns: a failed lookup keeps the last
+known values (a SERVFAIL must not make an enforce-mode domain read as
+unprotected); only a definitive `missing` clears them. Excluded from the
+backup config artifact and history streams — it is a cache the pass rebuilds
+within one interval.
 
 ## A.5.1 What is deliberately *not* a table
 

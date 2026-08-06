@@ -13,7 +13,10 @@ public sealed class AlertEvent
     /// <summary>Null for client-wide alerts that aren't about one domain.</summary>
     public Guid? DomainId { get; set; }
 
-    /// <summary>`failure_spike` or `policy_regression`.</summary>
+    /// <summary>
+    /// `failure_spike`, `policy_regression`, `mta_sts_policy_change`,
+    /// `mta_sts_broken` or `mta_sts_mx_mismatch`.
+    /// </summary>
     public string RuleType { get; set; } = string.Empty;
 
     /// <summary>`info`, `warning`, or `critical`.</summary>

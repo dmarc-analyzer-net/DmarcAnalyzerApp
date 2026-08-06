@@ -141,6 +141,30 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - `GET /api/v1/analytics/domains/{id}/records` — live `_dmarc`/SPF TXT records parsed tag-by-tag (multiple-record permerror, missing rua, +all, 10-lookup count) and compared field-by-field against the latest `policy_published` reporters observed
   - Domain Detail "Record inspection" card, fetched separately so slow DNS never blocks the analytics render
 
+- MTA-STS monitoring (RFC 8461):
+  - a worker pass (`MtaSts:*`) checks every active domain: the `_mta-sts` TXT
+    record (found / missing / lookup_failed / **invalid** — two records or bad
+    syntax read as "no policy", the way senders behave), the policy file over
+    HTTPS, its syntax, and whether the policy's `mx` patterns cover the live MX
+    records (the MX-migration-under-enforce footgun)
+  - the policy fetch is the codebase's first outbound HTTP: redirects reported
+    rather than followed (RFC 8461 §3.3), 64 KB bound, certificate failures
+    captured with their reason as findings rather than exceptions, and an
+    egress guard that refuses private/loopback address space by default
+    (`MtaSts__AllowPrivateNetworks`)
+  - current state persists on `mta_sts_state`, one row per domain, with the
+    DnsPolicyCache doctrine: failed lookups keep last-known values, a missing
+    record is definitive and clears them; policy-id changes keep the previous
+    id and a timestamp
+  - three alert rules read that state (no network in the evaluator):
+    `mta_sts_policy_change` (info), `mta_sts_broken` and `mta_sts_mx_mismatch`
+    (critical under mode `enforce`, warning otherwise)
+  - `GET /api/v1/analytics/domains/{id}/mta-sts` (database only, instant) and
+    staff-only `POST …/mta-sts/recheck` (live check, persisted)
+  - Domain Detail "Transport security (MTA-STS)" card; domains without a
+    record render a deliberately quiet "Not configured" line — publishing
+    MTA-STS is optional and most domains don't
+
 - Retention enforcement:
   - `RetentionPurgeService` deletes DMARC data whose **reporting window end**
     (`RangeEndUtc`) predates each client's `RetentionMonths` window (default 27) —

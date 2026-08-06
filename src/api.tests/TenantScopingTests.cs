@@ -1,9 +1,12 @@
 using DmarcAnalyzer.Api.Application.Analytics;
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Domains;
+using DmarcAnalyzer.Api.Application.MtaSts;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace DmarcAnalyzer.Api.Tests;
@@ -131,5 +134,30 @@ public sealed class TenantScopingTests
 
         Assert.NotNull(adminSummary.Mailboxes);
         Assert.Equal(2, adminSummary.Totals.Domains);
+    }
+
+    [Fact]
+    public async Task MtaStsState_ForViewer_CrossTenantReadsAsNotFound()
+    {
+        await using var db = NewDb();
+        var (granted, _, grantedDomain, otherDomain) = await SeedAsync(db);
+
+        var checkService = new MtaStsCheckService(
+            TestDnsTxtResolver.Empty(), new TestDnsMxResolver(), new TestMtaStsPolicyFetcher());
+        var service = new MtaStsInspectionService(
+            db,
+            TestCurrentUserContext.Viewer(granted.Id),
+            checkService,
+            new MtaStsStateCache(db, checkService,
+                Options.Create(new MtaStsOptions()), NullLogger<MtaStsStateCache>.Instance));
+
+        // Cross-tenant reads as not-found — 404, not 403 — on both paths.
+        Assert.Null(await service.GetAsync(otherDomain.Id, CancellationToken.None));
+        Assert.Null(await service.RecheckAsync(otherDomain.Id, CancellationToken.None));
+
+        var visible = await service.GetAsync(grantedDomain.Id, CancellationToken.None);
+        Assert.NotNull(visible);
+        Assert.False(visible!.Checked); // exists, never checked — 200, not 404
+        Assert.Equal(grantedDomain.Name, visible.Name);
     }
 }

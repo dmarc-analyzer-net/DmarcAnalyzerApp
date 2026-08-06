@@ -11,6 +11,7 @@ using DmarcAnalyzer.Api.Application.Audit;
 using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Application.Retention;
 using DmarcAnalyzer.Api.Application.MailboxSources;
+using DmarcAnalyzer.Api.Application.MtaSts;
 using DmarcAnalyzer.Api.Application.Reports;
 using DmarcAnalyzer.Api.Application.Security;
 using DmarcAnalyzer.Api.Application.Users;
@@ -110,6 +111,7 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddSingleton<IDnsTxtResolver, DnsTxtResolver>();
     workerBuilder.Services.AddScoped<IDmarcPolicyResolver, DmarcPolicyResolver>();
     workerBuilder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
+    workerBuilder.Services.AddMtaStsMonitoring(workerBuilder.Configuration);
     workerBuilder.Services.Configure<WorkerOptions>(workerBuilder.Configuration.GetSection("Worker"));
     // Backup offload runs on the loop, so the worker host needs the whole chain — the
     // export service included. Registering it only on the API host would leave the pass
@@ -183,6 +185,7 @@ builder.Services.AddSingleton<IDnsTxtResolver, DnsTxtResolver>();
 builder.Services.AddScoped<IDmarcPolicyResolver, DmarcPolicyResolver>();
 builder.Services.Configure<DnsOptions>(builder.Configuration.GetSection("Dns"));
 builder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
+builder.Services.AddMtaStsMonitoring(builder.Configuration);
 builder.Services.Configure<WorkerOptions>(builder.Configuration.GetSection("Worker"));
 builder.Services.Configure<NetworkOptions>(builder.Configuration.GetSection("Network"));
 builder.Services.Configure<BackupOptions>(builder.Configuration.GetSection("Backup"));

@@ -400,11 +400,73 @@ export type RecordInspection = {
   externalDestinations: ExternalDestinationAuth[]
 }
 
+// --- MTA-STS (GET /api/v1/analytics/domains/{domainId}/mta-sts) ---
+
+/**
+ * Outcome of the _mta-sts TXT lookup. 'invalid' is MTA-STS-specific: two or
+ * more STSv1 records, or one senders cannot parse — both mean "no available
+ * policy" per RFC 8461, which must not read as found. Never 'inherited':
+ * MTA-STS has no tree walk.
+ */
+export type MtaStsRecordStatus = 'found' | 'missing' | 'lookup_failed' | 'invalid'
+
+export type MtaStsFetchStatus =
+  | 'ok'
+  | 'redirected'
+  | 'http_error'
+  | 'tls_failed'
+  | 'connect_failed'
+  | 'timeout'
+  | 'too_large'
+
+export type MtaStsMode = 'enforce' | 'testing' | 'none'
+
+export type MtaStsMxHost = {
+  host: string
+  preference: number
+  /** Null when the cross-check was not evaluable (invalid policy, mode none, null MX). */
+  matched: boolean | null
+}
+
+/**
+ * The persisted MTA-STS state of a domain. checked=false means the worker pass
+ * has not reached this domain yet — distinct from missing, which is definitive.
+ * Nullable fields hold the last known values when the latest lookup failed.
+ */
+export type MtaStsState = {
+  domainId: string
+  name: string
+  checked: boolean
+  dnsRecordStatus: MtaStsRecordStatus | null
+  rawRecord: string | null
+  policyId: string | null
+  previousPolicyId: string | null
+  policyIdChangedAtUtc: string | null
+  fetchStatus: MtaStsFetchStatus | null
+  fetchDetail: string | null
+  lastFetchOkAtUtc: string | null
+  policyValid: boolean | null
+  mode: MtaStsMode | null
+  maxAgeSeconds: number | null
+  policyBody: string | null
+  mxPatterns: string[]
+  mxLookupStatus: 'found' | 'missing' | 'lookup_failed' | null
+  mxHosts: MtaStsMxHost[]
+  issues: string[]
+  lastCheckedAtUtc: string | null
+  lastChangedAtUtc: string | null
+}
+
 // --- Alerts (GET /api/v1/alerts) ---
 
 export type AlertSeverity = 'info' | 'warning' | 'critical'
 export type AlertStatus = 'open' | 'acknowledged' | 'closed'
-export type AlertRuleType = 'failure_spike' | 'policy_regression'
+export type AlertRuleType =
+  | 'failure_spike'
+  | 'policy_regression'
+  | 'mta_sts_policy_change'
+  | 'mta_sts_broken'
+  | 'mta_sts_mx_mismatch'
 
 export type AlertEvent = {
   id: string
@@ -437,6 +499,9 @@ export const ALERT_STATUS_META: Record<AlertStatus, { label: string; badge: 'dan
 export const ALERT_RULE_LABEL: Record<AlertRuleType, string> = {
   failure_spike: 'Failure spike',
   policy_regression: 'Policy regression',
+  mta_sts_policy_change: 'MTA-STS policy change',
+  mta_sts_broken: 'MTA-STS broken',
+  mta_sts_mx_mismatch: 'MTA-STS MX mismatch',
 }
 
 // --- Notification recipients (GET /api/v1/notification-recipients) ---

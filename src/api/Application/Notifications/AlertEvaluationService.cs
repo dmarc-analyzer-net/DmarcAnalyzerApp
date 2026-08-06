@@ -1,3 +1,5 @@
+using System.Text.Json;
+using DmarcAnalyzer.Api.Application.MtaSts;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +11,9 @@ public static class AlertRuleTypes
 {
     public const string FailureSpike = "failure_spike";
     public const string PolicyRegression = "policy_regression";
+    public const string MtaStsPolicyChange = "mta_sts_policy_change";
+    public const string MtaStsBroken = "mta_sts_broken";
+    public const string MtaStsMxMismatch = "mta_sts_mx_mismatch";
 }
 
 public sealed record AlertEvaluationResult(
@@ -24,7 +29,7 @@ public interface IAlertEvaluationService
 }
 
 /// <summary>
-/// Raises alerts for the two conditions operators actually need to hear about
+/// Raises alerts for the conditions operators actually need to hear about
 /// without watching a dashboard:
 ///
 /// <list type="bullet">
@@ -34,10 +39,16 @@ public interface IAlertEvaluationService
 /// <item><b>policy regression</b> — a domain's published DMARC policy got
 /// weaker, which silently removes protection and is easy to do by accident when
 /// editing DNS.</item>
+/// <item><b>MTA-STS</b> — the policy id changed, the advertised policy is
+/// broken (bad record, unreachable or invalid policy file), or a live MX host
+/// is not covered by the policy's mx patterns. Under mode enforce the last two
+/// are mail-breaking, hence critical.</item>
 /// </list>
 ///
-/// Both compare against report data rather than wall-clock time, because reports
-/// arrive daily and a backfill can deliver old data at any moment.
+/// The DMARC rules compare against report data rather than wall-clock time,
+/// because reports arrive daily and a backfill can deliver old data at any
+/// moment. The MTA-STS rules read the persisted state the worker's check pass
+/// maintains — evaluation itself never touches the network.
 /// </summary>
 public sealed class AlertEvaluationService(
     DmarcAnalyzerDbContext db,
@@ -85,12 +96,16 @@ public sealed class AlertEvaluationService(
 
             foreach (var domain in domains)
             {
-                foreach (var candidate in new[]
-                         {
-                             await EvaluateFailureSpikeAsync(client.Id, client.Name, domain.Id, domain.Name,
-                                 dropThreshold, minMessages, ct),
-                             await EvaluatePolicyRegressionAsync(client.Id, client.Name, domain.Id, domain.Name, ct),
-                         })
+                var candidates = new List<AlertEvent?>
+                {
+                    await EvaluateFailureSpikeAsync(client.Id, client.Name, domain.Id, domain.Name,
+                        dropThreshold, minMessages, ct),
+                    await EvaluatePolicyRegressionAsync(client.Id, client.Name, domain.Id, domain.Name, ct),
+                };
+                candidates.AddRange(
+                    await EvaluateMtaStsAlertsAsync(client.Id, client.Name, domain.Id, domain.Name, ct));
+
+                foreach (var candidate in candidates)
                 {
                     if (candidate is null)
                     {
@@ -261,6 +276,146 @@ public sealed class AlertEvaluationService(
                 $"spoofing — check whether the DNS record was changed intentionally. Client: {clientName}.",
             DetectedAtUtc = DateTime.UtcNow,
         };
+    }
+
+    /// <summary>
+    /// The three MTA-STS rules, evaluated from the persisted state row the
+    /// worker's check pass maintains — one indexed read, no network, so the
+    /// evaluator loop stays fast no matter how many domains a client has.
+    /// Domains without a state row (pass disabled, or not reached yet) simply
+    /// produce no candidates.
+    /// </summary>
+    private async Task<IReadOnlyList<AlertEvent>> EvaluateMtaStsAlertsAsync(
+        Guid clientId, string clientName, Guid domainId, string domainName, CancellationToken ct)
+    {
+        var state = await db.MtaStsStates
+            .AsNoTracking()
+            .Where(s => s.DomainId == domainId)
+            .Select(s => new
+            {
+                s.DnsRecordStatus,
+                s.PolicyId,
+                s.PreviousPolicyId,
+                s.PolicyIdChangedAtUtc,
+                s.FetchStatus,
+                s.FetchDetail,
+                s.PolicyValid,
+                s.Mode,
+                s.UnmatchedMxHostsJson,
+            })
+            .SingleOrDefaultAsync(ct);
+
+        if (state is null)
+        {
+            return [];
+        }
+
+        var alerts = new List<AlertEvent>();
+        var enforcing = string.Equals(state.Mode, "enforce", StringComparison.OrdinalIgnoreCase);
+
+        // Proposed only while the change is younger than the cooldown window, so
+        // the rule self-extinguishes: one alert per rotation, then silence until
+        // the id moves again.
+        var changeWindowStart = DateTime.UtcNow.AddHours(-Math.Max(1, _options.CooldownHours));
+        if (state.PreviousPolicyId is not null
+            && state.PolicyId is not null
+            && state.PolicyIdChangedAtUtc >= changeWindowStart)
+        {
+            alerts.Add(new AlertEvent
+            {
+                ClientId = clientId,
+                DomainId = domainId,
+                RuleType = AlertRuleTypes.MtaStsPolicyChange,
+                Severity = "info",
+                Title = $"MTA-STS policy changed for {domainName}: id {state.PreviousPolicyId} → {state.PolicyId}",
+                Details =
+                    $"The _mta-sts.{domainName} TXT record's id moved from {state.PreviousPolicyId} to " +
+                    $"{state.PolicyId}, which tells senders to refetch the policy. Expected after a deliberate " +
+                    $"policy edit; worth a look if nobody changed anything. Client: {clientName}.",
+                DetectedAtUtc = DateTime.UtcNow,
+            });
+        }
+
+        var txtBroken = state.DnsRecordStatus == MtaStsRecordStatus.Invalid;
+        var fetchBroken = state.DnsRecordStatus == MtaStsRecordStatus.Found
+            && state.FetchStatus is not null && state.FetchStatus != MtaStsFetchStatus.Ok;
+        var policyBroken = state.DnsRecordStatus == MtaStsRecordStatus.Found && state.PolicyValid == false;
+
+        if (txtBroken || fetchBroken || policyBroken)
+        {
+            var reason = txtBroken
+                ? "the _mta-sts TXT record is invalid, so senders treat the domain as having no policy"
+                : fetchBroken
+                    ? $"the policy file could not be fetched ({state.FetchDetail ?? state.FetchStatus})"
+                    : "the policy file does not parse as a valid policy";
+
+            alerts.Add(new AlertEvent
+            {
+                ClientId = clientId,
+                DomainId = domainId,
+                RuleType = AlertRuleTypes.MtaStsBroken,
+                Severity = enforcing ? "critical" : "warning",
+                Title = $"MTA-STS is advertised but broken for {domainName}",
+                Details =
+                    $"{domainName} advertises MTA-STS, but {reason}. " +
+                    (enforcing
+                        ? "The policy is in enforce mode: senders holding a cached copy keep enforcing it until " +
+                          "max_age expires, and no sender can pick up a fix until the policy host works again."
+                        : "New senders cannot adopt the policy until this is fixed.") +
+                    $" Client: {clientName}.",
+                DetectedAtUtc = DateTime.UtcNow,
+            });
+        }
+
+        if (state.DnsRecordStatus == MtaStsRecordStatus.Found
+            && state.FetchStatus == MtaStsFetchStatus.Ok
+            && state.PolicyValid == true
+            && !string.Equals(state.Mode, "none", StringComparison.OrdinalIgnoreCase)
+            && state.UnmatchedMxHostsJson is not null)
+        {
+            var unmatched = DeserializeHosts(state.UnmatchedMxHostsJson);
+            if (unmatched.Count > 0)
+            {
+                var listed = string.Join(", ", unmatched.Take(10))
+                    + (unmatched.Count > 10 ? $" and {unmatched.Count - 10} more" : "");
+
+                alerts.Add(new AlertEvent
+                {
+                    ClientId = clientId,
+                    DomainId = domainId,
+                    RuleType = AlertRuleTypes.MtaStsMxMismatch,
+                    Severity = enforcing ? "critical" : "warning",
+                    Title = unmatched.Count == 1
+                        ? $"MX host {unmatched[0]} is not covered by {domainName}'s MTA-STS policy"
+                        : $"{unmatched.Count} MX hosts are not covered by {domainName}'s MTA-STS policy",
+                    Details =
+                        $"Live MX for {domainName} includes {listed}, which no mx pattern in the MTA-STS " +
+                        "policy covers. " +
+                        (enforcing
+                            ? "The policy is in enforce mode, so conforming senders refuse to deliver via " +
+                              "those hosts — the classic MX migration without a policy update. Update the " +
+                              "policy (and bump the record id) or roll back the MX change."
+                            : "Under testing mode senders still deliver and report the mismatch via TLS-RPT; " +
+                              "fix it before moving to enforce.") +
+                        $" Client: {clientName}.",
+                    DetectedAtUtc = DateTime.UtcNow,
+                });
+            }
+        }
+
+        return alerts;
+    }
+
+    private static IReadOnlyList<string> DeserializeHosts(string json)
+    {
+        try
+        {
+            return JsonSerializer.Deserialize<List<string>>(json) ?? [];
+        }
+        catch (JsonException)
+        {
+            return [];
+        }
     }
 
     /// <summary>True if the same alert was already raised for this subject recently.</summary>

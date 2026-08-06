@@ -292,4 +292,218 @@ public sealed class AlertEvaluationTests
         Assert.Equal(0, result.ClientsEvaluated);
         Assert.Empty(await db.AlertEvents.ToListAsync());
     }
+
+    // --- MTA-STS rules (read the persisted state row; no network) ---
+
+    /// <summary>A healthy testing-mode MTA-STS state; mutate to break specific parts.</summary>
+    private static MtaStsState SeedMtaSts(DmarcAnalyzerDbContext db, Guid domainId, Action<MtaStsState>? mutate = null)
+    {
+        var state = new MtaStsState
+        {
+            DomainId = domainId,
+            DnsRecordStatus = "found",
+            RawRecord = "v=STSv1; id=a1",
+            PolicyId = "a1",
+            FetchStatus = "ok",
+            LastFetchOkAtUtc = DateTime.UtcNow,
+            PolicyValid = true,
+            Mode = "testing",
+            MaxAgeSeconds = 604800,
+            UnmatchedMxHostsJson = "[]",
+            LastCheckedAtUtc = DateTime.UtcNow,
+        };
+        mutate?.Invoke(state);
+        db.Add(state);
+        return state;
+    }
+
+    [Fact]
+    public async Task MtaStsHealthyState_RaisesNothing()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedMtaSts(db, domain.Id);
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(0, result.AlertsRaised);
+    }
+
+    [Fact]
+    public async Task MtaStsPolicyChange_RaisesInfo_WhileTheChangeIsFresh()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedMtaSts(db, domain.Id, s =>
+        {
+            s.PolicyId = "b2";
+            s.PreviousPolicyId = "a1";
+            s.PolicyIdChangedAtUtc = DateTime.UtcNow.AddHours(-1);
+        });
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(1, result.AlertsRaised);
+        var alert = Assert.Single(await db.AlertEvents.ToListAsync());
+        Assert.Equal(AlertRuleTypes.MtaStsPolicyChange, alert.RuleType);
+        Assert.Equal("info", alert.Severity);
+        Assert.Contains("a1 → b2", alert.Title);
+    }
+
+    [Fact]
+    public async Task MtaStsPolicyChange_AgedPastTheWindow_IsNotProposedAgain()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedMtaSts(db, domain.Id, s =>
+        {
+            s.PolicyId = "b2";
+            s.PreviousPolicyId = "a1";
+            s.PolicyIdChangedAtUtc = DateTime.UtcNow.AddHours(-48); // past the 24h cooldown window
+        });
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(0, result.AlertsRaised);
+    }
+
+    [Fact]
+    public async Task MtaStsBroken_IsCriticalUnderEnforce()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedMtaSts(db, domain.Id, s =>
+        {
+            s.Mode = "enforce";
+            s.FetchStatus = "tls_failed";
+            s.FetchDetail = "Certificate rejected (RemoteCertificateChainErrors)";
+        });
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(1, result.AlertsRaised);
+        var alert = Assert.Single(await db.AlertEvents.ToListAsync());
+        Assert.Equal(AlertRuleTypes.MtaStsBroken, alert.RuleType);
+        Assert.Equal("critical", alert.Severity);
+        Assert.Contains("RemoteCertificateChainErrors", alert.Details);
+    }
+
+    [Fact]
+    public async Task MtaStsBroken_IsWarningUnderTesting()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedMtaSts(db, domain.Id, s => s.FetchStatus = "http_error");
+        await db.SaveChangesAsync();
+
+        await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        var alert = Assert.Single(await db.AlertEvents.ToListAsync());
+        Assert.Equal(AlertRuleTypes.MtaStsBroken, alert.RuleType);
+        Assert.Equal("warning", alert.Severity);
+    }
+
+    [Fact]
+    public async Task MtaStsInvalidRecord_IsBroken_EvenWithoutAFetch()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedMtaSts(db, domain.Id, s =>
+        {
+            s.DnsRecordStatus = "invalid";
+            s.FetchStatus = null;
+            s.PolicyValid = null;
+        });
+        await db.SaveChangesAsync();
+
+        await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        var alert = Assert.Single(await db.AlertEvents.ToListAsync());
+        Assert.Equal(AlertRuleTypes.MtaStsBroken, alert.RuleType);
+        Assert.Contains("TXT record is invalid", alert.Details);
+    }
+
+    [Fact]
+    public async Task MtaStsLookupFailure_IsTransient_NotBroken()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedMtaSts(db, domain.Id, s => s.DnsRecordStatus = "lookup_failed");
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(0, result.AlertsRaised);
+    }
+
+    [Fact]
+    public async Task MtaStsMxMismatch_IsCriticalUnderEnforce_AndNamesTheHost()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedMtaSts(db, domain.Id, s =>
+        {
+            s.Mode = "enforce";
+            s.UnmatchedMxHostsJson = "[\"mx.new-provider.net\"]";
+        });
+        await db.SaveChangesAsync();
+
+        await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        var alert = Assert.Single(await db.AlertEvents.ToListAsync());
+        Assert.Equal(AlertRuleTypes.MtaStsMxMismatch, alert.RuleType);
+        Assert.Equal("critical", alert.Severity);
+        Assert.Contains("mx.new-provider.net", alert.Title);
+    }
+
+    [Fact]
+    public async Task MtaStsMxMismatch_IsSuppressedUnderModeNone()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedMtaSts(db, domain.Id, s =>
+        {
+            s.Mode = "none";
+            s.UnmatchedMxHostsJson = "[\"mx.new-provider.net\"]";
+        });
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(0, result.AlertsRaised);
+    }
+
+    [Fact]
+    public async Task MtaStsCooldown_SuppressesTheRepeat()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db);
+        SeedMtaSts(db, domain.Id, s => s.FetchStatus = "connect_failed");
+        await db.SaveChangesAsync();
+
+        var email = new FakeEmailSender();
+        var first = await Service(db, email).EvaluateAsync(CancellationToken.None);
+        var second = await Service(db, email).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(1, first.AlertsRaised);
+        Assert.Equal(0, second.AlertsRaised);
+        Assert.Equal(1, second.Suppressed);
+    }
+
+    [Fact]
+    public async Task NoMtaStsStateRow_ProducesNoCandidates()
+    {
+        await using var db = NewDb();
+        Seed(db);
+        await db.SaveChangesAsync();
+
+        var result = await Service(db, new FakeEmailSender()).EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(0, result.AlertsRaised);
+        Assert.Equal(0, result.Suppressed);
+    }
 }

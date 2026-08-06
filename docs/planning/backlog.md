@@ -431,6 +431,38 @@ zero undocumented. The problems are everywhere else.
       exist from `dmarc_report` down, and the audit trail should record the
       deletion rather than be deleted.
 
+### MTA-STS and TLS-RPT (issue #115)
+
+The arc that makes the app the one place an agency runs MTA-STS across client
+domains: monitor it everywhere, host the policy files, and read the TLS-RPT
+feedback that says whether enforcing would break anything. Sequenced; each
+step is independently shippable.
+
+- [x] (step 1, done 2026-08-06) **MTA-STS monitoring.** Worker pass +
+      `mta_sts_state` — the `_mta-sts` TXT record (including the RFC 8461 rule
+      that two records or bad syntax read as *no policy*), the policy fetch
+      (the codebase's first outbound HTTP: no redirects, 64 KB bound, cert
+      failures as findings, private-address egress guard), syntax, and the
+      MX cross-check. Three alert rules read the persisted state; the Domain
+      Detail "Transport security" card renders it, with a staff-only recheck.
+- [ ] (step 2) **Hosted MTA-STS policies.** Per-domain policy rows (mode,
+      max_age, mx patterns, server-bumped id) served anonymously at
+      `/.well-known/mta-sts.txt` keyed on the Host header — paths outside
+      `/api/v1/` are already anonymous by construction. A new
+      `APP_MODE=mta-sts` runs an internet-facing policy-host container
+      separate from the console; a Caddy on-demand-TLS `ask` endpoint gates
+      cert issuance; client-level bulk apply covers same-provider fleets;
+      ops doc with the reverse-proxy recipes. Onboarding a client domain
+      becomes one CNAME plus one TXT record.
+- [ ] (step 3) **TLS-RPT ingestion, surface and rollout gate.** The Parking
+      Lot item below (scoped 2026-07-25), plus what issue #115 adds on top:
+      STS-vs-transport failure classification stored per detail row, a
+      per-domain TLS-RPT panel, and the testing→enforce readiness gate
+      (monitoring checks green + no STS-category failure sessions, with a
+      time-in-testing fallback for domains no reporter covers). The dedupe
+      design decision is resolved: a parallel `tls_report_ingest` ledger,
+      `dmarc_report_ingest` untouched.
+
 ## Parking Lot
 
 - [ ] (todo) Investigate DNS and WHOIS enrichment for sending infrastructure insights.
@@ -450,8 +482,9 @@ zero undocumented. The problems are everywhere else.
 
 - [ ] (todo) Evaluate optional BIMI support after DMARC MVP.
 - [ ] (todo) **Ingest and store SMTP TLS reports (TLS-RPT, RFC 8460).** Scoped
-      2026-07-25. Attachments are already recognised and skipped cleanly, so this
-      is additive rather than a fix.
+      2026-07-25; sequenced as step 3 of the MTA-STS and TLS-RPT arc under
+      Medium Priority. Attachments are already recognised and skipped cleanly,
+      so this is additive rather than a fix.
 
       *Why:* two competitors researched the same day ship it — DMARCwise hosts
       MTA-STS and TLS-RPT, and `cry-inc/dmarc-report-viewer` parses TLS reports
