@@ -31,6 +31,9 @@ public sealed class BackupExportService(
         "dmarc_report_record",
         "dmarc_report_record_dkim_auth_result",
         "dmarc_report_record_spf_auth_result",
+        "smtp_tls_report",
+        "smtp_tls_report_policy",
+        "smtp_tls_failure_detail",
     ];
 
     public async Task<ServiceResult<BackupArtifact>> ExportAsync(
@@ -209,5 +212,8 @@ public sealed class BackupExportService(
             [ExcludedTables[1]] = await db.DmarcReportRecords.LongCountAsync(ct),
             [ExcludedTables[2]] = await db.DmarcReportRecordDkimAuthResults.LongCountAsync(ct),
             [ExcludedTables[3]] = await db.DmarcReportRecordSpfAuthResults.LongCountAsync(ct),
+            [ExcludedTables[4]] = await db.SmtpTlsReports.LongCountAsync(ct),
+            [ExcludedTables[5]] = await db.SmtpTlsReportPolicies.LongCountAsync(ct),
+            [ExcludedTables[6]] = await db.SmtpTlsFailureDetails.LongCountAsync(ct),
         };
 }

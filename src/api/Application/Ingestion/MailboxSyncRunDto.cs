@@ -12,5 +12,7 @@ public sealed record MailboxSyncRunDto(
     int ReportsInserted,
     int ReportsSkippedAsDuplicate,
     int ParseFailures,
+    int TlsReportsInserted,
+    int TlsReportsSkippedAsDuplicate,
     string? Error,
     DateTime CreatedAtUtc);

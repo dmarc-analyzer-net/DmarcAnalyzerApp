@@ -454,14 +454,24 @@ step is independently shippable.
       policies ride in the backup artifact with ids verbatim; ops doc with
       the reverse-proxy recipes (`docs/ops/mta-sts-hosting.md`). Onboarding a
       client domain is one CNAME plus one TXT record.
-- [ ] (step 3) **TLS-RPT ingestion, surface and rollout gate.** The Parking
-      Lot item below (scoped 2026-07-25), plus what issue #115 adds on top:
-      STS-vs-transport failure classification stored per detail row, a
-      per-domain TLS-RPT panel, and the testing→enforce readiness gate
-      (monitoring checks green + no STS-category failure sessions, with a
-      time-in-testing fallback for domains no reporter covers). The dedupe
-      design decision is resolved: a parallel `tls_report_ingest` ledger,
-      `dmarc_report_ingest` untouched.
+- [x] (step 3a, done 2026-08-06) **TLS-RPT ingestion and storage.** Typed
+      extraction (zip entries content-classified; gzip'd non-reports keep
+      their legacy route to the DMARC parser), a lenient System.Text.Json
+      parser, four tables (`smtp_tls_report` with no DomainId — tenancy and
+      windows live on the per-policy rows — failure details with a stored
+      sts/dane/transport/other category, and the parallel `tls_report_ingest`
+      ledger: the dedupe decision as resolved, `dmarc_report_ingest`
+      untouched), sync-run counters end-to-end (which supersedes the
+      skipped-TLS-counter side item below), retention passes with a
+      legal-hold-safe orphan sweep, and backup exclusions + a ledger history
+      stream. `ResolveOrCreateDomainIdAsync` hoisted to `DomainIngestResolver`
+      as the backlog item anticipated.
+- [ ] (step 3b) **TLS-RPT surface and rollout gate.** The per-domain TLS-RPT
+      panel (sessions, failure categories, receiving MX) with its own window
+      anchor, and the testing→enforce readiness gate: monitoring checks green
+      + no STS-category failure sessions in the window, with a time-in-testing
+      fallback for domains no reporter covers; one-click promote reuses the
+      hosted-policy PUT.
 
 ## Parking Lot
 
@@ -481,10 +491,13 @@ step is independently shippable.
 
 
 - [ ] (todo) Evaluate optional BIMI support after DMARC MVP.
-- [ ] (todo) **Ingest and store SMTP TLS reports (TLS-RPT, RFC 8460).** Scoped
-      2026-07-25; sequenced as step 3 of the MTA-STS and TLS-RPT arc under
-      Medium Priority. Attachments are already recognised and skipped cleanly,
-      so this is additive rather than a fix.
+- [x] (done 2026-08-06) **Ingest and store SMTP TLS reports (TLS-RPT, RFC
+      8460).** Scoped 2026-07-25; shipped as step 3a of the MTA-STS and
+      TLS-RPT arc under Medium Priority — see that entry. The scoped notes
+      below stand as the design record; the *surface* half continues as step
+      3b. The skipped-TLS-report counter side item became real
+      `TlsReportsInserted`/`TlsReportsSkippedAsDuplicate` counters, since
+      ingestion landed with it.
 
       *Why:* two competitors researched the same day ship it — DMARCwise hosts
       MTA-STS and TLS-RPT, and `cry-inc/dmarc-report-viewer` parses TLS reports

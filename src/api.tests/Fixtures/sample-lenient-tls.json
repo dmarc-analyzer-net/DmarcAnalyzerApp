@@ -1,0 +1,16 @@
+{
+  "organization-name": "Quirky Reporter",
+  "date-range": { "start-datetime": "2026-08-02T00:00:00+00:00", "end-datetime": "2026-08-02T23:59:59+00:00" },
+  "report-id": "quirky-001",
+  "policies": [
+    {
+      "policy": { "policy-type": "STS", "policy-string": "version: STSv1", "policy-domain": "Acme.Example." },
+      "summary": { "total-successful-session-count": "42", "total-failure-session-count": "7" },
+      "failure-details": [
+        { "result-type": "quantum-handshake-flux", "sending-mta-ip": "192.0.2.1", "failed-session-count": "5" },
+        { "result-type": "certificate-expired", "receiving-mx-hostname": "MX1.Acme.Example." }
+      ]
+    },
+    { "policy": { "policy-type": "sts" }, "summary": { "total-successful-session-count": 1, "total-failure-session-count": 0 } }
+  ]
+}

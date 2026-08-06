@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <None Include="Fixtures/*.xml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures/*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

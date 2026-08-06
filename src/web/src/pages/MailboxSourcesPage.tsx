@@ -480,6 +480,10 @@ export function MailboxSourcesPage() {
                           <div>Attachments: {health.lastRunAttachmentsProcessed ?? 0}</div>
                           <div>Inserted: {health.lastRunReportsInserted ?? 0}</div>
                           <div>Dupes: {health.lastRunReportsSkippedAsDuplicate ?? 0}</div>
+                          <div>
+                            TLS: {health.lastRunTlsReportsInserted ?? 0} inserted /{' '}
+                            {health.lastRunTlsReportsSkippedAsDuplicate ?? 0} dupes
+                          </div>
                           <div>Parse failures: {health.lastRunParseFailures ?? 0}</div>
                         </div>
                       </TableCell>
@@ -557,6 +561,9 @@ export function MailboxSourcesPage() {
                                     {run.messagesScanned}/{run.attachmentsProcessed}/
                                     {run.reportsInserted}/{run.reportsSkippedAsDuplicate}/
                                     {run.parseFailures}
+                                    {run.tlsReportsInserted > 0 || run.tlsReportsSkippedAsDuplicate > 0
+                                      ? ` · tls ${run.tlsReportsInserted}/${run.tlsReportsSkippedAsDuplicate}`
+                                      : null}
                                   </TableCell>
                                   <TableCell className="max-w-[260px]">
                                     <p

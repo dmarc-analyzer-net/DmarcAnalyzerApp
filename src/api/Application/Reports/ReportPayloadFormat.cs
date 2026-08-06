@@ -12,10 +12,7 @@ public enum ReportPayloadKind
     /// <summary>DMARC aggregate (RUA) XML — RFC 7489.</summary>
     DmarcAggregateXml,
 
-    /// <summary>
-    /// SMTP TLS report JSON — RFC 8460. Recognised so it can be skipped
-    /// deliberately; parsing it is not implemented yet.
-    /// </summary>
+    /// <summary>SMTP TLS report JSON — RFC 8460, parsed by <c>TlsRptReportParser</c>.</summary>
     SmtpTlsReportJson,
 }
 

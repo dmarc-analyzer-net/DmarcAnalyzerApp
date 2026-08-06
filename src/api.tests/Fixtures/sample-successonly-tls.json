@@ -1,0 +1,12 @@
+{
+  "organization-name": "Clean Reporter",
+  "date-range": { "start-datetime": "2026-08-03T00:00:00Z", "end-datetime": "2026-08-03T23:59:59Z" },
+  "contact-info": "tls@clean.example",
+  "report-id": "clean-42",
+  "policies": [
+    {
+      "policy": { "policy-type": "sts", "policy-domain": "acme.example" },
+      "summary": { "total-successful-session-count": 5000, "total-failure-session-count": 0 }
+    }
+  ]
+}

@@ -53,6 +53,44 @@ public sealed class RetentionPurgeTests
         };
     }
 
+    /// <summary>A TLS report + one policy row per domain, window ended <paramref name="monthsAgo"/> months ago.</summary>
+    private static SmtpTlsReport NewTlsReport(int monthsAgo, params Guid[] domainIds)
+    {
+        var end = DateTime.UtcNow.AddMonths(-monthsAgo);
+        var report = new SmtpTlsReport
+        {
+            Id = Guid.NewGuid(), MailboxSourceId = Guid.NewGuid(),
+            OrganizationName = "reporter.example", ReportId = Guid.NewGuid().ToString("N"),
+            RangeBeginUtc = end.AddDays(-1), RangeEndUtc = end,
+            PolicyCount = domainIds.Length,
+            IngestedAtUtc = DateTime.UtcNow,
+        };
+        foreach (var domainId in domainIds)
+        {
+            report.Policies.Add(new SmtpTlsReportPolicy
+            {
+                Id = Guid.NewGuid(), SmtpTlsReportId = report.Id, DomainId = domainId,
+                PolicyType = "sts", PolicyDomain = "x.example",
+                SuccessfulSessionCount = 10, FailureSessionCount = 1,
+                ReportRangeBeginUtc = report.RangeBeginUtc, ReportRangeEndUtc = report.RangeEndUtc,
+            });
+        }
+
+        return report;
+    }
+
+    private static TlsReportIngest NewTlsIngest(Guid clientId, int monthsAgo)
+    {
+        var end = DateTime.UtcNow.AddMonths(-monthsAgo);
+        return new TlsReportIngest
+        {
+            Id = Guid.NewGuid(), ClientId = clientId, MailboxSourceId = Guid.NewGuid(),
+            OrganizationName = "reporter.example", ReportId = Guid.NewGuid().ToString("N"),
+            ReportRangeBeginUtc = end.AddDays(-1), ReportRangeEndUtc = end,
+            PolicyDomains = "x.example", PolicyCount = 1, IngestedAtUtc = DateTime.UtcNow,
+        };
+    }
+
     [Fact]
     public async Task DeletesReportsPastRetention_AndKeepsRecentOnes()
     {
@@ -270,5 +308,93 @@ public sealed class RetentionPurgeTests
         var result = await Service(db).PurgeAsync(dryRun: false, 500, CancellationToken.None);
 
         Assert.Equal(1, result.AuditEventsDeleted);
+    }
+
+    [Fact]
+    public async Task TlsPolicies_PurgePerClient_AndOrphanedReportsAreSwept()
+    {
+        await using var db = NewDb();
+        var client = NewClient("acme", retentionMonths: 12);
+        var domain = NewDomain(client.Id, "acme.example");
+        db.AddRange(client, domain);
+        db.AddRange(
+            NewTlsReport(30, domain.Id),   // expired policy → report orphans → swept
+            NewTlsReport(6, domain.Id));   // inside the window
+        db.AddRange(
+            NewTlsIngest(client.Id, 30),   // expired
+            NewTlsIngest(client.Id, 6));   // kept
+        await db.SaveChangesAsync();
+
+        var result = await Service(db).PurgeAsync(dryRun: false, 500, CancellationToken.None);
+
+        Assert.Equal(1, result.TlsPolicyRowsDeleted);
+        Assert.Equal(1, result.TlsIngestRowsDeleted);
+        Assert.Equal(1, result.TlsReportsDeleted);
+        Assert.Equal(1, await db.SmtpTlsReports.CountAsync());
+        Assert.Equal(1, await db.SmtpTlsReportPolicies.CountAsync());
+        Assert.Equal(1, await db.TlsReportIngests.CountAsync());
+    }
+
+    [Fact]
+    public async Task TlsOrphanSweep_UsesTheLongestRetentionAcrossClients()
+    {
+        await using var db = NewDb();
+        // Two clients: short retention purges its policy rows, but the report
+        // survives while any client's window could still claim its age band.
+        var shortClient = NewClient("short", retentionMonths: 6);
+        var longClient = NewClient("long", retentionMonths: 36);
+        var shortDomain = NewDomain(shortClient.Id, "short.example");
+        db.AddRange(shortClient, longClient, shortDomain);
+        db.Add(NewTlsReport(12, shortDomain.Id)); // past short's window, inside long's
+        await db.SaveChangesAsync();
+
+        var result = await Service(db).PurgeAsync(dryRun: false, 500, CancellationToken.None);
+
+        // The policy row went with its client's retention…
+        Assert.Equal(1, result.TlsPolicyRowsDeleted);
+        Assert.Equal(0, await db.SmtpTlsReportPolicies.CountAsync());
+        // …but the orphaned report is younger than the 36-month sweep cutoff.
+        Assert.Equal(0, result.TlsReportsDeleted);
+        Assert.Equal(1, await db.SmtpTlsReports.CountAsync());
+    }
+
+    [Fact]
+    public async Task TlsLegalHold_IsSafeByConstruction()
+    {
+        await using var db = NewDb();
+        var held = NewClient("held", retentionMonths: 6, legalHold: true);
+        var domain = NewDomain(held.Id, "held.example");
+        db.AddRange(held, domain);
+        db.Add(NewTlsReport(40, domain.Id));
+        db.Add(NewTlsIngest(held.Id, 40));
+        await db.SaveChangesAsync();
+
+        var result = await Service(db).PurgeAsync(dryRun: false, 500, CancellationToken.None);
+
+        // The held client's policy rows never delete, so its report never
+        // orphans — even though it is far past every cutoff.
+        Assert.Equal(0, result.TlsPolicyRowsDeleted);
+        Assert.Equal(0, result.TlsReportsDeleted);
+        Assert.Equal(1, await db.SmtpTlsReports.CountAsync());
+        Assert.Equal(1, await db.TlsReportIngests.CountAsync());
+    }
+
+    [Fact]
+    public async Task TlsDryRun_CountsWithoutDeleting()
+    {
+        await using var db = NewDb();
+        var client = NewClient("acme", retentionMonths: 12);
+        var domain = NewDomain(client.Id, "acme.example");
+        db.AddRange(client, domain);
+        db.Add(NewTlsReport(30, domain.Id));
+        db.Add(NewTlsIngest(client.Id, 30));
+        await db.SaveChangesAsync();
+
+        var result = await Service(db).PurgeAsync(dryRun: true, 500, CancellationToken.None);
+
+        Assert.Equal(1, result.TlsPolicyRowsDeleted);
+        Assert.Equal(1, result.TlsIngestRowsDeleted);
+        Assert.Equal(1, await db.SmtpTlsReportPolicies.CountAsync());
+        Assert.Equal(1, await db.TlsReportIngests.CountAsync());
     }
 }

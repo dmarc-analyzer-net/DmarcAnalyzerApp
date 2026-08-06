@@ -268,6 +268,66 @@ Raw SPF verdicts underlying a record.
 | `Scope` | `mfrom` \| `helo` |
 | `Result`, `HumanResult` | |
 
+## A.4.1 SMTP TLS report data (TLS-RPT, RFC 8460)
+
+### `smtp_tls_report`
+One TLS report as the reporter sent it. **No DomainId** — a single report can
+carry policies for several policy-domains, possibly of different clients, so
+tenancy and analytics hang off the policy rows.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK |
+| `MailboxSourceId` | FK → `mailbox_source`, **restrict**, indexed |
+| `OrganizationName`, `ReportId` | max 255 each; with the range, the dedupe key — unique `(OrganizationName, ReportId, RangeBeginUtc, RangeEndUtc)`: without a domain in the key, the org disambiguates report-id collisions across reporters |
+| `ContactInfo` | max 320, nullable |
+| `RangeBeginUtc`, `RangeEndUtc` | `RangeEndUtc` indexed for the orphan sweep |
+| `PolicyCount`, `TotalSuccessfulSessionCount`, `TotalFailureSessionCount` | denormalized sums for list views |
+| `IngestedAtUtc` | |
+
+### `smtp_tls_report_policy`
+One policy block — the tenancy and analytics level. The report window is
+denormalized here for the same reason it is on `dmarc_report_record`.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK |
+| `SmtpTlsReportId` | FK → `smtp_tls_report`, **cascade**, indexed |
+| `DomainId` | FK → `domain`, **restrict** — resolved per policy-domain via the same create-or-get DMARC ingestion uses (`DomainIngestResolver`) |
+| `PolicyType` | max 32 — `sts` \| `tlsa` \| `no-policy-found`, unknown kept raw |
+| `PolicyDomain` | max 255 — as reported, normalized lowercase |
+| `PolicyString`, `MxHostPatterns` | max 4000 / 2000, newline-joined when they arrived as arrays |
+| `SuccessfulSessionCount`, `FailureSessionCount` | bigint |
+| `ReportRangeBeginUtc`, `ReportRangeEndUtc` | `(DomainId, ReportRangeBeginUtc)` indexed for windows; `ReportRangeEndUtc` for retention |
+
+### `smtp_tls_failure_detail`
+
+| Column | Notes |
+|---|---|
+| `Id` | PK |
+| `SmtpTlsReportPolicyId` | FK → `smtp_tls_report_policy`, **cascade**, indexed |
+| `ResultType` | max 64 — the reporter's value, lowercased but raw (RFC 8460 has no closed registry) |
+| `FailureCategory` | max 16 — `sts` \| `dane` \| `transport` \| `other`, computed at ingest by `TlsRptFailureClassifier`. `validation-failure` lands in `sts` deliberately (conservative for the promotion gate); re-bucketing is a classifier edit plus an UPDATE because the raw type survives |
+| `SendingMtaIp`, `ReceivingMxHostname`, `ReceivingMxHelo`, `ReceivingIp` | |
+| `FailedSessionCount` | a present row asserts ≥ 1; a missing count parses as 1 |
+| `AdditionalInformation`, `FailureReasonCode` | max 2000 / 255 |
+
+### `tls_report_ingest`
+The TLS provenance ledger — a **parallel** of `dmarc_report_ingest`, not a
+discriminator on it, so the DMARC ledger's unique key and purge stay untouched.
+Unique `(ClientId, OrganizationName, ReportId, ReportRangeBeginUtc,
+ReportRangeEndUtc)` — the DMARC key with the policy domain (meaningless for a
+multi-domain report) swapped for the organization name. `PolicyDomains` is a
+comma-joined, truncated copy for post-purge "did we ever receive it" searches.
+`ClientId` is the mailbox source's default client, exactly as for DMARC.
+
+Retention: policy rows purge per client on the window end; the ledger likewise;
+report rows left with no policies sweep once older than the **longest**
+retention across clients — so a legal-hold client's rows never delete and its
+reports never orphan. The three report tables are excluded from the backup
+config artifact (replayable from the mailbox); the ledger ships as its own
+history stream.
+
 ## A.5 Notifications and alerts
 
 ### `notification_recipient`

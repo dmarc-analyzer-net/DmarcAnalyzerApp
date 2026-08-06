@@ -20,6 +20,9 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 public sealed class MailboxSyncService(
     DmarcAnalyzerDbContext db,
     IDmarcReportParser parser,
+    ITlsRptReportParser tlsParser,
+    ITlsReportIngestor tlsIngestor,
+    Domains.IDomainIngestResolver domainResolver,
     Security.ICredentialProtector credentialProtector,
     Backup.IReportMailArchive reportMailArchive,
     IOptions<WorkerOptions> options,
@@ -56,6 +59,8 @@ public sealed class MailboxSyncService(
         var reportsInserted = 0;
         var reportsSkippedAsDuplicate = 0;
         var parseFailures = 0;
+        var tlsReportsInserted = 0;
+        var tlsReportsSkippedAsDuplicate = 0;
 
         // Legacy rows store the password in plaintext; re-protect them on first use.
         if (!credentialProtector.IsProtected(mailboxSource.PasswordEncrypted))
@@ -192,30 +197,64 @@ public sealed class MailboxSyncService(
                 {
                     operationToken.ThrowIfCancellationRequested();
 
-                    IReadOnlyList<MemoryStream> xmlStreams;
+                    IReadOnlyList<ExtractedReportPayload> payloads;
                     try
                     {
-                        xmlStreams = await ExtractXmlStreamsAsync(attachment, logger, operationToken);
+                        payloads = await ExtractReportPayloadsAsync(attachment, logger, operationToken);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
                         parseFailures++;
                         logger.LogWarning(ex,
-                            "Failed to extract DMARC attachment {AttachmentName} for mailbox source {MailboxSourceId}",
+                            "Failed to extract report attachment {AttachmentName} for mailbox source {MailboxSourceId}",
                             GetAttachmentFileName(attachment), mailboxSource.Id);
                         continue;
                     }
 
-                    if (xmlStreams.Count == 0)
+                    if (payloads.Count == 0)
                     {
                         continue;
                     }
 
-                    foreach (var xmlStream in xmlStreams)
+                    foreach (var payload in payloads)
                     {
-                        await using (xmlStream)
+                        await using (payload.Stream)
                         {
                             attachmentsProcessed++;
+
+                            if (payload.Kind == ReportPayloadKind.SmtpTlsReportJson)
+                            {
+                                try
+                                {
+                                    var tlsResult = tlsParser.Parse(payload.Stream);
+                                    var outcome = await tlsIngestor.IngestAsync(
+                                        tlsResult, mailboxSource, operationToken);
+
+                                    if (outcome == TlsReportIngestOutcome.Inserted)
+                                    {
+                                        tlsReportsInserted++;
+                                    }
+                                    else
+                                    {
+                                        tlsReportsSkippedAsDuplicate++;
+                                    }
+                                }
+                                catch (Exception ex) when (ex is not OperationCanceledException)
+                                {
+                                    // Folded into the same counter as DMARC failures: a
+                                    // report that arrived and could not be stored is the
+                                    // same operator signal regardless of format, and the
+                                    // log line names which one it was.
+                                    parseFailures++;
+                                    logger.LogWarning(ex,
+                                        "Failed to parse TLS report attachment {AttachmentName} for mailbox source {MailboxSourceId}",
+                                        payload.SourceName, mailboxSource.Id);
+                                }
+
+                                continue;
+                            }
+
+                            var xmlStream = payload.Stream;
 
                             try
                             {
@@ -229,7 +268,7 @@ public sealed class MailboxSyncService(
                                 // one, so rolling it back with a failed report would be
                                 // wrong. A domain with no reports yet is a state the
                                 // console already handles.
-                                var domainId = await ResolveOrCreateDomainIdAsync(
+                                var domainId = await domainResolver.ResolveOrCreateAsync(
                                     mailboxSource.DefaultClientId,
                                     normalizedPolicyDomain,
                                     operationToken);
@@ -335,6 +374,8 @@ public sealed class MailboxSyncService(
                 ReportsInserted = reportsInserted,
                 ReportsSkippedAsDuplicate = reportsSkippedAsDuplicate,
                 ParseFailures = parseFailures,
+                TlsReportsInserted = tlsReportsInserted,
+                TlsReportsSkippedAsDuplicate = tlsReportsSkippedAsDuplicate,
                 CreatedAtUtc = startedAtUtc,
             });
 
@@ -348,6 +389,8 @@ public sealed class MailboxSyncService(
                 attachmentsProcessed,
                 reportsInserted,
                 reportsSkippedAsDuplicate,
+                tlsReportsInserted,
+                tlsReportsSkippedAsDuplicate,
                 parseFailures,
                 true,
                 null,
@@ -393,6 +436,8 @@ public sealed class MailboxSyncService(
                 ReportsInserted = reportsInserted,
                 ReportsSkippedAsDuplicate = reportsSkippedAsDuplicate,
                 ParseFailures = parseFailures,
+                TlsReportsInserted = tlsReportsInserted,
+                TlsReportsSkippedAsDuplicate = tlsReportsSkippedAsDuplicate,
                 Error = timedOut
                     ? $"sync cancelled or timed out after {syncRunTimeoutMinutes} minute(s); " +
                       $"checkpointed at uid {highestProcessedUid?.ToString() ?? "none"}"
@@ -408,6 +453,8 @@ public sealed class MailboxSyncService(
                 attachmentsProcessed,
                 reportsInserted,
                 reportsSkippedAsDuplicate,
+                tlsReportsInserted,
+                tlsReportsSkippedAsDuplicate,
                 parseFailures,
                 false,
                 ex.Message,
@@ -455,37 +502,6 @@ public sealed class MailboxSyncService(
             ", ct);
 
         return rows > 0;
-    }
-
-    private async Task<Guid> ResolveOrCreateDomainIdAsync(Guid defaultClientId, string normalizedPolicyDomain, CancellationToken ct)
-    {
-        var existing = await db.Domains
-            .AsNoTracking()
-            .Where(x => x.Name == normalizedPolicyDomain)
-            .Select(x => new { x.Id })
-            .SingleOrDefaultAsync(ct);
-
-        if (existing is not null)
-        {
-            return existing.Id;
-        }
-
-        var createdId = Guid.NewGuid();
-        await db.Database.ExecuteSqlInterpolatedAsync($@"
-            INSERT INTO domain
-                (""Id"", ""ClientId"", ""Name"", ""IsActive"", ""CreatedAtUtc"", ""UpdatedAtUtc"")
-            VALUES
-                ({createdId}, {defaultClientId}, {normalizedPolicyDomain}, {true}, {DateTime.UtcNow}, {DateTime.UtcNow})
-            ON CONFLICT (""Name"") DO NOTHING;
-            ", ct);
-
-        var resolved = await db.Domains
-            .AsNoTracking()
-            .Where(x => x.Name == normalizedPolicyDomain)
-            .Select(x => new { x.Id })
-            .SingleAsync(ct);
-
-        return resolved.Id;
     }
 
     private async Task<Guid?> TryInsertDmarcReportAsync(
@@ -597,9 +613,9 @@ public sealed class MailboxSyncService(
             .Where(x => !lastProcessedUid.HasValue || x.Id > lastProcessedUid.Value)
             .OrderBy(x => x.Id)];
 
-    private static async Task<IReadOnlyList<MemoryStream>> ExtractXmlStreamsAsync(MimeEntity attachment, ILogger logger, CancellationToken ct)
+    private static async Task<IReadOnlyList<ExtractedReportPayload>> ExtractReportPayloadsAsync(MimeEntity attachment, ILogger logger, CancellationToken ct)
     {
-        var result = new List<MemoryStream>();
+        var result = new List<ExtractedReportPayload>();
 
         await using var raw = new MemoryStream();
 
@@ -637,13 +653,10 @@ public sealed class MailboxSyncService(
                     continue;
                 }
 
-                if (entry.Key.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
-                {
-                    LogSkippedTlsReport(logger, entry.Key);
-                    continue;
-                }
-
-                if (!entry.Key.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                // The suffix pre-filter keeps skipping junk; the extracted bytes
+                // decide the format, same contract as everywhere else.
+                if (!entry.Key.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
+                    && !entry.Key.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -651,10 +664,22 @@ public sealed class MailboxSyncService(
                 try
                 {
                     await using var entryStream = entry.OpenEntryStream();
-                    var xml = new MemoryStream();
-                    await entryStream.CopyToAsync(xml, ct);
-                    xml.Position = 0;
-                    result.Add(xml);
+                    var extracted = new MemoryStream();
+                    await entryStream.CopyToAsync(extracted, ct);
+                    extracted.Position = 0;
+
+                    var entryKind = ReportPayloadFormat.Classify(
+                        extracted.GetBuffer().AsSpan(0, (int)extracted.Length), entry.Key, null);
+                    if (entryKind == ReportPayloadKind.Unknown)
+                    {
+                        await extracted.DisposeAsync();
+                        logger.LogInformation(
+                            "Skipped unrecognisable zip entry {EntryName} in attachment {AttachmentName}",
+                            entry.Key, fileName);
+                        continue;
+                    }
+
+                    result.Add(new ExtractedReportPayload(entryKind, extracted, entry.Key));
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -676,34 +701,45 @@ public sealed class MailboxSyncService(
             decoded.Position = 0;
 
             // Gzip is detected by magic bytes, so whatever was inside lands here
-            // regardless of format. TLS reports arrive exactly this way
-            // (application/tlsrpt+gzip) and used to be handed to the DMARC parser,
-            // which threw and inflated the parse-failure count.
-            if (ReportPayloadFormat.Classify(decoded.GetBuffer().AsSpan(0, (int)decoded.Length))
-                == ReportPayloadKind.SmtpTlsReportJson)
-            {
-                await decoded.DisposeAsync();
-                LogSkippedTlsReport(logger, fileName);
-                return result;
-            }
+            // regardless of format — TLS reports arrive exactly this way
+            // (application/tlsrpt+gzip). The filename fallback strips the .gz so
+            // report.json.gz still label-classifies when the bytes are inconclusive.
+            var innerName = StripGzipSuffix(fileName);
+            var kind = ReportPayloadFormat.Classify(
+                decoded.GetBuffer().AsSpan(0, (int)decoded.Length), innerName, null);
 
-            result.Add(decoded);
+            // Unknown keeps the legacy route: gzip content that is neither format
+            // always went to the DMARC parser, whose parse-failure accounting for
+            // garbage is behavior operators already understand.
+            result.Add(new ExtractedReportPayload(
+                kind == ReportPayloadKind.Unknown ? ReportPayloadKind.DmarcAggregateXml : kind,
+                decoded,
+                fileName));
             return result;
         }
 
         var mimeType = attachment.ContentType?.MimeType ?? string.Empty;
-
-        switch (ReportPayloadFormat.Classify(payload, fileName, mimeType))
+        var bareKind = ReportPayloadFormat.Classify(payload, fileName, mimeType);
+        if (bareKind != ReportPayloadKind.Unknown)
         {
-            case ReportPayloadKind.DmarcAggregateXml:
-                result.Add(new MemoryStream(payload, writable: false));
-                break;
-            case ReportPayloadKind.SmtpTlsReportJson:
-                LogSkippedTlsReport(logger, fileName);
-                break;
+            result.Add(new ExtractedReportPayload(
+                bareKind, new MemoryStream(payload, writable: false), fileName));
         }
 
         return result;
+    }
+
+    /// <summary>report.json.gz → report.json, so the label fallback still applies inside gzip.</summary>
+    private static string StripGzipSuffix(string fileName)
+    {
+        if (fileName.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
+        {
+            return fileName[..^3];
+        }
+
+        return fileName.EndsWith(".gzip", StringComparison.OrdinalIgnoreCase)
+            ? fileName[..^5]
+            : fileName;
     }
 
     private static bool IsZip(byte[] payload)
@@ -712,16 +748,5 @@ public sealed class MailboxSyncService(
 
     private static bool IsGzip(byte[] payload)
         => payload.Length >= 2 && payload[0] == 0x1F && payload[1] == 0x8B;
-
-    /// <summary>
-    /// TLS reports (RFC 8460) share the mailbox with DMARC reports but are a
-    /// different format entirely. Skipped deliberately and logged, rather than
-    /// dropped silently or counted as a parse failure — see the backlog item for
-    /// actually supporting them.
-    /// </summary>
-    private static void LogSkippedTlsReport(ILogger logger, string fileName) =>
-        logger.LogInformation(
-            "Skipped SMTP TLS report attachment {AttachmentName}: TLS-RPT ingestion is not implemented",
-            fileName);
 
 }

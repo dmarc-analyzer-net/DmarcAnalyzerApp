@@ -13,6 +13,8 @@ public sealed class MailboxSyncRun
     public int ReportsInserted { get; set; }
     public int ReportsSkippedAsDuplicate { get; set; }
     public int ParseFailures { get; set; }
+    public int TlsReportsInserted { get; set; }
+    public int TlsReportsSkippedAsDuplicate { get; set; }
     public string? Error { get; set; }
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 

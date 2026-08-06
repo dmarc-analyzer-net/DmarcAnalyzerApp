@@ -86,6 +86,8 @@ export type MailboxHealth = {
   lastRunReportsInserted: number | null
   lastRunReportsSkippedAsDuplicate: number | null
   lastRunParseFailures: number | null
+  lastRunTlsReportsInserted: number | null
+  lastRunTlsReportsSkippedAsDuplicate: number | null
 }
 
 export type MailboxSyncRun = {
@@ -100,6 +102,8 @@ export type MailboxSyncRun = {
   reportsInserted: number
   reportsSkippedAsDuplicate: number
   parseFailures: number
+  tlsReportsInserted: number
+  tlsReportsSkippedAsDuplicate: number
   error: string | null
   createdAtUtc: string
 }

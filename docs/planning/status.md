@@ -242,12 +242,37 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     (enable, compliance-drop threshold, minimum messages) are editable in the
     console rather than API-only
 
-- SMTP TLS reports (TLS-RPT, RFC 8460) are **recognised and skipped**, not
-  parsed. They share the mailbox with DMARC reports and arrive gzipped as
-  `application/tlsrpt+gzip`; because gzip is detected by magic bytes, they used
-  to reach the DMARC parser, throw, and inflate the parse-failure counter that
-  marks a mailbox source unhealthy. They are now classified by content and
-  logged. Ingesting them is a backlog item.
+- SMTP TLS reports (TLS-RPT, RFC 8460) are **ingested and stored**:
+  - extraction now returns typed payloads — every mail attachment classifies by
+    content into DMARC XML or TLS JSON and routes to its parser; zip entries
+    are content-classified too (the old suffix-only skip dropped mislabeled
+    entries), gzip'd non-reports keep their legacy route to the DMARC parser so
+    its failure accounting is unchanged
+  - `TlsRptReportParser` (System.Text.Json, no new dependency) is lenient where
+    the wild is: `mx-host` vs `mx-host-pattern` both accepted (string or
+    array — the RFC's prose and its own example disagree), counts as numbers or
+    strings, unknown result types kept raw, missing per-detail counts read as 1
+  - storage is four tables: `smtp_tls_report` (no DomainId — one report can
+    span several policy-domains), `smtp_tls_report_policy` (where tenancy and
+    the analytics window live, one row per policy-domain, resolved through the
+    same create-or-get DMARC ingestion uses — now hoisted to
+    `DomainIngestResolver`), `smtp_tls_failure_detail` (raw result type plus a
+    stored **sts/dane/transport/other** category — the STS-vs-transport split
+    that will gate MTA-STS promotion), and the `tls_report_ingest` ledger
+    (parallel to the DMARC one; the unique key swaps the policy domain for the
+    organization name)
+  - dedupe via `ON CONFLICT DO NOTHING` on `(org, report-id, range)`, all in
+    one transaction per report, mirroring the DMARC block
+  - sync runs count `TlsReportsInserted` / `TlsReportsSkippedAsDuplicate`
+    end-to-end (run rows, health rollup, console); TLS parse failures fold into
+    the existing parse-failure counter with a format-naming log line
+  - retention purges policy rows per client (window-end keyed), the ledger
+    likewise, then sweeps report rows left with no policies past the longest
+    retention any client has — which makes legal hold safe by construction
+  - the three report tables join the backup exclusion list (replayable from
+    the mailbox); the ledger ships as its own history stream
+  - the analytics surface and the MTA-STS rollout gate are the next step of
+    the arc (see the backlog)
 
 - Client addresses behind a proxy: `Network:UseForwardedHeaders` (off by
   default) makes the audit trail record the real caller instead of the proxy,

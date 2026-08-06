@@ -6,6 +6,8 @@ public sealed record MailboxSyncResult(
     int AttachmentsProcessed,
     int ReportsInserted,
     int ReportsSkippedAsDuplicate,
+    int TlsReportsInserted,
+    int TlsReportsSkippedAsDuplicate,
     int ParseFailures,
     bool Success,
     string? Error,

@@ -331,9 +331,22 @@ Operational health summary by mailbox source.
 Fields include:
 
 - latest run status and error
-- latest run counters (scanned/attachments/inserted/duplicates/parse failures)
+- latest run counters (scanned/attachments/inserted/duplicates/parse failures,
+  plus `tlsReportsInserted`/`tlsReportsSkippedAsDuplicate` — TLS reports share
+  the mailbox and count separately). `attachmentsProcessed` counts every
+  extracted report payload, TLS included; TLS parse failures fold into the one
+  `parseFailures` counter, with the log line naming the format
 - last success timestamp
 - checkpoint values (`lastProcessedUid`, `lastProcessedUidValidity`)
+
+### Retention preview/purge response growth
+
+`/admin/retention/preview` and `/admin/retention/purge` return the purge run
+result, which now carries `tlsPolicyRowsDeleted`, `tlsIngestRowsDeleted` (per
+client and as totals) and `tlsReportsDeleted` (the orphan sweep: report rows
+whose every policy aged out, swept past the longest retention any client has).
+In a **dry run** the orphan count reads 0 unless reports are already
+policy-less — the policies it would delete still exist when the sweep counts.
 
 ## 7) Reports and Records
 

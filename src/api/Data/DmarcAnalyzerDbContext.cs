@@ -25,6 +25,10 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<BackupStreamState> BackupStreamStates => Set<BackupStreamState>();
     public DbSet<MtaStsState> MtaStsStates => Set<MtaStsState>();
     public DbSet<MtaStsPolicy> MtaStsPolicies => Set<MtaStsPolicy>();
+    public DbSet<SmtpTlsReport> SmtpTlsReports => Set<SmtpTlsReport>();
+    public DbSet<SmtpTlsReportPolicy> SmtpTlsReportPolicies => Set<SmtpTlsReportPolicy>();
+    public DbSet<SmtpTlsFailureDetail> SmtpTlsFailureDetails => Set<SmtpTlsFailureDetail>();
+    public DbSet<TlsReportIngest> TlsReportIngests => Set<TlsReportIngest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -397,6 +401,111 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .WithMany()
                 .HasForeignKey(x => x.DomainId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<SmtpTlsReport>(entity =>
+        {
+            entity.ToTable("smtp_tls_report");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.OrganizationName).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.ReportId).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.ContactInfo).HasMaxLength(320);
+            entity.HasIndex(x => x.MailboxSourceId);
+            // The dedupe key. No policy domain — a report spans several — so the
+            // organization name disambiguates report-id collisions across reporters.
+            entity.HasIndex(x => new
+            {
+                x.OrganizationName,
+                x.ReportId,
+                x.RangeBeginUtc,
+                x.RangeEndUtc,
+            }).IsUnique();
+            // The orphan sweep in retention scans on this.
+            entity.HasIndex(x => x.RangeEndUtc);
+
+            entity.HasOne(x => x.MailboxSource)
+                .WithMany()
+                .HasForeignKey(x => x.MailboxSourceId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SmtpTlsReportPolicy>(entity =>
+        {
+            entity.ToTable("smtp_tls_report_policy");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PolicyType).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.PolicyDomain).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.PolicyString).HasMaxLength(4000);
+            entity.Property(x => x.MxHostPatterns).HasMaxLength(2000);
+            entity.HasIndex(x => x.SmtpTlsReportId);
+            // Analytics windows filter per domain on the report window begin.
+            entity.HasIndex(x => new { x.DomainId, x.ReportRangeBeginUtc });
+            // Retention purges on the window end.
+            entity.HasIndex(x => x.ReportRangeEndUtc);
+
+            entity.HasOne(x => x.Report)
+                .WithMany(x => x.Policies)
+                .HasForeignKey(x => x.SmtpTlsReportId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasOne(x => x.Domain)
+                .WithMany()
+                .HasForeignKey(x => x.DomainId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SmtpTlsFailureDetail>(entity =>
+        {
+            entity.ToTable("smtp_tls_failure_detail");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ResultType).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.FailureCategory).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.SendingMtaIp).HasMaxLength(64);
+            entity.Property(x => x.ReceivingMxHostname).HasMaxLength(255);
+            entity.Property(x => x.ReceivingMxHelo).HasMaxLength(255);
+            entity.Property(x => x.ReceivingIp).HasMaxLength(64);
+            entity.Property(x => x.AdditionalInformation).HasMaxLength(2000);
+            entity.Property(x => x.FailureReasonCode).HasMaxLength(255);
+            entity.HasIndex(x => x.SmtpTlsReportPolicyId);
+
+            entity.HasOne(x => x.Policy)
+                .WithMany(x => x.FailureDetails)
+                .HasForeignKey(x => x.SmtpTlsReportPolicyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<TlsReportIngest>(entity =>
+        {
+            entity.ToTable("tls_report_ingest");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.OrganizationName).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.ReportId).HasMaxLength(255).IsRequired();
+            entity.Property(x => x.PolicyDomains).HasMaxLength(2000).IsRequired();
+            entity.Property(x => x.ContactInfo).HasMaxLength(320);
+            entity.HasIndex(x => x.ClientId);
+            entity.HasIndex(x => x.MailboxSourceId);
+            // The TLS analogue of the DMARC ledger's five-column key, with the
+            // policy domain (meaningless for a multi-domain report) replaced by
+            // the organization name.
+            entity.HasIndex(x => new
+            {
+                x.ClientId,
+                x.OrganizationName,
+                x.ReportId,
+                x.ReportRangeBeginUtc,
+                x.ReportRangeEndUtc,
+            }).IsUnique();
+            entity.HasIndex(x => x.ReportRangeEndUtc);
+
+            entity.HasOne(x => x.Client)
+                .WithMany()
+                .HasForeignKey(x => x.ClientId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            entity.HasOne(x => x.MailboxSource)
+                .WithMany()
+                .HasForeignKey(x => x.MailboxSourceId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 }

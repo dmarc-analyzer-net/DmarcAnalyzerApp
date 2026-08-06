@@ -15,4 +15,6 @@ public sealed record MailboxSourceHealthDto(
     int? LastRunAttachmentsProcessed,
     int? LastRunReportsInserted,
     int? LastRunReportsSkippedAsDuplicate,
-    int? LastRunParseFailures);
+    int? LastRunParseFailures,
+    int? LastRunTlsReportsInserted,
+    int? LastRunTlsReportsSkippedAsDuplicate);

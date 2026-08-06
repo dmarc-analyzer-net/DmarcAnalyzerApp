@@ -12,6 +12,8 @@ public sealed record ClientPurgeResult(
     DateTime CutoffUtc,
     int ReportsDeleted,
     int IngestRowsDeleted,
+    int TlsPolicyRowsDeleted,
+    int TlsIngestRowsDeleted,
     bool SkippedForLegalHold);
 
 public sealed record PurgeRunResult(
@@ -21,6 +23,9 @@ public sealed record PurgeRunResult(
     int ClientsOnLegalHold,
     int ReportsDeleted,
     int IngestRowsDeleted,
+    int TlsPolicyRowsDeleted,
+    int TlsIngestRowsDeleted,
+    int TlsReportsDeleted,
     int AuditEventsDeleted,
     IReadOnlyList<ClientPurgeResult> PerClient);
 
@@ -64,6 +69,8 @@ public sealed class RetentionPurgeService(
         var perClient = new List<ClientPurgeResult>();
         var totalReports = 0;
         var totalIngest = 0;
+        var totalTlsPolicies = 0;
+        var totalTlsIngest = 0;
         var held = 0;
 
         foreach (var client in clients)
@@ -79,7 +86,7 @@ public sealed class RetentionPurgeService(
             if (client.LegalHold)
             {
                 held++;
-                perClient.Add(new ClientPurgeResult(client.Id, client.Name, months, cutoff, 0, 0, true));
+                perClient.Add(new ClientPurgeResult(client.Id, client.Name, months, cutoff, 0, 0, 0, 0, true));
                 logger.LogInformation(
                     "Retention: skipping client {ClientId} ({ClientName}) — legal hold",
                     client.Id, client.Name);
@@ -88,10 +95,15 @@ public sealed class RetentionPurgeService(
 
             var reports = await PurgeReportsAsync(client.Id, cutoff, dryRun, batchSize, ct);
             var ingest = await PurgeIngestLedgerAsync(client.Id, cutoff, dryRun, batchSize, ct);
+            var tlsPolicies = await PurgeTlsPoliciesAsync(client.Id, cutoff, dryRun, batchSize, ct);
+            var tlsIngest = await PurgeTlsIngestLedgerAsync(client.Id, cutoff, dryRun, batchSize, ct);
 
             totalReports += reports;
             totalIngest += ingest;
-            perClient.Add(new ClientPurgeResult(client.Id, client.Name, months, cutoff, reports, ingest, false));
+            totalTlsPolicies += tlsPolicies;
+            totalTlsIngest += tlsIngest;
+            perClient.Add(new ClientPurgeResult(
+                client.Id, client.Name, months, cutoff, reports, ingest, tlsPolicies, tlsIngest, false));
 
             if (reports > 0 || ingest > 0)
             {
@@ -102,10 +114,23 @@ public sealed class RetentionPurgeService(
             }
         }
 
+        // TLS reports have no client of their own — a single report can span
+        // domains of several clients — so per-client retention deletes the policy
+        // rows, and this sweep removes reports left with no policies at all. The
+        // maximum retention across clients guards freshly ingested zero-policy
+        // reports, and a held client's policy rows never delete, so its reports
+        // never orphan: legal hold is safe by construction.
+        var maxMonths = clients.Count == 0
+            ? 27
+            : clients.Max(c => c.RetentionMonths > 0 ? c.RetentionMonths : 27);
+        var tlsReportsDeleted = await PurgeOrphanedTlsReportsAsync(
+            startedAt.AddMonths(-maxMonths), dryRun, batchSize, ct);
+
         var auditDeleted = await PurgeAuditTrailAsync(startedAt, dryRun, batchSize, ct);
 
         var result = new PurgeRunResult(
-            dryRun, startedAt, clients.Count, held, totalReports, totalIngest, auditDeleted, perClient);
+            dryRun, startedAt, clients.Count, held, totalReports, totalIngest,
+            totalTlsPolicies, totalTlsIngest, tlsReportsDeleted, auditDeleted, perClient);
 
         logger.LogInformation(
             "Retention run complete: {Verb} {Reports} reports, {Ingest} ingest rows across {Clients} clients " +
@@ -223,6 +248,121 @@ public sealed class RetentionPurgeService(
             }
 
             db.DmarcReportIngests.RemoveRange(batch);
+            await db.SaveChangesAsync(ct);
+            db.ChangeTracker.Clear();
+            deleted += batch.Count;
+
+            if (batch.Count < batchSize)
+            {
+                break;
+            }
+        }
+
+        return deleted;
+    }
+
+    /// <summary>
+    /// TLS retention operates on the policy rows, which reach a client through
+    /// their domain — the report row itself has none. Failure details cascade at
+    /// the database level. Keyed on the reporting window end, same doctrine as
+    /// the DMARC purge.
+    /// </summary>
+    private async Task<int> PurgeTlsPoliciesAsync(
+        Guid clientId, DateTime cutoff, bool dryRun, int batchSize, CancellationToken ct)
+    {
+        var expired = db.SmtpTlsReportPolicies
+            .Where(p => p.Domain!.ClientId == clientId && p.ReportRangeEndUtc < cutoff);
+
+        if (dryRun)
+        {
+            return await expired.CountAsync(ct);
+        }
+
+        var deleted = 0;
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var batch = await expired.OrderBy(p => p.ReportRangeEndUtc).Take(batchSize).ToListAsync(ct);
+            if (batch.Count == 0)
+            {
+                break;
+            }
+
+            db.SmtpTlsReportPolicies.RemoveRange(batch);
+            await db.SaveChangesAsync(ct);
+            db.ChangeTracker.Clear();
+            deleted += batch.Count;
+
+            if (batch.Count < batchSize)
+            {
+                break;
+            }
+        }
+
+        return deleted;
+    }
+
+    private async Task<int> PurgeTlsIngestLedgerAsync(
+        Guid clientId, DateTime cutoff, bool dryRun, int batchSize, CancellationToken ct)
+    {
+        var expired = db.TlsReportIngests
+            .Where(i => i.ClientId == clientId && i.ReportRangeEndUtc < cutoff);
+
+        if (dryRun)
+        {
+            return await expired.CountAsync(ct);
+        }
+
+        var deleted = 0;
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var batch = await expired.OrderBy(i => i.ReportRangeEndUtc).Take(batchSize).ToListAsync(ct);
+            if (batch.Count == 0)
+            {
+                break;
+            }
+
+            db.TlsReportIngests.RemoveRange(batch);
+            await db.SaveChangesAsync(ct);
+            db.ChangeTracker.Clear();
+            deleted += batch.Count;
+
+            if (batch.Count < batchSize)
+            {
+                break;
+            }
+        }
+
+        return deleted;
+    }
+
+    /// <summary>Report rows whose every policy has been purged, older than the oldest cutoff any client gets.</summary>
+    private async Task<int> PurgeOrphanedTlsReportsAsync(
+        DateTime oldestCutoff, bool dryRun, int batchSize, CancellationToken ct)
+    {
+        var expired = db.SmtpTlsReports
+            .Where(r => r.RangeEndUtc < oldestCutoff && !r.Policies.Any());
+
+        if (dryRun)
+        {
+            return await expired.CountAsync(ct);
+        }
+
+        var deleted = 0;
+        while (true)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            var batch = await expired.OrderBy(r => r.RangeEndUtc).Take(batchSize).ToListAsync(ct);
+            if (batch.Count == 0)
+            {
+                break;
+            }
+
+            db.SmtpTlsReports.RemoveRange(batch);
             await db.SaveChangesAsync(ct);
             db.ChangeTracker.Clear();
             deleted += batch.Count;

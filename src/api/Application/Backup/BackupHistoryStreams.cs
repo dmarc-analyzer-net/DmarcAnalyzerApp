@@ -25,9 +25,10 @@ public sealed record BackupHistoryStream(
 /// written never needs rewriting.
 /// </para>
 /// <para>
-/// The ingest ledger is included even though it is derivable, because it is small and it
-/// is what an operator reads to answer "did we ever receive that report?" after a
-/// retention purge has removed the report itself.
+/// The ingest ledgers — DMARC and TLS both — are included even though they are derivable,
+/// because they are small and they are what an operator reads to answer "did we ever
+/// receive that report?" after a retention purge has removed the report itself. The TLS
+/// report tables are excluded like the DMARC ones: replayable from the mailbox.
 /// </para>
 /// </summary>
 public static class BackupHistoryStreams
@@ -84,9 +85,18 @@ public static class BackupHistoryStreams
             ct),
         row => ((Data.Entities.DmarcReportIngest)row).IngestedAtUtc);
 
+    public static readonly BackupHistoryStream TlsReportIngests = new(
+        "tls_report_ingest",
+        async (db, since, ct) => await Page(
+            db.TlsReportIngests.AsNoTracking()
+                .Where(x => since == null || x.IngestedAtUtc >= since)
+                .OrderBy(x => x.IngestedAtUtc).ThenBy(x => x.Id),
+            ct),
+        row => ((Data.Entities.TlsReportIngest)row).IngestedAtUtc);
+
     public static readonly IReadOnlyList<BackupHistoryStream> All =
     [
-        AuditEvents, AlertEvents, DigestDeliveries, MailboxSyncRuns, ReportIngests,
+        AuditEvents, AlertEvents, DigestDeliveries, MailboxSyncRuns, ReportIngests, TlsReportIngests,
     ];
 
     private static async Task<IReadOnlyList<object>> Page<T>(IQueryable<T> query, CancellationToken ct)

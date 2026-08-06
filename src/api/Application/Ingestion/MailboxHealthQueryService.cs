@@ -69,6 +69,16 @@ public sealed class MailboxHealthQueryService(DmarcAnalyzerDbContext db) : IMail
                     .Where(run => run.MailboxSourceId == source.Id)
                     .OrderByDescending(run => run.StartedAtUtc)
                     .Select(run => (int?)run.ParseFailures)
+                    .FirstOrDefault(),
+                db.MailboxSyncRuns
+                    .Where(run => run.MailboxSourceId == source.Id)
+                    .OrderByDescending(run => run.StartedAtUtc)
+                    .Select(run => (int?)run.TlsReportsInserted)
+                    .FirstOrDefault(),
+                db.MailboxSyncRuns
+                    .Where(run => run.MailboxSourceId == source.Id)
+                    .OrderByDescending(run => run.StartedAtUtc)
+                    .Select(run => (int?)run.TlsReportsSkippedAsDuplicate)
                     .FirstOrDefault()))
             .ToListAsync(ct);
     }

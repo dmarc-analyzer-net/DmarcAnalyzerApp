@@ -33,6 +33,8 @@ public sealed class MailboxSyncRunQueryService(DmarcAnalyzerDbContext db) : IMai
                 x.ReportsInserted,
                 x.ReportsSkippedAsDuplicate,
                 x.ParseFailures,
+                x.TlsReportsInserted,
+                x.TlsReportsSkippedAsDuplicate,
                 x.Error,
                 x.CreatedAtUtc))
             .ToListAsync(ct);
