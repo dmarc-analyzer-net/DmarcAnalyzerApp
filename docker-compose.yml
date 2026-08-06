@@ -1,4 +1,5 @@
-# DMARC Analyzer — development stack (local build, dev Zitadel + Keycloak for OIDC).
+# DMARC Analyzer — development stack (local build, dev Zitadel, Keycloak and
+# Authentik for OIDC; Authentik is behind `--profile authentik`).
 #
 # One-time setup, because the mailbox-password encryption key must not live in
 # this file. A key committed to a public repo protects nothing, and every clone
@@ -129,6 +130,78 @@ services:
     volumes:
       - keycloak_data:/opt/keycloak/data
 
+  # A third dev-only identity provider, for testing against Authentik.
+  # Console: http://localhost:8086 (first start needs the initial-setup flow —
+  # see docs/ops/oidc-authentik.md). Setup guide: docs/ops/oidc-authentik.md
+  #
+  # Behind a profile, unlike Zitadel and Keycloak, because this is three
+  # containers rather than one and idles around a gigabyte of RAM. It only
+  # starts when asked for:
+  #
+  #   docker compose --profile authentik up -d
+  #
+  # Its own database, not the postgres service below: Authentik's migrations
+  # want to own the whole database (they install cache and channels tables of
+  # their own, see below) and it needs a schema created ahead of time either
+  # way. A separate container costs nothing here and keeps the app's database
+  # free of 70-odd authentik_* tables.
+  #
+  # No Redis, which every upstream example still includes. As of 2026.x
+  # Authentik keeps its cache and channel layers in Postgres — the migration
+  # log shows django_postgres_cache and django_channels_postgres — so the
+  # broker is gone and server+worker+db is the whole stack. Do not copy a
+  # Redis service back in from upstream docs without checking it is needed.
+  authentik-postgres:
+    image: postgres:18-alpine
+    profiles: ["authentik"]
+    environment:
+      POSTGRES_DB: authentik
+      POSTGRES_USER: authentik
+      POSTGRES_PASSWORD: authentik
+      # Same reasoning as the app's postgres service below.
+      PGDATA: /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U authentik -d authentik"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - authentik_postgres_data:/var/lib/postgresql/data
+
+  authentik-server:
+    image: ghcr.io/goauthentik/server:2026.5.6
+    command: server
+    profiles: ["authentik"]
+    environment: &authentik-env
+      AUTHENTIK_POSTGRESQL__HOST: authentik-postgres
+      AUTHENTIK_POSTGRESQL__NAME: authentik
+      AUTHENTIK_POSTGRESQL__USER: authentik
+      AUTHENTIK_POSTGRESQL__PASSWORD: authentik
+      # Dev-only, like Zitadel's masterkey above. Signs sessions and tokens for
+      # a throwaway local instance; generate a real one for any real install.
+      AUTHENTIK_SECRET_KEY: dev-only-authentik-secret-key-not-for-real-use
+    ports:
+      - "8086:9000"
+    # Authentik's own compose sets this; its workers mmap enough that the
+    # default 64MB /dev/shm is not always enough.
+    shm_size: 512mb
+    depends_on:
+      authentik-postgres:
+        condition: service_healthy
+
+  # Required, not optional. Authentik puts scheduled work and blueprint
+  # application here, and either container may end up running the migrations —
+  # both try on boot and a database lock decides which one does it.
+  authentik-worker:
+    image: ghcr.io/goauthentik/server:2026.5.6
+    command: worker
+    profiles: ["authentik"]
+    environment: *authentik-env
+    shm_size: 512mb
+    depends_on:
+      authentik-postgres:
+        condition: service_healthy
+
   postgres:
     image: postgres:18-alpine
     environment:
@@ -165,3 +238,4 @@ services:
 volumes:
   postgres_data:
   keycloak_data:
+  authentik_postgres_data:
