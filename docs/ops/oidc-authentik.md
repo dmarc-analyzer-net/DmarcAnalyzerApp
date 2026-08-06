@@ -43,18 +43,15 @@ in from upstream docs without checking it is actually wanted.
 
 ## One-time Authentik setup
 
-1. **Set the admin password first.** There is no bootstrap-credentials
-   environment variable equivalent to Keycloak's `KC_BOOTSTRAP_ADMIN_*` here;
-   a fresh instance has an `akadmin` account with no usable password, and the
-   sign-in page gives you no hint about that. Open the initial-setup flow
-   directly:
+1. **Sign in** at `http://localhost:8086/if/admin/` as `akadmin` / `admin`.
 
-   ```
-   http://localhost:8086/if/flow/initial-setup/
-   ```
-
-   Set an email and password for `akadmin`. Visiting `/if/admin/` before doing
-   this just bounces you to a login you cannot pass.
+   Those come from `AUTHENTIK_BOOTSTRAP_EMAIL` and
+   `AUTHENTIK_BOOTSTRAP_PASSWORD` in `docker-compose.yml`, the equivalent of
+   Keycloak's `KC_BOOTSTRAP_ADMIN_*`. Without them a fresh instance has an
+   `akadmin` with no usable password and the sign-in page gives no hint about
+   it — you would have to find `/if/flow/initial-setup/` yourself and invent
+   one. They only apply on first start, so changing them later does nothing to
+   an existing volume.
 
 2. **Create the provider.** *Applications → Providers → Create*, then pick
    **OAuth2/OpenID Provider** from the type list.

@@ -180,6 +180,14 @@ services:
       # Dev-only, like Zitadel's masterkey above. Signs sessions and tokens for
       # a throwaway local instance; generate a real one for any real install.
       AUTHENTIK_SECRET_KEY: dev-only-authentik-secret-key-not-for-real-use
+      # Seeds the akadmin account, the equivalent of Keycloak's
+      # KC_BOOTSTRAP_ADMIN_* above. Without these a fresh instance has an
+      # akadmin with no usable password and the sign-in page does not say so —
+      # you have to find /if/flow/initial-setup/ and invent one. Setting them
+      # keeps `up` to a single step and makes the credential the same for
+      # everyone who clones this.
+      AUTHENTIK_BOOTSTRAP_EMAIL: akadmin@example.com
+      AUTHENTIK_BOOTSTRAP_PASSWORD: admin
     ports:
       - "8086:9000"
     # Authentik's own compose sets this; its workers mmap enough that the
