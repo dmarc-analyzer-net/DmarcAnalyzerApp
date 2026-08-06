@@ -1,4 +1,4 @@
-# DMARC Analyzer — development stack (local build, dev Zitadel for OIDC).
+# DMARC Analyzer — development stack (local build, dev Zitadel + Keycloak for OIDC).
 #
 # One-time setup, because the mailbox-password encryption key must not live in
 # this file. A key committed to a public repo protects nothing, and every clone
@@ -108,6 +108,27 @@ services:
     depends_on:
       - postgres
 
+  # A second dev-only identity provider, for testing against Keycloak
+  # specifically rather than Zitadel. Console: http://localhost:8085
+  # (admin / admin — bootstrapped fresh on first start). Setup guide:
+  # docs/ops/oidc-keycloak.md
+  #
+  # No database wiring, on purpose — start-dev without KC_DB falls back to
+  # Keycloak's own embedded dev store (an H2 file under /opt/keycloak/data,
+  # kept by the volume below), so this needs no database created ahead of
+  # time. Zitadel needs the zitadel database to exist first because it has no
+  # such fallback; Keycloak's dev mode exists specifically to avoid that.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.1
+    command: start-dev
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports:
+      - "8085:8080"
+    volumes:
+      - keycloak_data:/opt/keycloak/data
+
   postgres:
     image: postgres:18-alpine
     environment:
@@ -143,3 +164,4 @@ services:
 
 volumes:
   postgres_data:
+  keycloak_data:
