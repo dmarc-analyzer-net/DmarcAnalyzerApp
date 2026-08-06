@@ -30,7 +30,8 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     length-verified, a dated daily copy, and the append-only history tables
     (audit, alerts, digests, sync runs, ingest ledger) shipped as immutable JSONL with an
     overlap window so a row committed mid-pass is never skipped.
-  - Import as a first-run console action, `restore` (empty install only) or `merge`.
+  - Import as a first-run console action, `restore` (only into an install nothing
+    has been added to yet — the bootstrapped `default` client does not count) or `merge`.
     **Additive: never deletes a row.** On an email collision the imported user wins and
     only that account's sessions are revoked. An encryption-key fingerprint mismatch is
     an acknowledgeable warning, not a hard block — the rest of the artifact still
@@ -48,9 +49,9 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - `domain`
   - `mailbox_source`
 - API vertical slice endpoints:
-  - clients: list/get/create/patch, plus `POST /clients/default` — the catch-all
-    client the first-run step creates when the operator sets the install up by
-    hand instead of restoring an export. `slug` is immutable after creation.
+  - clients: list/get/create/patch. `slug` is immutable after creation. Every
+    install is bootstrapped with a `default` client, because a domain and a
+    mailbox source both require one
   - domains: list/get/create/patch
   - mailbox sources: list/create/patch/sync
   - mailbox health: list

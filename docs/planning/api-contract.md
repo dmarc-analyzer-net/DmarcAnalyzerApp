@@ -42,7 +42,6 @@ staff (`agency_admin` or `agency_analyst`).
 | GET | `/clients` | staff |
 | GET | `/clients/{id}` | staff |
 | POST | `/clients` | admin |
-| POST | `/clients/default` | admin — first-run catch-all; 204 once any client exists |
 | PATCH | `/clients/{id}` | admin |
 | GET | `/domains` | staff |
 | GET | `/domains/{id}` | staff |
@@ -91,7 +90,7 @@ cross-tenant ids return **404**, never 403.
 | POST | `/admin/retention/purge` | admin — runs the purge now. Optional `batchSize` |
 | GET | `/admin/config/export` | admin — the configuration artifact, as a JSON download. Refused with 409 when no credential encryption key is set, because the mailbox passwords in it would be plaintext; `allowPlaintextCredentials=true` overrides |
 | GET | `/admin/config/import/preview` | admin — what an import would change; writes nothing |
-| POST | `/admin/config/import` | admin — `mode` of `restore` (empty install only) or `merge`. Additive: never deletes a row |
+| POST | `/admin/config/import` | admin — `mode` of `restore` (only into an install nothing has been added to: no clients of your own, no domains, no mailbox sources) or `merge`. Additive: never deletes a row |
 | GET | `/admin/backup/status` | admin — offload destination, last success, bucket versioning, whether credentials are protected |
 | POST | `/admin/backup/offload` | admin — runs an offload pass now rather than waiting for the worker |
 | GET | `/admin/mailbox-retention/preview` | admin — per source: cutoff, eligible messages, and which rule is suspending it; deletes nothing |
@@ -205,18 +204,6 @@ Request:
   "timezone": "UTC"
 }
 ```
-
-### POST `/clients/default`
-
-Creates the catch-all client (`name: "Default"`, `slug: "default"`) that a hand-built
-install needs before a domain or a mailbox source can be added — both require a client,
-so without it the console dead-ends. Takes no body.
-
-Idempotent, and a no-op the moment *any* client exists: `201` with the new client, or
-`204` if this install already has clients. That is what lets the first-run step call it
-on "skip" without breaking the other way out of that step — a restore only accepts an
-install with no clients and no domains, and since import never deletes, a client created
-at bootstrap would both block the restore and strand an undeletable empty row.
 
 ### GET `/clients/{clientId}`
 ### PATCH `/clients/{clientId}`

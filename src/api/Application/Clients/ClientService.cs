@@ -9,17 +9,6 @@ namespace DmarcAnalyzer.Api.Application.Clients;
 
 public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext currentUser) : IClientService
 {
-    /// <summary>
-    /// The catch-all client a hand-built install starts with. It exists because a client is a
-    /// hard prerequisite for the things an operator reaches for first: both a domain and a
-    /// mailbox source require one, and without it the console dead-ends on a required select
-    /// with nothing in it. The domain list flags domains still sitting under this slug so the
-    /// catch-all does not quietly become where everything lives.
-    /// </summary>
-    public const string DefaultClientName = "Default";
-
-    public const string DefaultClientSlug = "default";
-
     public async Task<IReadOnlyList<ClientDto>> ListAsync(CancellationToken ct)
     {
         var query = db.Clients.AsNoTracking();
@@ -82,33 +71,6 @@ public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext
         await db.SaveChangesAsync(ct);
 
         return ServiceResult<ClientDto>.Success(ToDto(client));
-    }
-
-    public async Task<ClientDto?> EnsureDefaultAsync(CancellationToken ct)
-    {
-        // A no-op the moment *any* client exists, which is what makes this safe to call from
-        // the first-run step. The other way out of that step is a restore from a configuration
-        // export, and that brings its own clients: creating one here regardless would leave an
-        // empty stray behind that no endpoint can delete. Returning null says "nothing to do"
-        // rather than failing, because arriving here already set up is not an error.
-        if (await db.Clients.AnyAsync(ct))
-        {
-            return null;
-        }
-
-        var now = DateTime.UtcNow;
-        var client = new Client
-        {
-            Name = DefaultClientName,
-            Slug = DefaultClientSlug,
-            CreatedAtUtc = now,
-            UpdatedAtUtc = now,
-        };
-
-        db.Clients.Add(client);
-        await db.SaveChangesAsync(ct);
-
-        return ToDto(client);
     }
 
     public async Task<ServiceResult<ClientDto>> UpdateAsync(Guid id, UpdateClientRequest request, CancellationToken ct)

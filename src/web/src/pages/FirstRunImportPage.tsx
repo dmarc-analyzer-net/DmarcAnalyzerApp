@@ -37,30 +37,6 @@ export function FirstRunImportPage() {
    * the one screen saying which credentials to use next.
    */
   const [imported, setImported] = useState(false)
-  const [skipping, setSkipping] = useState(false)
-
-  /**
-   * Setting up by hand needs a client to hang things off: a domain and a mailbox source both
-   * require one, so without this the operator lands on a console whose two obvious next steps
-   * are blocked by a required select with nothing in it. The endpoint is idempotent and does
-   * nothing once clients exist, which is why creating it here rather than at bootstrap keeps
-   * the restore path — which only accepts an empty install — intact.
-   */
-  const skipToDashboard = async () => {
-    setSkipping(true)
-    setError(null)
-    try {
-      await fetchJson('/api/v1/clients/default', { method: 'POST' })
-      navigate('/dashboard')
-    } catch (skipError) {
-      setError(
-        skipError instanceof Error
-          ? skipError.message
-          : 'Could not create the default client',
-      )
-      setSkipping(false)
-    }
-  }
 
   useEffect(() => {
     let cancelled = false
@@ -115,9 +91,9 @@ export function FirstRunImportPage() {
         <div className="grid gap-3.5">
           {!preview.isEmptyInstall ? (
             <Notice tone="warn" title="Restore mode is no longer available">
-              Restore only accepts an install with no clients and no domains, because an import that
-              never deletes cannot reproduce a state something was deleted from. Merge still works,
-              and the{' '}
+              Restore only accepts an install nothing has been added to yet — no clients of your
+              own, no domains, no mailbox sources — because an import that never deletes cannot
+              reproduce a state something was deleted from. Merge still works, and the{' '}
               <Link
                 to="/backup"
                 className="underline decoration-dotted underline-offset-2 hover:text-body"
@@ -132,19 +108,15 @@ export function FirstRunImportPage() {
 
           {!imported ? (
             <div className="flex flex-wrap items-center gap-3">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={skipping}
-                onClick={() => void skipToDashboard()}
-              >
-                <Icon name={skipping ? 'loader-circle' : 'arrow-right'} size={16} className={skipping ? 'animate-spin' : undefined} />
+              <Button type="button" variant="secondary" onClick={() => navigate('/dashboard')}>
+                <Icon name="arrow-right" size={16} />
                 Skip — set this install up by hand
               </Button>
               <span className="text-xs text-faint">
-                Skipping creates one client, <span className="font-mono">default</span>, so you have
-                somewhere to add a domain or a mailbox source. You can import later from Backup and
-                recovery, though only in merge mode once clients or domains exist.
+                Skipping changes nothing — this install already has a{' '}
+                <span className="font-mono">default</span> client to add a domain or a mailbox
+                source under. You can import later from Backup and recovery, though only in merge
+                mode once you have added something.
               </span>
             </div>
           ) : null}

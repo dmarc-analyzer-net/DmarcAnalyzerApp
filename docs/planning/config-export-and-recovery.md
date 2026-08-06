@@ -483,11 +483,20 @@ freshly bootstrapped admin that is not one of them. The rule that follows:
 - The import response states which accounts were created, which were updated, and
   which credentials to use next.
 
-This invariant is also why `restore` mode requires an empty install: a
-non-destructive import cannot faithfully reproduce a state in which something was
-*deleted* before the disaster, so restoring into a populated install would produce
-a union, not a copy. `merge` mode is a union on purpose; `restore` refuses to
-pretend.
+This invariant is also why `restore` mode requires an install nothing has been
+added to yet: a non-destructive import cannot faithfully reproduce a state in which
+something was *deleted* before the disaster, so restoring into a populated install
+would produce a union, not a copy. `merge` mode is a union on purpose; `restore`
+refuses to pretend.
+
+Two things bootstrap itself creates are exempt, because requiring their absence
+would leave no install a restore could ever run on: the bootstrap administrator,
+and the `default` client created alongside them. Mailbox sources *are* counted even
+though a fresh install can only attach one to that default client — otherwise an
+install with a configured mailbox and no domains yet would still read as untouched.
+A restore whose artifact carries no client slugged `default` leaves that bootstrapped
+one behind, empty; import never deletes, so it stays until the delete-client endpoint
+in the backlog exists.
 
 Both modes support a dry-run preview, mirroring the existing
 `retention/preview` → `purge` pairing.

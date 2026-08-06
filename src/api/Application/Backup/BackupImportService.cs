@@ -1,3 +1,4 @@
+using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Application.Security;
 using DmarcAnalyzer.Api.Data;
@@ -143,17 +144,16 @@ public sealed class BackupImportService(
 
         if (importMode == BackupImportMode.Restore)
         {
-            // Emptiness is measured on clients and domains only, and deliberately not on users:
-            // the console's own bootstrap flow is how the operator got an account to run this
-            // with, so a restore always finds one user already here.
-            var populated = await db.Clients.AnyAsync(ct) || await db.Domains.AnyAsync(ct);
-
-            if (populated)
+            // What counts as empty — and why the bootstrapped default client does not — lives
+            // in DefaultClient.IsPristineInstallAsync, shared with the preview so the console
+            // can never offer a restore this would then refuse.
+            if (!await DefaultClient.IsPristineInstallAsync(db, ct))
             {
                 return ServiceResult<BackupImportResult>.Failure(
-                    "restore is only allowed into an empty install (no clients, no domains). Because " +
-                    "import never deletes, restoring over existing rows would produce a union of two " +
-                    "installs rather than a copy of one. Use merge if a union is what you want.",
+                    "restore is only allowed into an install nothing has been added to yet (no " +
+                    "clients of your own, no domains, no mailbox sources). Because import never " +
+                    "deletes, restoring over existing rows would produce a union of two installs " +
+                    "rather than a copy of one. Use merge if a union is what you want.",
                     409);
             }
         }

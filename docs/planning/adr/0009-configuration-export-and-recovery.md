@@ -47,7 +47,9 @@ is missing. Detail and code references:
   backup that refuses to run is worse than an unversioned one.
 - **Import is a first-run console action, not an `APP_MODE`**: clean install,
   bootstrap an administrator, import as that account's first act. `restore`
-  requires an empty install; `merge` upserts by natural key.
+  requires an install nothing has been added to yet — what bootstrap itself
+  created, the admin account and the `default` client, does not count against
+  it; `merge` upserts by natural key.
 - **Import never deletes.** Rows absent from the artifact are left alone; on an
   email collision the imported user wins, so pre-disaster credentials work again,
   and the bootstrap account survives as break-glass.

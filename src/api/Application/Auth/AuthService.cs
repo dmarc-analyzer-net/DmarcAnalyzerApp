@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Contracts.Auth;
 using DmarcAnalyzer.Api.Data;
@@ -54,6 +55,11 @@ public sealed class AuthService(DmarcAnalyzerDbContext db) : IAuthService
 
         db.AgencyUsers.Add(user);
         await db.SaveChangesAsync(ct);
+
+        // Bootstrapping an install means bootstrapping its first client too: a domain and a
+        // mailbox source both require one, so an operator who lands on the console without
+        // it can reach neither. Idempotent, so it costs nothing if one somehow exists.
+        await DefaultClient.EnsureAsync(db, ct);
 
         return ServiceResult<UserDto>.Success(ToDto(user));
     }

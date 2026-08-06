@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DmarcAnalyzer.Api.Application.Backup;
+using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -182,7 +183,7 @@ public sealed class BackupImportTests
 
         Assert.False(result.IsSuccess);
         Assert.Equal(409, result.StatusCode);
-        Assert.Contains("empty install", result.Error!, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("nothing has been added", result.Error!, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("merge", result.Error!, StringComparison.OrdinalIgnoreCase);
 
         // Refused, not partially applied.
@@ -190,6 +191,33 @@ public sealed class BackupImportTests
 
         // The same artifact is fine as a merge; the mode is the only thing that differed.
         Assert.True((await Service(db).ImportAsync(artifact, BackupImportModes.Merge, false, default)).IsSuccess);
+    }
+
+    /// <summary>
+    /// A restore has to survive what bootstrap leaves behind, which is a user *and* the default
+    /// client. Neither is counted: the console's own bootstrap flow is how the operator got an
+    /// account to run the import with, and the default client is created by that same flow — so
+    /// counting either would make restore unreachable on every install that could need it.
+    /// </summary>
+    [Fact]
+    public async Task RestoreRunsOnAnInstallHoldingOnlyWhatBootstrapCreated()
+    {
+        await using var db = NewDb();
+        db.Add(new AgencyUser
+        {
+            Email = "bootstrap@acme.example", DisplayName = "Bootstrap", Role = "agency_admin",
+            PasswordHash = "pbkdf2$bootstrap",
+        });
+        await DefaultClient.EnsureAsync(db, default);
+        await db.SaveChangesAsync();
+
+        var clientId = Guid.NewGuid();
+        var artifact = Artifact(clients: [ExportedClient(clientId, "acme")]);
+
+        var result = await Service(db).ImportAsync(artifact, BackupImportModes.Restore, false, default);
+
+        Assert.True(result.IsSuccess);
+        Assert.Contains(clientId, await db.Clients.Select(x => x.Id).ToListAsync());
     }
 
     /// <summary>

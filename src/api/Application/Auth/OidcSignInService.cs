@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -110,6 +111,11 @@ public sealed class OidcSignInService(
 
         await AddIdentityAsync(user.Id, issuer, subject, email, ct);
         logger.LogInformation("Auto-provisioned user {UserId} ({Email}) with role {Role} from {Issuer}", user.Id, email, role, issuer);
+
+        // An SSO-only deployment can be bootstrapped entirely through here, never touching
+        // local registration, so this path has to establish the default client as well —
+        // otherwise "the client always exists" would hold for password installs only.
+        await DefaultClient.EnsureAsync(db, ct);
 
         return await MintSessionAsync(user.Id, ipAddress, userAgent, ct);
     }

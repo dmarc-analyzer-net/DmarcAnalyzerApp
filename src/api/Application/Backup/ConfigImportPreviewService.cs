@@ -1,5 +1,6 @@
 using System.Text.Json;
 using DmarcAnalyzer.Api.Application.Auth;
+using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Security;
 using DmarcAnalyzer.Api.Data;
 using Microsoft.EntityFrameworkCore;
@@ -39,9 +40,9 @@ public sealed class ConfigImportPreviewService(
 
     public async Task<ConfigImportPreviewDto> PreviewAsync(CancellationToken ct)
     {
-        // Clients AND domains, not either: a restore into an install that already owns a
-        // domain would produce a union of two configurations rather than a copy of one.
-        var isEmpty = !await db.Clients.AnyAsync(ct) && !await db.Domains.AnyAsync(ct);
+        // The same rule the import itself enforces, deliberately shared rather than restated:
+        // if these two ever disagreed the console would offer a restore the API then refuses.
+        var isEmpty = await DefaultClient.IsPristineInstallAsync(db, ct);
         var key = configuration[CredentialProtectionExtensions.KeyConfigPath];
 
         ConfigImportBucketArtifactDto? bucket = null;
