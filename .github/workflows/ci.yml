@@ -6,10 +6,19 @@
 #   tag vX.Y.Z    ->  latest, X.Y.Z, X.Y, sha-<commit>   (the stable channel)
 #   push main     ->  edge, sha-<commit>                 (tracks development)
 #   pull request  ->  build only, never pushed           (proves the Dockerfile)
+#   manual        ->  same as a push, run against any ref (catch-up / retry)
 #
 # Documentation-only pushes to `main` skip the image entirely. Release tags and
 # pull requests always build it, so a doc filter can never suppress a release or
 # hide a broken Dockerfile.
+#
+# The manual trigger exists for exactly one situation: a push landed (the commit
+# is on `main`) but nothing built for it — a throttled webhook during a GitHub
+# Actions incident, most likely, since that class of event is the one push
+# triggers don't automatically replay. `gh workflow run ci.yml --ref main`
+# reruns the same `changes`/`image` logic against current HEAD without needing
+# a new commit, which matters here because `main` is protected against direct
+# pushes.
 #
 # The published image is the single-image runtime (APP_MODE=api|worker) that the
 # README quick-start and the marketing site's "Get started" flow point at.
@@ -29,6 +38,7 @@ on:
     tags: ['v*.*.*']
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/dmarc-analyzer
