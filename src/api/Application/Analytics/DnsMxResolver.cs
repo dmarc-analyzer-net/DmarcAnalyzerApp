@@ -22,7 +22,10 @@ public interface IDnsMxResolver
 /// <see cref="DnsTxtResolver"/> — same privacy rationale (no third-party DoH),
 /// same short cache so a page refresh doesn't re-query DNS.
 /// </summary>
-public sealed class DnsMxResolver(IMemoryCache cache, ILogger<DnsMxResolver> logger) : IDnsMxResolver
+public sealed class DnsMxResolver(
+    IMemoryCache cache,
+    ILogger<DnsMxResolver> logger,
+    IAuthoritativeDnsClientLocator authoritativeLocator) : IDnsMxResolver
 {
     private static readonly TimeSpan SuccessTtl = TimeSpan.FromMinutes(5);
     private static readonly LookupClient Client = new(new LookupClientOptions
@@ -38,6 +41,19 @@ public sealed class DnsMxResolver(IMemoryCache cache, ILogger<DnsMxResolver> log
         if (!bypassCache && cache.TryGetValue<IReadOnlyList<MxHost>>(key, out var cached) && cached is not null)
         {
             return cached;
+        }
+
+        // See DnsTxtResolver.ResolveAsync — same "the host's own resolver may
+        // still be stale" rationale for going straight to the authoritative
+        // server on an explicit bypass, with fallback to the normal path.
+        if (bypassCache)
+        {
+            var authoritative = await TryResolveAuthoritativeAsync(domain, ct);
+            if (authoritative is not null)
+            {
+                cache.Set(key, authoritative, SuccessTtl);
+                return authoritative;
+            }
         }
 
         try
@@ -64,6 +80,35 @@ public sealed class DnsMxResolver(IMemoryCache cache, ILogger<DnsMxResolver> log
         {
             logger.LogWarning(ex, "MX lookup failed for {Domain}", domain);
             return null; // lookup failure — caller reports "couldn't check", not "missing"
+        }
+    }
+
+    private async Task<IReadOnlyList<MxHost>?> TryResolveAuthoritativeAsync(string domain, CancellationToken ct)
+    {
+        try
+        {
+            var client = await authoritativeLocator.LocateAsync(domain, ct);
+            if (client is null)
+            {
+                return null;
+            }
+
+            var response = await client.QueryAsync(domain, QueryType.MX, cancellationToken: ct);
+            if (response.HasError && response.Header.ResponseCode != DnsHeaderResponseCode.NotExistentDomain)
+            {
+                return null;
+            }
+
+            return response.Answers.MxRecords()
+                .Select(r => new MxHost(r.Preference, r.Exchange.Value.TrimEnd('.').ToLowerInvariant()))
+                .OrderBy(r => r.Preference)
+                .ThenBy(r => r.Host, StringComparer.Ordinal)
+                .ToArray();
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogDebug(ex, "Authoritative MX lookup failed for {Domain}, falling back", domain);
+            return null;
         }
     }
 }

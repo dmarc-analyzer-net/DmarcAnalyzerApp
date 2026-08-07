@@ -111,6 +111,7 @@ if (mode == AppMode.Worker)
     // it too, not just the API host.
     workerBuilder.Services.AddMemoryCache();
     workerBuilder.Services.Configure<DnsOptions>(workerBuilder.Configuration.GetSection("Dns"));
+    workerBuilder.Services.AddSingleton<IAuthoritativeDnsClientLocator, AuthoritativeDnsClientLocator>();
     workerBuilder.Services.AddSingleton<IDnsTxtResolver, DnsTxtResolver>();
     workerBuilder.Services.AddScoped<IDmarcPolicyResolver, DmarcPolicyResolver>();
     workerBuilder.Services.AddScoped<IDnsPolicyCache, DnsPolicyCache>();
@@ -252,6 +253,7 @@ builder.Services.AddScoped<IAlertEvaluationService, AlertEvaluationService>();
 builder.Services.AddScoped<IDigestService, DigestService>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IHostnameResolver, HostnameResolver>();
+builder.Services.AddSingleton<IAuthoritativeDnsClientLocator, AuthoritativeDnsClientLocator>();
 builder.Services.AddSingleton<IDnsTxtResolver, DnsTxtResolver>();
 builder.Services.AddScoped<IDmarcPolicyResolver, DmarcPolicyResolver>();
 builder.Services.Configure<DnsOptions>(builder.Configuration.GetSection("Dns"));

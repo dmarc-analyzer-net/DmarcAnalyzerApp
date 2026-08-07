@@ -1,9 +1,21 @@
 using DmarcAnalyzer.Api.Application.Analytics;
+using DnsClient;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace DmarcAnalyzer.Api.Tests;
+
+/// <summary>
+/// Minimal stand-in for <see cref="IAuthoritativeDnsClientLocator"/> in tests
+/// that only exercise the cache short-circuit in <c>DnsTxtResolver</c>/
+/// <c>DnsMxResolver</c> and never reach the authoritative-lookup path.
+/// </summary>
+public sealed class NullAuthoritativeDnsClientLocator : IAuthoritativeDnsClientLocator
+{
+    public Task<LookupClient?> LocateAsync(string name, CancellationToken ct) =>
+        Task.FromResult<LookupClient?>(null);
+}
 
 /// <summary>
 /// The one half of the bypassCache behavior that is testable without a real
@@ -25,7 +37,7 @@ public sealed class DnsResolverCacheTests
         IReadOnlyList<string> seeded = ["v=STSv1; id=cached"];
         cache.Set("dns-txt:_mta-sts.acme.example", seeded, TimeSpan.FromMinutes(5));
 
-        var resolver = new DnsTxtResolver(cache, NullLogger<DnsTxtResolver>.Instance);
+        var resolver = new DnsTxtResolver(cache, NullLogger<DnsTxtResolver>.Instance, new NullAuthoritativeDnsClientLocator());
         var result = await resolver.ResolveAsync("_mta-sts.acme.example", CancellationToken.None);
 
         Assert.Same(seeded, result);
@@ -38,7 +50,7 @@ public sealed class DnsResolverCacheTests
         IReadOnlyList<MxHost> seeded = [new MxHost(10, "mx1.acme.example")];
         cache.Set("dns-mx:acme.example", seeded, TimeSpan.FromMinutes(5));
 
-        var resolver = new DnsMxResolver(cache, NullLogger<DnsMxResolver>.Instance);
+        var resolver = new DnsMxResolver(cache, NullLogger<DnsMxResolver>.Instance, new NullAuthoritativeDnsClientLocator());
         var result = await resolver.ResolveAsync("acme.example", CancellationToken.None);
 
         Assert.Same(seeded, result);
