@@ -2,9 +2,9 @@ apiVersion: v2
 name: dmarc-analyzer
 description: Open-source, self-hosted, agency-first DMARC analyzer
 type: application
-version: 0.8.1
+version: 0.9.0
 # Tracks the application image tag used when values.image.tag is empty.
-appVersion: "0.8.1"
+appVersion: "0.9.0"
 home: https://dmarc-analyzer.net
 sources:
   - https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp
