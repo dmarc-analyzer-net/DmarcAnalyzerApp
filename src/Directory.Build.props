@@ -1,0 +1,11 @@
+<Project>
+
+  <!-- packages.lock.json per project, enforced in CI so a drifted lockfile fails
+       restore instead of silently resolving different transitive versions. -->
+  <PropertyGroup>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+    <RestoreLockedMode Condition="'$(ContinuousIntegrationBuild)' == 'true'">true</RestoreLockedMode>
+  </PropertyGroup>
+
+</Project>
