@@ -121,6 +121,23 @@ never consults email assurance, because a new account lands on
 why Entra deployments running with `AutoProvision=true` never noticed #140:
 only users who already had an account were locked out.
 
+### Testing this without an Entra tenant
+
+The dev Keycloak ([`docs/ops/oidc-keycloak.md`](oidc-keycloak.md)) reproduces
+the Entra token shape exactly, which is how #140 was confirmed and fixed
+without tenant access. Two changes to a realm, both through the admin console
+or its REST API:
+
+- **Delete the "email verified" protocol mapper** from the realm's built-in
+  `email` client scope. The ID token then carries `email` and no
+  `email_verified` — Entra's shape.
+- **Add a hardcoded claim mapper** on the client (`xms_edov`, value `true`,
+  JSON type **boolean**) to stand in for the optional claim. Flip the value to
+  `false` to check that a denial is still honoured.
+
+Keycloak emits a real JSON boolean either way, so this exercises the same claim
+parsing a live tenant would.
+
 ## The callback must come back as a redirect, not a form post
 
 Issue [#114](https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp/issues/114),
