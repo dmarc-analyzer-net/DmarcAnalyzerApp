@@ -23,13 +23,15 @@ LABEL org.opencontainers.image.source="https://github.com/dmarc-analyzer-net/Dma
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libgssapi-krb5-2 curl \
-    && rm -rf /var/lib/apt/lists/*
-COPY --from=dotnet-build /out ./
-COPY --from=web-build /web/dist ./wwwroot
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -r dmarcanalyzer && useradd -r -g dmarcanalyzer dmarcanalyzer
+COPY --from=dotnet-build --chown=dmarcanalyzer:dmarcanalyzer /out ./
+COPY --from=web-build --chown=dmarcanalyzer:dmarcanalyzer /web/dist ./wwwroot
 
 ENV ASPNETCORE_URLS=http://+:8080
 ENV APP_MODE=api
 
+USER dmarcanalyzer
 EXPOSE 8080
 
 ENTRYPOINT ["dotnet", "DmarcAnalyzer.Api.dll"]
