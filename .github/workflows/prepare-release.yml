@@ -1,0 +1,128 @@
+# Writes the version bump that step 6 of docs/ops/release.md asks for by hand.
+#
+# The bump is the forgettable part of cutting a release, and forgetting it is
+# silent: VersionReferenceTests compares the tracked files against Chart.yaml,
+# so a Chart.yaml left on the previous release keeps everything consistent and
+# green. v0.8.0 shipped that way, and `helm install` from a clone deployed the
+# previous release, schema included.
+#
+# So the machine writes those files instead, from one input, and refuses to
+# prepare a release whose docs are stale on either side of the repo boundary.
+#
+# This does not create the tag. A tag pushed by GITHUB_TOKEN does not trigger
+# another workflow, so CI would never build the image or publish the chart —
+# tagging stays a human step, against the branch this prepares. The `chart` job
+# re-asserts Chart.yaml matches the tag, which is what catches a tag pushed
+# without coming through here.
+name: Prepare release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to prepare, no leading v (e.g. 0.8.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Validate the version
+        run: |
+          set -euo pipefail
+          version='${{ inputs.version }}'
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "::error::'$version' is not X.Y.Z (and must not carry a leading v)."; exit 1; }
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null 2>&1; then
+            echo "::error::v$version already exists. A published tag is never moved — pick the next patch."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_ENV"
+
+      # Read from Chart.yaml rather than from the latest release: Chart.yaml is
+      # what the tracked files are checked against, so it defines what "the
+      # string to replace" is even when it has fallen behind a published tag.
+      - name: Bump the tracked files
+        run: |
+          set -euo pipefail
+          chart=deploy/helm/dmarc-analyzer/Chart.yaml
+          current=$(grep -oPm1 '^version:\s*\K[0-9]+\.[0-9]+\.[0-9]+' "$chart")
+          echo "Chart.yaml is at $current; preparing $version."
+          [ "$current" != "$version" ] \
+            || { echo "::error::Already at $version — nothing to prepare."; exit 1; }
+
+          # The same list VersionReferenceTests tracks, plus Chart.yaml itself.
+          files=(
+            "$chart"
+            README.md
+            deploy/helm/dmarc-analyzer/README.md
+            render.yaml
+          )
+          sed -i "s/${current//./\\.}/$version/g" "${files[@]}"
+
+          for f in "${files[@]}"; do
+            ! grep -q "${current//./\\.}" "$f" \
+              || { echo "::error::$f still references $current after the bump."; exit 1; }
+          done
+          git diff --quiet && { echo "::error::Nothing changed — the tracked file list has drifted."; exit 1; }
+          git diff --stat
+
+      - name: Version references agree
+        run: dotnet test src/api.tests --filter VersionReferenceTests
+
+      # The website repo carries its own copies and its CI checks them against
+      # the latest *published* release, so a tag pushed while they are stale
+      # fails the next unrelated pull request over there. Catch it here instead,
+      # while the release can still wait for them.
+      - name: Website docs are ready for this version
+        run: |
+          set -euo pipefail
+          git clone --depth 1 https://github.com/dmarc-analyzer-net/dmarc-analyzer-net.github.io.git /tmp/site
+          cd /tmp/site
+          ./scripts/check-doc-versions.sh "$version" || {
+            echo "::error::The website still points at an older release. Ship those bumps before tagging v$version."
+            exit 1
+          }
+
+      # gh rather than a create-pull-request action: it is preinstalled on the
+      # runner, so this adds no third-party dependency to pin and audit.
+      - name: Open the pull request
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          branch="release/v$version"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git checkout -b "$branch"
+          git commit -am "Prepare v$version"
+          git push -u origin "$branch"
+          gh pr create --base main --head "$branch" \
+            --title "Prepare v$version" \
+            --body "Version bump for **v$version**, written by \`prepare-release\`.
+
+          Checked before opening: the tag does not exist yet, every tracked file moved
+          off the previous version, \`VersionReferenceTests\` passes, and the website's
+          own \`check-doc-versions.sh\` is clean for this version.
+
+          Merge this, then tag the merge commit:
+
+          \`\`\`bash
+          git checkout main && git pull
+          git tag -a v$version -m 'v$version — <title>'
+          git push origin v$version
+          \`\`\`
+
+          Tagging is deliberately still by hand — a tag pushed by \`GITHUB_TOKEN\` does
+          not trigger CI, so the image and chart would never publish."

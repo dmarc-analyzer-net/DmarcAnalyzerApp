@@ -133,7 +133,20 @@ Semantic versioning. While on `0.x`:
 5. **`docs/planning/status.md` reflects reality**, since that's what people read
    to know what exists.
 6. **Version references point at the release you are about to cut**, not the last
-   one. Bump `deploy/helm/dmarc-analyzer/Chart.yaml` — both `version` and
+   one. Don't do this by hand — run the **Prepare release** workflow with the
+   version you are about to cut:
+
+   ```bash
+   gh workflow run prepare-release.yml -f version=0.8.1
+   ```
+
+   It bumps `Chart.yaml` (both `version` and `appVersion`), `render.yaml` and
+   both READMEs, refuses to run if the tag already exists or the website is
+   stale, and opens a pull request. Merge that, then tag the merge commit. The
+   rest of this step is what it does and why, and how to do it by hand if the
+   workflow is unavailable.
+
+   Bump `deploy/helm/dmarc-analyzer/Chart.yaml` — both `version` and
    `appVersion` — *before* tagging. Bump `render.yaml`'s image tag too.
 
    This is not cosmetic. `values.image.tag` defaults to the chart's `appVersion`,
