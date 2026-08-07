@@ -115,6 +115,15 @@ public sealed class AnalyticsModule : ICarterModule
             return summary is null ? Results.NotFound() : Results.Ok(summary);
         }).AllowClientViewer();
 
+        app.MapGet("/api/v1/analytics/domains/{domainId:guid}/live-mx", async (
+            Guid domainId,
+            IMtaStsInspectionService service,
+            CancellationToken ct) =>
+        {
+            var result = await service.GetLiveMxAsync(domainId, ct);
+            return result is null ? Results.NotFound() : Results.Ok(result);
+        }).AllowClientViewer();
+
         app.MapGet("/api/v1/analytics/threats", async (
             int? days,
             int? limit,

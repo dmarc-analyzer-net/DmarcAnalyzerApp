@@ -428,6 +428,12 @@ export type MtaStsMxHost = {
   matched: boolean | null
 }
 
+/** A fresh MX lookup, independent of any policy — GET /api/v1/analytics/domains/{domainId}/live-mx. */
+export type MtaStsLiveMx = {
+  status: 'found' | 'missing' | 'lookup_failed'
+  hosts: { preference: number; host: string }[]
+}
+
 /**
  * The persisted MTA-STS state of a domain. checked=false means the worker pass
  * has not reached this domain yet — distinct from missing, which is definitive.

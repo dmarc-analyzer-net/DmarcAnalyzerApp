@@ -89,6 +89,12 @@ public sealed record MtaStsCheckResult(
 public sealed record MtaStsMxHostDto(string Host, int Preference, bool? Matched);
 
 /// <summary>
+/// A fresh MX lookup, independent of any policy — what the editor shows before
+/// a policy (and its mx patterns) even exists yet.
+/// </summary>
+public sealed record MtaStsLiveMxDto(string Status, IReadOnlyList<MxHost> Hosts);
+
+/// <summary>
 /// The persisted MTA-STS state of a domain, as the console renders it. Checked
 /// is false (and every nullable field null) for a domain the pass has not
 /// reached yet — distinct from missing, which is a definitive answer.

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using DmarcAnalyzer.Api.Application.Analytics;
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
@@ -19,6 +20,14 @@ public interface IMtaStsInspectionService
     /// returns the updated state. Null for unknown or cross-tenant ids.
     /// </summary>
     Task<MtaStsStateDto?> RecheckAsync(Guid domainId, CancellationToken ct);
+
+    /// <summary>
+    /// A fresh, unpersisted MX lookup for the domain — independent of the
+    /// TXT-gated monitoring check, so it has an answer even for a domain with
+    /// no MTA-STS record yet (the exact moment someone is building mx patterns
+    /// for a hosted policy for the first time). Null for unknown/cross-tenant ids.
+    /// </summary>
+    Task<MtaStsLiveMxDto?> GetLiveMxAsync(Guid domainId, CancellationToken ct);
 }
 
 public sealed class MtaStsInspectionService(
@@ -26,7 +35,8 @@ public sealed class MtaStsInspectionService(
     ICurrentUserContext currentUser,
     IMtaStsCheckService checkService,
     IMtaStsStateCache stateCache,
-    IMtaStsReadinessService readiness) : IMtaStsInspectionService
+    IMtaStsReadinessService readiness,
+    IDnsMxResolver mxResolver) : IMtaStsInspectionService
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -58,6 +68,25 @@ public sealed class MtaStsInspectionService(
         var state = await stateCache.ApplyAsync(domain.Value.Id, result, ct);
         return ToDto(domain.Value.Id, domain.Value.Name, state,
             await readiness.GetForDomainAsync(domainId, ct));
+    }
+
+    public async Task<MtaStsLiveMxDto?> GetLiveMxAsync(Guid domainId, CancellationToken ct)
+    {
+        var domain = await ResolveAccessibleDomainAsync(domainId, ct);
+        if (domain is null)
+        {
+            return null;
+        }
+
+        var hosts = await mxResolver.ResolveAsync(domain.Value.Name, ct);
+        var status = hosts switch
+        {
+            null => MtaStsMxStatus.LookupFailed,
+            { Count: 0 } => MtaStsMxStatus.Missing,
+            _ => MtaStsMxStatus.Found,
+        };
+
+        return new MtaStsLiveMxDto(status, hosts ?? []);
     }
 
     private async Task<(Guid Id, string Name)?> ResolveAccessibleDomainAsync(Guid domainId, CancellationToken ct)

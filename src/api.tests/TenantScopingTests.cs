@@ -142,8 +142,9 @@ public sealed class TenantScopingTests
         await using var db = NewDb();
         var (granted, _, grantedDomain, otherDomain) = await SeedAsync(db);
 
+        var mxResolver = new TestDnsMxResolver();
         var checkService = new MtaStsCheckService(
-            TestDnsTxtResolver.Empty(), new TestDnsMxResolver(), new TestMtaStsPolicyFetcher());
+            TestDnsTxtResolver.Empty(), mxResolver, new TestMtaStsPolicyFetcher());
         var service = new MtaStsInspectionService(
             db,
             TestCurrentUserContext.Viewer(granted.Id),
@@ -151,7 +152,8 @@ public sealed class TenantScopingTests
             new MtaStsStateCache(db, checkService,
                 Options.Create(new MtaStsOptions()), NullLogger<MtaStsStateCache>.Instance),
             new MtaStsReadinessService(db,
-                new TlsRptQueryService(db, TestCurrentUserContext.Viewer(granted.Id))));
+                new TlsRptQueryService(db, TestCurrentUserContext.Viewer(granted.Id))),
+            mxResolver);
 
         // Cross-tenant reads as not-found — 404, not 403 — on both paths.
         Assert.Null(await service.GetAsync(otherDomain.Id, CancellationToken.None));
@@ -161,5 +163,13 @@ public sealed class TenantScopingTests
         Assert.NotNull(visible);
         Assert.False(visible!.Checked); // exists, never checked — 200, not 404
         Assert.Equal(grantedDomain.Name, visible.Name);
+
+        // The live-MX lookup shares the same tenancy check and works even
+        // though no MTA-STS state exists for this domain yet.
+        Assert.Null(await service.GetLiveMxAsync(otherDomain.Id, CancellationToken.None));
+        var liveMx = await service.GetLiveMxAsync(grantedDomain.Id, CancellationToken.None);
+        Assert.NotNull(liveMx);
+        Assert.Equal(MtaStsMxStatus.Missing, liveMx!.Status); // TestDnsMxResolver has nothing published
+        Assert.Empty(liveMx.Hosts);
     }
 }

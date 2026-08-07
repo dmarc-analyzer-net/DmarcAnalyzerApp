@@ -34,6 +34,7 @@ import {
   type DrilldownTotals,
   type EnforcementGuidance,
   type EvaluatedCombo,
+  type MtaStsLiveMx,
   type MtaStsReadiness,
   type MtaStsState,
   type RecordComparison,
@@ -1153,12 +1154,40 @@ function MtaStsPolicyEditor({
   const [maxAgePreset, setMaxAgePreset] = useState(presetValue)
   const [maxAgeCustom, setMaxAgeCustom] = useState(String(existing?.maxAgeSeconds ?? 604800))
   const [patternsText, setPatternsText] = useState(existing?.mxPatterns.join('\n') ?? '')
+  const [liveMx, setLiveMx] = useState<MtaStsLiveMx | null>(null)
+  const [liveMxError, setLiveMxError] = useState<string | null>(null)
   const [bulkOpen, setBulkOpen] = useState(false)
   const [siblings, setSiblings] = useState<Domain[] | null>(null)
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [bulkResults, setBulkResults] = useState<MtaStsPolicyApplyOutcome[] | null>(null)
+
+  useEffect(() => {
+    let live = true
+    void fetchJson<MtaStsLiveMx>(`/api/v1/analytics/domains/${response.domainId}/live-mx`)
+      .then((result) => {
+        if (live) setLiveMx(result)
+      })
+      .catch((loadError) => {
+        if (live) setLiveMxError(loadError instanceof Error ? loadError.message : 'Lookup failed')
+      })
+    return () => {
+      live = false
+    }
+    // Fetched once per dialog open — the domain doesn't change under this form.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const useLiveMx = () => {
+    if (!liveMx || liveMx.hosts.length === 0) return
+    setPatternsText(
+      [...liveMx.hosts]
+        .sort((a, b) => a.preference - b.preference)
+        .map((h) => h.host)
+        .join('\n'),
+    )
+  }
 
   const toggleBulk = async (open: boolean) => {
     setBulkOpen(open)
@@ -1299,6 +1328,33 @@ function MtaStsPolicyEditor({
                 placeholder={'mx1.example.com\n*.mail.example.com'}
               />
             </label>
+            <div className="rounded-md border border-border bg-surface-sunken px-3 py-2 text-xs">
+              {!liveMx && !liveMxError ? (
+                <span className="text-secondary">Looking up live MX records…</span>
+              ) : liveMxError ? (
+                <span className="text-secondary">Live MX lookup failed — check DNS directly if this persists.</span>
+              ) : liveMx!.status === 'missing' ? (
+                <span className="text-secondary">No MX records published for {response.domainName}.</span>
+              ) : liveMx!.status === 'lookup_failed' ? (
+                <span className="text-secondary">Live MX lookup failed — try again shortly.</span>
+              ) : (
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap gap-x-3 gap-y-1">
+                    <span className="text-secondary">Live MX:</span>
+                    {[...liveMx!.hosts]
+                      .sort((a, b) => a.preference - b.preference)
+                      .map((h) => (
+                        <span key={h.host} className="font-mono text-body">
+                          {h.host} <span className="text-secondary">· {h.preference}</span>
+                        </span>
+                      ))}
+                  </div>
+                  <Button type="button" variant="outline" size="sm" onClick={useLiveMx}>
+                    Use live MX
+                  </Button>
+                </div>
+              )}
+            </div>
             <label className="flex items-center gap-2 text-sm text-secondary">
               <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} />
               Serve this policy (off keeps the settings but answers 404)
