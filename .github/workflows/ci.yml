@@ -155,6 +155,30 @@ jobs:
           refuses "unknown mode"                 --set auth.encryptionKey="$DUMMY_KEY" --set mode=hybrid
           exit $fail
 
+      # VersionReferenceTests checks the tracked files against Chart.yaml, so it
+      # catches drift *between* files and not a Chart.yaml left on the previous
+      # release — forget the bump and everything stays consistently stale while
+      # CI stays green. That is how v0.8.0 shipped with 0.7.1 still committed.
+      # The published chart is fine either way (its version comes from the tag
+      # below); what breaks is `helm install ./deploy/helm/dmarc-analyzer` from a
+      # clone, which deploys the previous release, and render.yaml, which never
+      # updates again. Only a tag knows the intended version, so the check lives
+      # here rather than in the test suite.
+      - name: Chart.yaml matches the tag
+        if: github.ref_type == 'tag'
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          for key in version appVersion; do
+            got=$(grep -oPm1 "^${key}:\s*\"?\K[0-9]+\.[0-9]+\.[0-9]+" "$CHART_DIR/Chart.yaml")
+            [ "$got" = "$version" ] || {
+              echo "::error::$CHART_DIR/Chart.yaml $key is $got, but the tag is $version."
+              echo "::error::Bump it (and render.yaml) and cut a patch release; see docs/ops/release.md."
+              exit 1
+            }
+          done
+          echo "Chart.yaml version and appVersion are both $version."
+
       - name: Log in to GHCR
         if: github.ref_type == 'tag'
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
