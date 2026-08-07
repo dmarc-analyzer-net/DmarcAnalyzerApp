@@ -20,7 +20,9 @@ type OidcProvider = {
 const OIDC_ERROR_MESSAGES: Record<string, string> = {
   oidc_failed: 'Single sign-on failed. Try again or use your password.',
   email_not_verified:
-    'Your email address is not verified with the identity provider, so it cannot be linked to an existing account.',
+    'Your identity provider reports this email address as unverified, so it cannot be linked to an existing account.',
+  email_verification_unknown:
+    'Your identity provider did not say whether this email address is verified, so it cannot be linked to an existing account. An administrator can allow it in the single sign-on settings.',
   no_account: 'No account exists for your identity. Ask an administrator to create one.',
   account_disabled: 'Your account is deactivated. Ask an administrator to re-enable it.',
 }

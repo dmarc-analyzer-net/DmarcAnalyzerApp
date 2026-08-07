@@ -80,6 +80,22 @@ public sealed class OidcAuthenticationExtensionsTests
     }
 
     /// <summary>
+    /// #140. Entra ID issues no <c>email_verified</c>; <c>xms_edov</c> ("email
+    /// domain owner verified") is what it offers instead, and the sign-in service
+    /// accepts it in that claim's place. Dropping the mapping would silently
+    /// downgrade a correctly configured Entra tenant to needing the
+    /// <c>TrustUnverifiedEmail</c> escape hatch.
+    /// </summary>
+    [Fact]
+    public void EmailAssuranceClaims_AreMapped()
+    {
+        var mapped = ResolveOidcOptions().ClaimActions.Select(a => a.ClaimType).ToArray();
+
+        Assert.Contains("email_verified", mapped);
+        Assert.Contains("xms_edov", mapped);
+    }
+
+    /// <summary>
     /// The Lax cookies and the query response mode above are a pair: Lax is only
     /// safe because the callback is a GET. Asserted together so that relaxing one
     /// without the other fails here rather than in production.

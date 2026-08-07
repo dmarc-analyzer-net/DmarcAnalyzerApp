@@ -42,7 +42,7 @@ public sealed class OidcSignInService(
         }
 
         var email = principal.FindFirstValue("email")?.Trim().ToLowerInvariant();
-        var emailVerified = string.Equals(principal.FindFirstValue("email_verified"), "true", StringComparison.OrdinalIgnoreCase);
+        var assurance = ResolveEmailAssurance(principal);
         var displayName = principal.FindFirstValue("name")?.Trim();
 
         // 1. Known external identity.
@@ -57,17 +57,29 @@ public sealed class OidcSignInService(
             return await MintSessionAsync(identity.UserId, ipAddress, userAgent, ct);
         }
 
-        // 2. Link to an existing local account by verified email only — an
-        //    unverified IdP email must never take over a local account.
+        // 2. Link to an existing local account by email, but only on an assurance
+        //    the provider actually gave — an unverified IdP email must never take
+        //    over a local account. A provider that asserts nothing (Entra) is
+        //    refused unless the deployment has opted into trusting its silence.
         if (!string.IsNullOrWhiteSpace(email))
         {
             var existing = await db.AgencyUsers.SingleOrDefaultAsync(x => x.Email == email, ct);
             if (existing is not null)
             {
-                if (!emailVerified)
+                if (assurance is EmailAssurance.NotVerified)
                 {
                     logger.LogWarning("OIDC login for {Email} refused: email not verified at IdP", email);
                     return OidcSignInResult.Failure("email_not_verified");
+                }
+
+                if (assurance is EmailAssurance.Unstated && !options.Value.TrustUnverifiedEmail)
+                {
+                    logger.LogWarning(
+                        "OIDC login for {Email} refused: the provider asserted neither email_verified nor xms_edov, " +
+                        "so the address cannot be trusted to identify the existing account. Configure the xms_edov " +
+                        "optional claim (Entra ID), or set Auth:Oidc:TrustUnverifiedEmail=true if this provider's " +
+                        "addresses are administered.", email);
+                    return OidcSignInResult.Failure("email_verification_unknown");
                 }
 
                 await AddIdentityAsync(existing.Id, issuer, subject, email, ct);
@@ -76,7 +88,12 @@ public sealed class OidcSignInService(
             }
         }
 
-        // 3. Just-in-time provisioning.
+        // 3. Just-in-time provisioning. Deliberately asymmetric with step 2: this
+        //    path asks nothing about email assurance, because there is no account
+        //    to take over. A fresh account inherits no role and no client grants
+        //    beyond DefaultRole, so an unverified address buys the least
+        //    privilege the deployment has. Step 2 is where assurance matters,
+        //    since the account on the other side may be an admin's.
         if (!options.Value.AutoProvision)
         {
             return OidcSignInResult.Failure("no_account");
@@ -118,6 +135,43 @@ public sealed class OidcSignInService(
         await DefaultClient.EnsureAsync(db, ct);
 
         return await MintSessionAsync(user.Id, ipAddress, userAgent, ct);
+    }
+
+    /// <summary>
+    /// What the provider said about the address — which is not the same question
+    /// as whether it is verified. Silence is its own answer and has to be
+    /// distinguishable from a "no": Entra ID never issues <c>email_verified</c>,
+    /// so reading a missing claim as unverified refuses every Entra user forever
+    /// (#140), while reading it as verified would trust an address no one
+    /// vouched for.
+    /// </summary>
+    private enum EmailAssurance
+    {
+        Verified,
+        NotVerified,
+        Unstated,
+    }
+
+    private static EmailAssurance ResolveEmailAssurance(ClaimsPrincipal principal)
+    {
+        // The standard claim first. xms_edov ("email domain owner verified") is
+        // the optional claim Entra offers instead, added by Microsoft for exactly
+        // this gap — it is a genuine assertion, so it counts the same and needs
+        // no configured trust.
+        return Read("email_verified") ?? Read("xms_edov") ?? EmailAssurance.Unstated;
+
+        EmailAssurance? Read(string claimType) => principal.FindFirstValue(claimType)?.Trim() switch
+        {
+            null or "" => null,
+            var value when IsTrue(value) => EmailAssurance.Verified,
+            _ => EmailAssurance.NotVerified,
+        };
+
+        // A JSON boolean reaches here as a string, and which string depends on the
+        // handler and the provider, so match the forms that mean true rather than
+        // pinning one and silently reading the others as a refusal.
+        static bool IsTrue(string value) =>
+            string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) || value == "1";
     }
 
     private async Task AddIdentityAsync(Guid userId, string issuer, string subject, string? email, CancellationToken ct)

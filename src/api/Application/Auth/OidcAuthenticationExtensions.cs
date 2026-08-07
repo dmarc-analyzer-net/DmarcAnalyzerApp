@@ -92,6 +92,11 @@ public static class OidcAuthenticationExtensions
                 oidc.TokenValidationParameters.RoleClaimType = "role";
                 oidc.ClaimActions.MapJsonKey("email", "email");
                 oidc.ClaimActions.MapJsonKey("email_verified", "email_verified");
+                // Entra ID's stand-in for email_verified, which it never issues:
+                // "email domain owner verified". It travels in the id_token rather
+                // than userinfo, so this mapping is only what keeps the userinfo
+                // route from dropping it — the sign-in service reads either.
+                oidc.ClaimActions.MapJsonKey("xms_edov", "xms_edov");
                 oidc.ClaimActions.MapJsonKey("name", "name");
 
                 oidc.Scope.Clear();

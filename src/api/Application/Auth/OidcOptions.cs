@@ -18,6 +18,28 @@ public sealed class OidcOptions
     /// <summary>Create a local user on first login when no identity or verified-email match exists.</summary>
     public bool AutoProvision { get; set; }
 
+    /// <summary>
+    /// Let a login link to an existing local account when the provider says
+    /// <em>nothing</em> about the address — no <c>email_verified</c>, no
+    /// <c>xms_edov</c>. Microsoft Entra ID is the case this exists for: it never
+    /// issues <c>email_verified</c>, so silence is its only answer and every
+    /// Entra user is otherwise refused forever (#140).
+    /// <para>
+    /// This does not override a provider that answers. An explicit
+    /// <c>email_verified=false</c> (or <c>xms_edov=false</c>) is still refused
+    /// with this on — only silence becomes trustable.
+    /// </para>
+    /// <para>
+    /// Off by default, and it should stay off unless the provider's addresses are
+    /// administered by someone you trust. Against a multi-tenant authority
+    /// (<c>/common</c>, <c>/organizations</c>) any tenant can assert any address,
+    /// which is an account takeover of every local user by email. Prefer the
+    /// <c>xms_edov</c> optional claim, which is a real assertion and needs no flag
+    /// — see <c>docs/ops/oidc-entra.md</c>.
+    /// </para>
+    /// </summary>
+    public bool TrustUnverifiedEmail { get; set; }
+
     public bool RequireHttpsMetadata { get; set; } = true;
 
     /// <summary>

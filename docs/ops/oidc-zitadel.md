@@ -114,20 +114,14 @@ you want OIDC inside compose.
 
 ## Other providers
 
-Zitadel is what this dev stack ships, but nothing here is Zitadel-specific. Two
-things learned from wiring up **Microsoft Entra ID**, both of which bite on the
-first login rather than later:
+Zitadel is what this dev stack ships, but nothing here is Zitadel-specific. Four
+others have their own guides: [Keycloak](oidc-keycloak.md),
+[Authentik](oidc-authentik.md), [Google](oidc-google.md) and
+[Microsoft Entra ID](oidc-entra.md).
 
-- **Entra needs a client secret.** Register the callback under the *Web*
-  platform and Entra treats the app as a confidential client, so the token
-  exchange requires `Auth__Oidc__ClientSecret` no matter what PKCE does —
-  without one it fails `AADSTS7000218`. "Allow public client flows" is for
-  device-code and native apps; it does not make a Web-platform registration
-  secretless.
-- **The callback must come back as a redirect, not a form post.** The handler
-  defaults `ResponseMode` to `form_post`, which arrives as a cross-site POST
-  that carries no `SameSite=Lax` cookie — so the correlation cookie goes
-  missing and every login dies with "Correlation failed" (issue #114). The app
-  now pins `ResponseMode = "query"`; the failure is worth recognising because
-  the log names a cookie, which reads like a cookie bug rather than a response
-  mode one.
+**Read the Entra guide before configuring Entra.** It is the one with
+provider-specific behaviour that has to be worked around rather than merely
+configured — it needs a client secret, its callback breaks on the handler's
+default response mode (issue #114), and it issues no `email_verified` claim at
+all, which refuses every Entra user who already has a local account until the
+`xms_edov` optional claim is configured (issue #140).
