@@ -11,7 +11,16 @@ public interface IDnsTxtResolver
     /// (timeout/servfail) — distinct from an empty list, which means NXDOMAIN
     /// or no TXT records.
     /// </summary>
-    Task<IReadOnlyList<string>?> ResolveAsync(string name, CancellationToken ct);
+    /// <param name="bypassCache">
+    /// Skip the cached answer and query DNS now. Cached answers include a
+    /// definitive "nothing published" result, so a normal cache-first lookup
+    /// keeps saying "missing" for up to the TTL after a record actually goes
+    /// live — set this for an operator-triggered recheck, where a stale
+    /// answer defeats the point of clicking the button. Leave it false for the
+    /// worker's scheduled pass, which relies on the cache to avoid hammering
+    /// DNS every interval across every domain.
+    /// </param>
+    Task<IReadOnlyList<string>?> ResolveAsync(string name, CancellationToken ct, bool bypassCache = false);
 }
 
 /// <summary>
@@ -29,10 +38,10 @@ public sealed class DnsTxtResolver(IMemoryCache cache, ILogger<DnsTxtResolver> l
         UseCache = false, // IMemoryCache above is the cache; keep layers single-purpose
     });
 
-    public async Task<IReadOnlyList<string>?> ResolveAsync(string name, CancellationToken ct)
+    public async Task<IReadOnlyList<string>?> ResolveAsync(string name, CancellationToken ct, bool bypassCache = false)
     {
         var key = $"dns-txt:{name.ToLowerInvariant()}";
-        if (cache.TryGetValue<IReadOnlyList<string>>(key, out var cached) && cached is not null)
+        if (!bypassCache && cache.TryGetValue<IReadOnlyList<string>>(key, out var cached) && cached is not null)
         {
             return cached;
         }

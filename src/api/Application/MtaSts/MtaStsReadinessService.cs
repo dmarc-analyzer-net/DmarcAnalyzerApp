@@ -41,8 +41,16 @@ public sealed class MtaStsReadinessService(
                 s.FetchStatus,
                 s.PolicyValid,
                 s.UnmatchedMxHostsJson,
+                s.LastFetchOkAtUtc,
             })
             .SingleOrDefaultAsync(ct);
+
+        // A hosted policy that has never once been reachable is mid-setup, not
+        // broken — the same distinction the mta_sts_broken alert already makes.
+        // Before that first success, every check reads as unknown rather than
+        // failed, so a freshly created policy doesn't get told its brand-new
+        // (and not-yet-propagated) DNS records are "failing".
+        var everReachable = state?.LastFetchOkAtUtc is not null;
 
         var now = DateTime.UtcNow;
         var sample = await tlsRpt.GetGateSampleAsync(
@@ -53,10 +61,10 @@ public sealed class MtaStsReadinessService(
             policy.Mode,
             policy.ModeChangedAtUtc,
             StateChecked: state is not null,
-            TxtOk: state is null ? null : state.DnsRecordStatus == MtaStsRecordStatus.Found,
-            FetchOk: state?.FetchStatus is null ? null : state.FetchStatus == MtaStsFetchStatus.Ok,
-            PolicyValid: state?.PolicyValid,
-            MxMatchOk: state?.UnmatchedMxHostsJson is null ? null : state.UnmatchedMxHostsJson == "[]",
+            TxtOk: !everReachable ? null : state!.DnsRecordStatus == MtaStsRecordStatus.Found,
+            FetchOk: !everReachable ? null : state!.FetchStatus is null ? null : state.FetchStatus == MtaStsFetchStatus.Ok,
+            PolicyValid: !everReachable ? null : state!.PolicyValid,
+            MxMatchOk: !everReachable ? null : state!.UnmatchedMxHostsJson is null ? null : state.UnmatchedMxHostsJson == "[]",
             sample.TotalSessions,
             sample.StsFailureSessions,
             sample.ReportCount,

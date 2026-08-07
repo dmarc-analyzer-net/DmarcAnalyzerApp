@@ -9,7 +9,12 @@ public interface IMtaStsCheckService
     /// valid record exists) the policy fetch and the MX cross-check in parallel.
     /// Stateless and side-effect free — persistence is the state cache's job.
     /// </summary>
-    Task<MtaStsCheckResult> CheckAsync(string domainName, CancellationToken ct);
+    /// <param name="bypassCache">
+    /// Forwarded to the DNS resolvers — true for an operator-triggered
+    /// recheck, so a record published seconds ago isn't hidden behind the
+    /// resolvers' 5-minute cache; false for the scheduled worker pass.
+    /// </param>
+    Task<MtaStsCheckResult> CheckAsync(string domainName, CancellationToken ct, bool bypassCache = false);
 }
 
 /// <summary>
@@ -22,9 +27,9 @@ public sealed class MtaStsCheckService(
     IDnsMxResolver mxResolver,
     IMtaStsPolicyFetcher policyFetcher) : IMtaStsCheckService
 {
-    public async Task<MtaStsCheckResult> CheckAsync(string domainName, CancellationToken ct)
+    public async Task<MtaStsCheckResult> CheckAsync(string domainName, CancellationToken ct, bool bypassCache = false)
     {
-        var txts = await txtResolver.ResolveAsync($"_mta-sts.{domainName}", ct);
+        var txts = await txtResolver.ResolveAsync($"_mta-sts.{domainName}", ct, bypassCache);
         var record = ParseStsRecord(txts);
 
         // No usable TXT record means senders look no further, so neither do we —
@@ -35,7 +40,7 @@ public sealed class MtaStsCheckService(
         }
 
         var fetchTask = policyFetcher.FetchAsync(domainName, ct);
-        var mxTask = mxResolver.ResolveAsync(domainName, ct);
+        var mxTask = mxResolver.ResolveAsync(domainName, ct, bypassCache);
         await Task.WhenAll(fetchTask, mxTask);
 
         var fetch = await fetchTask;

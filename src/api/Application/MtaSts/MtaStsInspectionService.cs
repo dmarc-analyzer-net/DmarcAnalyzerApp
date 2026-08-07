@@ -64,7 +64,10 @@ public sealed class MtaStsInspectionService(
             return null;
         }
 
-        var result = await checkService.CheckAsync(domain.Value.Name, ct);
+        // bypassCache: an operator clicking "Recheck now" right after publishing
+        // a record must see it — the resolvers' 5-minute cache would otherwise
+        // keep serving the pre-publish "missing" answer for the rest of the TTL.
+        var result = await checkService.CheckAsync(domain.Value.Name, ct, bypassCache: true);
         var state = await stateCache.ApplyAsync(domain.Value.Id, result, ct);
         return ToDto(domain.Value.Id, domain.Value.Name, state,
             await readiness.GetForDomainAsync(domainId, ct));

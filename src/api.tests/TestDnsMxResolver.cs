@@ -26,7 +26,7 @@ public sealed class TestDnsMxResolver : IDnsMxResolver
         return this;
     }
 
-    public Task<IReadOnlyList<MxHost>?> ResolveAsync(string domain, CancellationToken ct)
+    public Task<IReadOnlyList<MxHost>?> ResolveAsync(string domain, CancellationToken ct, bool bypassCache = false)
     {
         Queried.Add(domain);
         return Task.FromResult(_byDomain.TryGetValue(domain, out var hosts) ? hosts : Array.Empty<MxHost>());

@@ -13,7 +13,8 @@ public interface IDnsMxResolver
     /// Returns null when the lookup itself failed (timeout/servfail) — distinct
     /// from an empty list, which means NXDOMAIN or no MX records.
     /// </summary>
-    Task<IReadOnlyList<MxHost>?> ResolveAsync(string domain, CancellationToken ct);
+    /// <param name="bypassCache">See <see cref="IDnsTxtResolver.ResolveAsync"/> — same rationale.</param>
+    Task<IReadOnlyList<MxHost>?> ResolveAsync(string domain, CancellationToken ct, bool bypassCache = false);
 }
 
 /// <summary>
@@ -31,10 +32,10 @@ public sealed class DnsMxResolver(IMemoryCache cache, ILogger<DnsMxResolver> log
         UseCache = false, // IMemoryCache above is the cache; keep layers single-purpose
     });
 
-    public async Task<IReadOnlyList<MxHost>?> ResolveAsync(string domain, CancellationToken ct)
+    public async Task<IReadOnlyList<MxHost>?> ResolveAsync(string domain, CancellationToken ct, bool bypassCache = false)
     {
         var key = $"dns-mx:{domain.ToLowerInvariant()}";
-        if (cache.TryGetValue<IReadOnlyList<MxHost>>(key, out var cached) && cached is not null)
+        if (!bypassCache && cache.TryGetValue<IReadOnlyList<MxHost>>(key, out var cached) && cached is not null)
         {
             return cached;
         }

@@ -30,6 +30,6 @@ public sealed class TestDnsTxtResolver : IDnsTxtResolver
         return this;
     }
 
-    public Task<IReadOnlyList<string>?> ResolveAsync(string name, CancellationToken ct)
+    public Task<IReadOnlyList<string>?> ResolveAsync(string name, CancellationToken ct, bool bypassCache = false)
         => Task.FromResult(_byName.TryGetValue(name, out var txts) ? txts : Array.Empty<string>());
 }

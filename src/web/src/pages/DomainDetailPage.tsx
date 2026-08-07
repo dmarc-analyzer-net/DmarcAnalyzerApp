@@ -968,7 +968,10 @@ function HostedPolicySection({
         </p>
       ) : (
         <div className="mt-3 space-y-3">
-          {readiness && readiness.status !== 'not_applicable' ? (
+          {/* Suppressed while waitingForDns: that banner already covers this
+              ground more specifically, and showing both is two banners
+              disagreeing about the same underlying fact. */}
+          {readiness && readiness.status !== 'not_applicable' && !waitingForDns ? (
             <Notice
               tone={readiness.status === 'ready' ? 'ok' : readiness.status === 'not_ready' ? 'danger' : 'warn'}
             >

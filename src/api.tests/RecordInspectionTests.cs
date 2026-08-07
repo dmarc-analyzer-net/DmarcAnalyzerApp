@@ -153,7 +153,7 @@ public sealed class RecordInspectionTests
 
     private sealed class FakeDns(Dictionary<string, IReadOnlyList<string>?> answers) : IDnsTxtResolver
     {
-        public Task<IReadOnlyList<string>?> ResolveAsync(string name, CancellationToken ct)
+        public Task<IReadOnlyList<string>?> ResolveAsync(string name, CancellationToken ct, bool bypassCache = false)
             => Task.FromResult(answers.GetValueOrDefault(name));
     }
 
