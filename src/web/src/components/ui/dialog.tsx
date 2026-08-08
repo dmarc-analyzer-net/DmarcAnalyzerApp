@@ -30,7 +30,11 @@ export function DialogContent({
       <DialogOverlay />
       <DialogPrimitive.Content
         className={cn(
-          'fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-surface-card p-6 shadow-overlay focus:outline-none',
+          // The height cap is what makes these usable on a phone: several of the
+          // forms are taller than a mobile viewport, and a centred dialog with no
+          // max-height simply loses its footer — submit included — off both edges.
+          // dvh rather than vh so the collapsing browser chrome doesn't hide it.
+          'fixed left-1/2 top-1/2 z-50 max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] max-w-xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-surface-card p-4 shadow-overlay focus:outline-none sm:p-6',
           className,
         )}
         {...props}

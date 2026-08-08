@@ -10,8 +10,9 @@ type SelectProps = React.ComponentProps<'select'> & {
   options?: SelectOption[]
 }
 
+// Matches Input: 16px below sm keeps iOS Safari from zooming the page on focus.
 const selectBase =
-  'h-9 w-full cursor-pointer appearance-none rounded-md border border-border bg-surface-card pl-3 pr-8 font-body text-base text-body outline-none focus:border-brand focus:shadow-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50'
+  'h-10 w-full cursor-pointer appearance-none rounded-md border border-border bg-surface-card pl-3 pr-8 font-body text-[16px] text-body outline-none focus:border-brand focus:shadow-[var(--focus-ring)] disabled:cursor-not-allowed disabled:opacity-50 sm:h-9 sm:text-base'
 
 export function Select({ className, options, children, ...props }: SelectProps) {
   return (

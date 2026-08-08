@@ -83,6 +83,11 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - primitives ported from the design handoff (Button/Badge/Card/Input/Select/Dialog/Table/Icon/StatCard/PolicyBadge/ComplianceBar/DaysSelector/TrendChart)
   - new sidebar shell; all six screens rebuilt (Dashboard, Domains, Domain Detail, Clients, Users, Mailbox Sources) + Login
   - Domains/Detail surface published policy (PolicyBadge p=…) and enforcement status (Enforced/Ramping/Spoofing/Monitoring)
+- Responsive console (single `lg` breakpoint at 1024px; desktop layout unchanged):
+  - below `lg` the sidebar is an off-canvas drawer behind a top bar — backdrop, Escape, body scroll lock, focus moved in on open and returned to the trigger on close, and `invisible` while closed so the hidden menu is not in the tab order
+  - page headers and header action rows stack; search fields and filter selects go full-width
+  - every `Table` sits in a horizontal scroll container; `Dialog` caps at `calc(100dvh-2rem)` and scrolls internally
+  - `Input`/`Select` render at 16px below `sm` (iOS Safari zooms the page on a focused field smaller than that) and controls gain 4px of height for touch
 
 - Analytics endpoints over ingested DMARC data:
   - `GET /api/v1/analytics/summary` (compliance totals, daily trend, top failing domains, top reporters, dispositions, mailbox rollup)

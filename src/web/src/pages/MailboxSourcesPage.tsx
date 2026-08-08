@@ -286,16 +286,16 @@ export function MailboxSourcesPage() {
 
   return (
     <>
-      <div className="mb-5 flex items-start justify-between gap-4">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
           <h1 className="font-display text-xl font-bold tracking-tight text-body">Mailbox sources</h1>
           <p className="mt-1 text-sm text-secondary">{subtitle}</p>
         </div>
-        <div className="flex shrink-0 items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5 sm:flex-nowrap sm:shrink-0">
           <Input
             icon="search"
             placeholder="Search mailboxes"
-            className="w-56"
+            className="w-full sm:w-56"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -432,7 +432,7 @@ export function MailboxSourcesPage() {
                 description="Operational view of sync outcomes, checkpoints, and latest issues."
                 actions={
                   <Select
-                    className="w-56"
+                    className="w-full sm:w-56"
                     value={mailboxOpsFilter}
                     onChange={(e) => setMailboxOpsFilter(e.target.value as MailboxOpsFilter)}
                   >

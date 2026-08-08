@@ -39,8 +39,11 @@ export function CardHeader({
 }: CardHeaderProps) {
   if (title != null || description != null || actions != null) {
     return (
-      <div className={cn('mb-3.5 flex items-start justify-between gap-3', className)} {...props}>
-        <div>
+      <div
+        className={cn('mb-3.5 flex flex-wrap items-start justify-between gap-3', className)}
+        {...props}
+      >
+        <div className="min-w-0">
           <h3 className="font-display text-md font-bold tracking-tight text-body">{title}</h3>
           {description != null ? (
             <p className="mt-[3px] text-sm text-secondary">{description}</p>

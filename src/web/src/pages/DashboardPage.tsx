@@ -82,7 +82,7 @@ export function DashboardPage() {
 
   return (
     <>
-      <div className="mb-5 flex items-start justify-between gap-4">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
           <h1 className="font-display text-xl font-bold tracking-tight text-body">Dashboard</h1>
           <p className="mt-1 text-sm text-secondary">{subtitle}</p>
@@ -175,28 +175,30 @@ export function DashboardPage() {
                   No domains below target — everything is aligned.
                 </p>
               ) : (
-                <Table>
-                  <TableBody>
-                    {summary.topFailingDomains.map((row, index) => (
-                      <TableRow
-                        key={row.domainId}
-                        last={index === summary.topFailingDomains.length - 1}
-                        onClick={() =>
-                          navigate(
-                            `/domains/${row.domainId}${days === 30 ? '' : `?days=${days}`}`,
-                          )
-                        }
-                      >
-                        <TableCell mono>{row.domain}</TableCell>
-                        <TableCell align="right">
-                          <Badge variant={complianceVariant(row.complianceRate)}>
-                            {formatPercent(row.complianceRate)}
-                          </Badge>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableBody>
+                      {summary.topFailingDomains.map((row, index) => (
+                        <TableRow
+                          key={row.domainId}
+                          last={index === summary.topFailingDomains.length - 1}
+                          onClick={() =>
+                            navigate(
+                              `/domains/${row.domainId}${days === 30 ? '' : `?days=${days}`}`,
+                            )
+                          }
+                        >
+                          <TableCell mono>{row.domain}</TableCell>
+                          <TableCell align="right">
+                            <Badge variant={complianceVariant(row.complianceRate)}>
+                              {formatPercent(row.complianceRate)}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               )}
             </Card>
           </div>

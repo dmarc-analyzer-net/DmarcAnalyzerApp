@@ -150,7 +150,10 @@ export function BackupPage() {
               No credential encryption key is configured, so every mailbox password is plaintext in
               the database — and any artifact exported from this install carries them the same way.
               Offload refuses to run in this state rather than shipping them to object storage. Set{' '}
-              <span className="font-mono">Security__CredentialEncryptionKey</span> to a base64
+              {/* 33 unbreakable mono characters; without break-all this one token
+                  sets the page's min-content and every card inherits the overflow. */}
+              <span className="font-mono break-all">Security__CredentialEncryptionKey</span> to a
+              base64
               32-byte key and restart.
             </Notice>
           ) : null}

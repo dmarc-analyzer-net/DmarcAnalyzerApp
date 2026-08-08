@@ -1325,7 +1325,7 @@ function MtaStsPolicyEditor({
             <label className="grid gap-1 text-xs text-secondary">
               mx patterns — one per line{mode === 'none' ? ' (optional for mode none)' : ''}
               <textarea
-                className="min-h-20 rounded-md border border-border bg-surface-card px-3 py-2 font-mono text-xs text-body focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+                className="min-h-20 rounded-md border border-border bg-surface-card px-3 py-2 font-mono text-[16px] text-body focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] sm:text-xs"
                 value={patternsText}
                 onChange={(e) => setPatternsText(e.target.value)}
                 placeholder={'mx1.example.com\n*.mail.example.com'}
@@ -1517,32 +1517,36 @@ function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPanelProps)
           {detail.dkimAuth.length === 0 ? (
             <p className="mt-2 text-sm text-secondary">No DKIM signatures reported.</p>
           ) : (
-            <Table className="mt-1">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Domain</TableHead>
-                  <TableHead>Selector</TableHead>
-                  <TableHead>Result</TableHead>
-                  <TableHead className="text-right">Messages</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {detail.dkimAuth.map((row, index) => (
-                  <TableRow key={`${row.domain}-${row.selector ?? ''}-${row.result}-${index}`}>
-                    <TableCell mono className="break-all">
-                      {row.domain}
-                    </TableCell>
-                    <TableCell mono>{row.selector ?? '—'}</TableCell>
-                    <TableCell>
-                      <span className={cn('font-medium', resultTone(row.result))}>{row.result}</span>
-                    </TableCell>
-                    <TableCell align="right" className="tabular-nums">
-                      {formatCompact(row.messages)}
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table className="mt-1">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Domain</TableHead>
+                    <TableHead>Selector</TableHead>
+                    <TableHead>Result</TableHead>
+                    <TableHead className="text-right">Messages</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {detail.dkimAuth.map((row, index) => (
+                    <TableRow key={`${row.domain}-${row.selector ?? ''}-${row.result}-${index}`}>
+                      <TableCell mono className="break-all">
+                        {row.domain}
+                      </TableCell>
+                      <TableCell mono>{row.selector ?? '—'}</TableCell>
+                      <TableCell>
+                        <span className={cn('font-medium', resultTone(row.result))}>
+                          {row.result}
+                        </span>
+                      </TableCell>
+                      <TableCell align="right" className="tabular-nums">
+                        {formatCompact(row.messages)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </section>
 
@@ -1551,32 +1555,36 @@ function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPanelProps)
           {detail.spfAuth.length === 0 ? (
             <p className="mt-2 text-sm text-secondary">No SPF checks reported.</p>
           ) : (
-            <Table className="mt-1">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Domain</TableHead>
-                  <TableHead>Scope</TableHead>
-                  <TableHead>Result</TableHead>
-                  <TableHead className="text-right">Messages</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {detail.spfAuth.map((row, index) => (
-                  <TableRow key={`${row.domain}-${row.scope ?? ''}-${row.result}-${index}`}>
-                    <TableCell mono className="break-all">
-                      {row.domain}
-                    </TableCell>
-                    <TableCell className="text-xs text-secondary">{row.scope ?? '—'}</TableCell>
-                    <TableCell>
-                      <span className={cn('font-medium', resultTone(row.result))}>{row.result}</span>
-                    </TableCell>
-                    <TableCell align="right" className="tabular-nums">
-                      {formatCompact(row.messages)}
-                    </TableCell>
+            <div className="overflow-x-auto">
+              <Table className="mt-1">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Domain</TableHead>
+                    <TableHead>Scope</TableHead>
+                    <TableHead>Result</TableHead>
+                    <TableHead className="text-right">Messages</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {detail.spfAuth.map((row, index) => (
+                    <TableRow key={`${row.domain}-${row.scope ?? ''}-${row.result}-${index}`}>
+                      <TableCell mono className="break-all">
+                        {row.domain}
+                      </TableCell>
+                      <TableCell className="text-xs text-secondary">{row.scope ?? '—'}</TableCell>
+                      <TableCell>
+                        <span className={cn('font-medium', resultTone(row.result))}>
+                          {row.result}
+                        </span>
+                      </TableCell>
+                      <TableCell align="right" className="tabular-nums">
+                        {formatCompact(row.messages)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           )}
         </section>
       </div>
@@ -1849,7 +1857,7 @@ export function DomainDetailPage() {
           <Icon name="chevron-left" size={14} />
           Domains
         </Link>
-        <div className="mt-2.5 flex items-start justify-between gap-4">
+        <div className="mt-2.5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0">
             <h1 className="break-all font-mono text-xl font-semibold tracking-tight text-body">
               {domain?.name ?? 'Domain drill-down'}

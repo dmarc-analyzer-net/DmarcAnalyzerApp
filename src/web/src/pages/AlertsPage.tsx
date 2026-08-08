@@ -119,14 +119,14 @@ export function AlertsPage() {
 
   return (
     <>
-      <div className="mb-5 flex items-start justify-between gap-4">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-body">Alerts</h1>
           <p className="mt-1 text-sm text-secondary">
             Compliance drops and weakened policies, raised automatically
           </p>
         </div>
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
           {admin ? (
             <Button variant="secondary" size="sm" onClick={() => void evaluateNow()} disabled={evaluating}>
               {evaluating ? (

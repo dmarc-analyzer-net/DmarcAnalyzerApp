@@ -23,10 +23,12 @@ const buttonVariants = cva(
         mint: 'bg-mint-400 text-ink-900 hover:bg-mint-300',
         inkOutline: 'border border-white/20 text-white/90 hover:bg-white/[0.06]',
       },
+      // Each size gains 4px below sm — a 32px control is an awkward tap target,
+      // and the desktop rhythm is unchanged from sm up.
       size: {
-        sm: 'h-8 px-3 text-sm',
-        md: 'h-9 px-4 text-base',
-        lg: 'h-[42px] px-[22px] text-md',
+        sm: 'h-9 px-3 text-sm sm:h-8',
+        md: 'h-10 px-4 text-base sm:h-9',
+        lg: 'h-11 px-[22px] text-md sm:h-[42px]',
       },
     },
     defaultVariants: {
