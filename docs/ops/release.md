@@ -127,7 +127,7 @@ Semantic versioning. While on `0.x`:
    docker compose -f compose.yml -f compose.split.yml up -d   # expect app+worker+postgres
    ```
 4. **Docs match the code.** If configuration keys, endpoints, or setup steps
-   changed, the [docs site](https://dmarc-analyzer.net/docs) lives in the
+   changed, the [docs site](https://dmarc-analyzer.net/docs/) lives in the
    [website repo](https://github.com/dmarc-analyzer-net/dmarc-analyzer-net.github.io/tree/main/src/content/docs)
    and must be updated in the same release — especially `configuration.md`.
 5. **`docs/planning/status.md` reflects reality**, since that's what people read

@@ -10,8 +10,8 @@ your infrastructure.
 - **Single sign-on** — OIDC, including Microsoft Entra ID, with SSO-only users
 - **Multi-tenant** — per-client separation and access, built for agencies
 
-**[Documentation](https://dmarc-analyzer.net/docs)** ·
-**[Install guide](https://dmarc-analyzer.net/docs/install)** ·
+**[Documentation](https://dmarc-analyzer.net/docs/)** ·
+**[Install guide](https://dmarc-analyzer.net/docs/install/)** ·
 **[Source](https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp)**
 
 ## Quick start
@@ -50,7 +50,7 @@ sync pass.
 ## Configuration
 
 Environment variables, the same set here and on Kubernetes. The complete list is
-in the [configuration reference](https://dmarc-analyzer.net/docs/configuration).
+in the [configuration reference](https://dmarc-analyzer.net/docs/configuration/).
 The two that matter on day one:
 
 | Variable | |

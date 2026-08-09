@@ -11,10 +11,10 @@ your `rua=` reports arrive in and it collects, parses and charts them — unlimi
 domains, many clients, no per-domain pricing, and the report data never leaves
 your infrastructure.
 
-**[Documentation](https://dmarc-analyzer.net/docs)** ·
-**[Install guide](https://dmarc-analyzer.net/docs/install)** ·
-**[Configuration](https://dmarc-analyzer.net/docs/configuration)** ·
-**[Kubernetes](https://dmarc-analyzer.net/docs/kubernetes)**
+**[Documentation](https://dmarc-analyzer.net/docs/)** ·
+**[Install guide](https://dmarc-analyzer.net/docs/install/)** ·
+**[Configuration](https://dmarc-analyzer.net/docs/configuration/)** ·
+**[Kubernetes](https://dmarc-analyzer.net/docs/kubernetes/)**
 
 Built with:
 

@@ -2,12 +2,12 @@
 
 ## Using DMARC Analyzer
 
-**User documentation lives at [dmarc-analyzer.net/docs](https://dmarc-analyzer.net/docs)** —
+**User documentation lives at [dmarc-analyzer.net/docs](https://dmarc-analyzer.net/docs/)** —
 installation, the full configuration reference, connecting a mailbox, single
 sign-on, upgrades and backup, and troubleshooting.
 
 Quickest possible start (details in
-[Install with Docker](https://dmarc-analyzer.net/docs/install)):
+[Install with Docker](https://dmarc-analyzer.net/docs/install/)):
 
 ```bash
 curl -fsSL -o compose.yml https://raw.githubusercontent.com/dmarc-analyzer-net/DmarcAnalyzerApp/main/deploy/compose.yml
@@ -26,7 +26,7 @@ docker compose up -d
 > build, so it contains unbuilt ideas, open questions, and a backlog of `todo`
 > items. Judging the software by it will mislead you — read
 > [`planning/status.md`](planning/status.md) for what actually exists today, or the
-> [user docs](https://dmarc-analyzer.net/docs) if you just want to run it.
+> [user docs](https://dmarc-analyzer.net/docs/) if you just want to run it.
 
 ## Contributing
 

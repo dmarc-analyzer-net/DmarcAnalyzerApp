@@ -106,7 +106,7 @@ x-casaos:
   scheme: http
   website: https://dmarc-analyzer.net
   repo: https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp
-  docs: https://dmarc-analyzer.net/docs
+  docs: https://dmarc-analyzer.net/docs/
   support: https://github.com/dmarc-analyzer-net/DmarcAnalyzerApp/issues
   store_app_id: dmarc-analyzer
   tips:

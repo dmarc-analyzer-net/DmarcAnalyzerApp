@@ -15,7 +15,7 @@
 ## Why
 
 Backup today is a `pg_dump | gzip` documented in four places
-([website](https://dmarc-analyzer-net.github.io/docs/upgrading-and-backup/),
+([website](https://dmarc-analyzer.net/docs/upgrading-and-backup/),
 `docs/ops/migrating-a-running-instance.md:61`, the Kubernetes page, `AGENTS.md:265`)
 and automated nowhere. It has two problems.
 

@@ -79,7 +79,7 @@ be rolled back and the previous image cannot read the new schema. For everyday
 backup, `GET /api/v1/admin/config/export` and continuous offload to object storage
 (`Backup:*`, see [`configuration.md`](configuration.md#backup-offload-backup)) cover
 configuration — clients, domains, mailbox sources, users — separately and far more
-cheaply; see the [website's backup page](https://dmarc-analyzer-net.github.io/docs/upgrading-and-backup/)
+cheaply; see the [website's backup page](https://dmarc-analyzer.net/docs/upgrading-and-backup/)
 for the full picture.
 
 ## Applying the migrations
