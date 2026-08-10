@@ -88,6 +88,10 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - page headers and header action rows stack; search fields and filter selects go full-width
   - every `Table` sits in a horizontal scroll container; `Dialog` caps at `calc(100dvh-2rem)` and scrolls internally
   - `Input`/`Select` render at 16px below `sm` (iOS Safari zooms the page on a focused field smaller than that) and controls gain 4px of height for touch
+- Running version reported by the instance itself (`<Version>` in `src/Directory.Build.props`, read from `AssemblyInformationalVersionAttribute` — never from an environment variable, so an image cannot be made to misreport itself):
+  - a release build reports `0.10.0`; every other build carries the commit as `0.10.0+a1b2c3d`, stamped from git locally and from the `SOURCE_REVISION` build arg in the container
+  - surfaced at the foot of the console sidebar as a link to the matching release notes, in `GET /api/v1/system/status`, and as `service.version` on both OpenTelemetry resource builders
+  - `/api/v1/system/status` reports the real `APP_MODE` rather than a hardcoded `api`
 
 - Analytics endpoints over ingested DMARC data:
   - `GET /api/v1/analytics/summary` (compliance totals, daily trend, top failing domains, top reporters, dispositions, mailbox rollup)
