@@ -429,6 +429,21 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     aliases to `Pass` (`None = Pass`); we keep reading it as `fail`, because a
     mechanism the reporter never evaluated must not manufacture a DMARC pass and
     inflate compliance.
+  - the upgrade also retired a workaround it made obsolete: **SPF `scope=helo` is
+    recorded as sent** rather than rewritten to `mfrom`. 2.0.0 modelled only `mfrom`,
+    so `helo` was fatal and the rewrite existed to save the document — at the cost of
+    storing a scope the reporter never reported and showing it in the per-source SPF
+    table (82 auth results across the 3242-report corpus). `scope` moved into
+    `EnumRepairs` instead, because the enum still has no empty member. Historic rows
+    stay `mfrom` and cannot be backfilled: the value was destroyed at parse time.
+  - and fixed a latent bug found on the way. `EnumRepairs` matched values
+    case-insensitively but wrote the reporter's spelling back, while `XmlSerializer`
+    matches `XmlEnum` names case-sensitively — so `PASS` was accepted here and then
+    rejected by the serializer, losing every record in the document. It now writes the
+    canonical spelling; case-only corrections raise no warning.
+  - the namespace-stripping pass is **not** redundant on 2.0.1, though it looks it.
+    See the rejected backlog item: removing it turns one explanatory warning into 31
+    `Could not find schema information` warnings per namespaced report.
 
 ## Planned Next
 

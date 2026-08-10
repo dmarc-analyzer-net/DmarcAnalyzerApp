@@ -281,6 +281,15 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         ("spf", "result",
             ["none", "neutral", "pass", "fail", "softfail", "temperror", "permerror", "hardfail", ""],
             "permerror"),
+
+        // SpfDomainScope. DmarcRua 2.0.0 modelled only mfrom, so helo — legal per RFC 7208
+        // and sent by real reporters — was fatal, and this parser rewrote it to mfrom to save
+        // the document. 2.0.1 added Helo, so the scope is now recorded as sent; the rewrite
+        // was the last thing storing a value the reporter never reported. Kept as a repair
+        // rather than dropped outright because the enum still has no empty member, so
+        // <scope/> or a value neither of these is fatal, and mfrom is the safe reading —
+        // it is the scope RFC 7489 aligns against and the one ~99% of reports send.
+        ("spf", "scope", ["mfrom", "helo"], "mfrom"),
     ];
 
     /// <summary>
@@ -406,7 +415,6 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         try
         {
             var updated = false;
-            var scopeNormalized = false;
 
             xmlStream.Position = 0;
             XDocument document;
@@ -433,6 +441,14 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             // DMARCbis reports namespace the schema (urn:ietf:params:xml:ns:dmarc-2.0),
             // which the DmarcRua serializer does not expect. The aggregate format is
             // field-compatible for everything we read, so strip namespaces entirely.
+            //
+            // Still needed on 2.0.1, despite its NamespaceIgnorantXmlReader: that reader only
+            // hides namespaces from the *serializer*, while the validating reader beneath it
+            // still sees them, and rua.xsd declares no targetNamespace. Measured on a
+            // namespaced report with this pass removed: it deserializes, but the schema
+            // matches nothing and every element raises "Could not find schema information" —
+            // 31 warnings on a one-record report, and HasWarnings true. Stripping first keeps
+            // validation meaningful and costs one explanatory message instead.
             if (document.Root is not null && document.Root.Name.Namespace != XNamespace.None)
             {
                 var reportNamespace = document.Root.Name.NamespaceName;
@@ -446,26 +462,6 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
 
                 normalizationMessages.Add($"warning: stripped XML namespace '{reportNamespace}' for compatibility");
                 updated = true;
-            }
-
-            foreach (var scopeElement in document.Descendants().Where(x => x.Name.LocalName == "scope"))
-            {
-                var value = (scopeElement.Value ?? string.Empty).Trim().ToLowerInvariant();
-                if (value == "mfrom")
-                {
-                    continue;
-                }
-
-                if (value == "helo")
-                {
-                    scopeElement.Value = "mfrom";
-                    if (!scopeNormalized)
-                    {
-                        normalizationMessages.Add("warning: normalized SPF scope value 'helo' to 'mfrom' for compatibility");
-                        scopeNormalized = true;
-                    }
-                    updated = true;
-                }
             }
 
             // Reporters send values these enums do not accept, and XmlSerializer treats that
@@ -508,12 +504,21 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 var original = (element.Value ?? string.Empty).Trim();
                 var candidate = LegacyResultNames.TryGetValue(original, out var modern) ? modern : original;
 
-                if (repair.Allowed.Contains(candidate, StringComparer.OrdinalIgnoreCase))
+                // Match case-insensitively but write back the *canonical* spelling, never the
+                // reporter's. XmlSerializer matches XmlEnum names case-sensitively, so passing
+                // 'PASS' or 'HELO' through unchanged after accepting it here would hand the
+                // serializer a value it rejects and lose the whole document — the exact failure
+                // this pass exists to prevent. Case-only differences are not a substitution of
+                // meaning, so they are corrected silently and raise no warning.
+                var canonical = repair.Allowed.FirstOrDefault(
+                    x => string.Equals(x, candidate, StringComparison.OrdinalIgnoreCase));
+
+                if (canonical is not null)
                 {
                     // Whitespace-only where '' is legal still needs trimming to become ''.
-                    if (!string.Equals(element.Value, candidate, StringComparison.Ordinal))
+                    if (!string.Equals(element.Value, canonical, StringComparison.Ordinal))
                     {
-                        element.Value = candidate;
+                        element.Value = canonical;
                         updated = true;
                     }
 

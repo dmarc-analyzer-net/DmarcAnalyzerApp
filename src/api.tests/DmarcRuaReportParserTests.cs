@@ -106,8 +106,14 @@ public sealed class DmarcRuaReportParserTests
         Assert.Contains("readable", ex.Message, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// helo is a legal SPF scope (RFC 7208) and real reporters send it. DmarcRua 2.0.0
+    /// modelled only mfrom, so it was fatal, and this parser rewrote it to mfrom to save the
+    /// document — storing a scope the reporter never reported, and surfacing it in the
+    /// per-source SPF table. 2.0.1 added Helo, so it is now recorded as sent.
+    /// </summary>
     [Fact]
-    public void Parse_WithHeloScope_NormalizesAndParses()
+    public void Parse_WithHeloScope_PreservesTheScopeAsSent()
     {
         const string xml = """
             <?xml version="1.0" encoding="UTF-8"?>
@@ -159,7 +165,109 @@ public sealed class DmarcRuaReportParserTests
 
         Assert.Equal("scope-test", result.OrganizationName);
         Assert.Equal(1, result.RecordCount);
-        Assert.Contains(result.ValidationMessages, x => x.Contains("normalized SPF scope value 'helo'", StringComparison.Ordinal));
+        Assert.Equal("helo", Assert.Single(result.Records[0].SpfAuthResults).Scope);
+
+        // No longer a repair, so it must no longer be reported as one.
+        Assert.DoesNotContain(result.ValidationMessages, x => x.Contains("SPF scope", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// A scope the enum has no member for is still fatal to the whole document, so it is
+    /// repaired rather than passed through — including the uppercase spellings, which matter
+    /// because XmlSerializer matches XmlEnum names case-sensitively. 'HELO' is a real value
+    /// we can honour exactly, so it is corrected to 'helo' rather than defaulted to 'mfrom'.
+    /// </summary>
+    [Theory]
+    [InlineData("helo", "helo", false)]
+    [InlineData("HELO", "helo", false)]
+    [InlineData("mfrom", "mfrom", false)]
+    [InlineData("MFrom", "mfrom", false)]
+    [InlineData("  helo  ", "helo", false)]
+    [InlineData("bogus", "mfrom", true)]
+    [InlineData("", "mfrom", true)]
+    public void Parse_RepairsUnusableSpfScopeWithoutLosingTheReport(
+        string scope, string expectedScope, bool expectsWarning)
+    {
+        var xml = $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback>
+              <report_metadata>
+                <org_name>scope-test</org_name>
+                <email>noreply@example.com</email>
+                <report_id>scope-repair-1</report_id>
+                <date_range><begin>1737446400</begin><end>1737532800</end></date_range>
+              </report_metadata>
+              <policy_published>
+                <domain>example.com</domain><adkim>r</adkim><aspf>r</aspf><p>none</p><pct>100</pct>
+              </policy_published>
+              <record>
+                <row>
+                  <source_ip>127.0.0.1</source_ip>
+                  <count>1</count>
+                  <policy_evaluated><disposition>none</disposition><dkim>pass</dkim><spf>pass</spf></policy_evaluated>
+                </row>
+                <identifiers><header_from>example.com</header_from></identifiers>
+                <auth_results>
+                  <spf><domain>example.com</domain><result>pass</result><scope>{scope}</scope></spf>
+                </auth_results>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal(1, result.RecordCount);
+        Assert.Equal(expectedScope, Assert.Single(result.Records[0].SpfAuthResults).Scope);
+        Assert.Equal(
+            expectsWarning,
+            result.ValidationMessages.Any(x => x.Contains("spf/scope", StringComparison.Ordinal)));
+    }
+
+    /// <summary>
+    /// The same case-sensitivity trap on a value that decides compliance. A reporter sending
+    /// 'PASS' used to be accepted by the repair pass, written back verbatim, and then rejected
+    /// by XmlSerializer — losing every record in the document.
+    /// </summary>
+    [Theory]
+    [InlineData("PASS", "pass")]
+    [InlineData("Fail", "fail")]
+    public void Parse_CorrectsEnumCaseRatherThanLosingTheDocument(string dkim, string expected)
+    {
+        var xml = $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback>
+              <report_metadata>
+                <org_name>case-test</org_name>
+                <email>noreply@example.com</email>
+                <report_id>case-1</report_id>
+                <date_range><begin>1737446400</begin><end>1737532800</end></date_range>
+              </report_metadata>
+              <policy_published>
+                <domain>example.com</domain><adkim>r</adkim><aspf>r</aspf><p>none</p><pct>100</pct>
+              </policy_published>
+              <record>
+                <row>
+                  <source_ip>127.0.0.1</source_ip>
+                  <count>4</count>
+                  <policy_evaluated><disposition>none</disposition><dkim>{dkim}</dkim><spf>pass</spf></policy_evaluated>
+                </row>
+                <identifiers><header_from>example.com</header_from></identifiers>
+                <auth_results><spf><domain>example.com</domain><result>pass</result></spf></auth_results>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal(1, result.RecordCount);
+        Assert.Equal(expected, Assert.Single(result.Records).DkimResult);
+
+        // A case correction changes no meaning, so it must not be reported as a substitution.
+        Assert.DoesNotContain(result.ValidationMessages, x => x.Contains("replaced unrecognised", StringComparison.Ordinal));
     }
 
     /// <summary>
