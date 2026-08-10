@@ -30,7 +30,7 @@ services:
     type: web
     runtime: image
     image:
-      url: ghcr.io/dmarc-analyzer-net/dmarc-analyzer:0.9.0
+      url: ghcr.io/dmarc-analyzer-net/dmarc-analyzer:0.10.0
     plan: free
     healthCheckPath: /api/v1/auth/setup
     envVars:

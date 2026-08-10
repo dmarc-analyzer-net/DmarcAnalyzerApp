@@ -20,7 +20,7 @@
        container, where there is no .git to read. That is what distinguishes an
        `edge` image from the release it is built past; see AppVersion.cs. -->
   <PropertyGroup>
-    <Version>0.9.0</Version>
+    <Version>0.10.0</Version>
   </PropertyGroup>
 
   <!-- packages.lock.json per project, enforced in CI so a drifted lockfile fails
