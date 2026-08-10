@@ -24,9 +24,9 @@
       },
       "DmarcRua": {
         "type": "Direct",
-        "requested": "[2.0.0, )",
-        "resolved": "2.0.0",
-        "contentHash": "2K5+2G3vWP+3sW8haubvULiu0MPmYks+lUT0qUQf9+YazznsapvBQ0sOLeXxzMBTROQt9OlsbIyEtDXjgY6Bxg=="
+        "requested": "[2.0.1, )",
+        "resolved": "2.0.1",
+        "contentHash": "QYdDqSUq0IYtcMJ2WrXdF31pOxGi/LpW4OqqDnchkqPzYkpivD5SrEea7NGHVAPFQ2OpOSvMrzNIKnTzeK/vlw=="
       },
       "DnsClient": {
         "type": "Direct",

@@ -93,8 +93,8 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             MapDisposition(policyPublished.P),
             hasSubdomainPolicy ? MapDisposition(policyPublished.Sp) : null,
             ParsePercent(policyPublished.Percent),
-            MapAlignment(policyPublished.Adkim),
-            MapAlignment(policyPublished.Aspf));
+            MapAlignment(policyPublished.AdkimRaw),
+            MapAlignment(policyPublished.AspfRaw));
     }
 
     private static string MapDisposition(DispositionType disposition) => disposition switch
@@ -104,11 +104,48 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         _ => "none",
     };
 
-    private static string MapAlignment(AlignmentType? alignment) => alignment switch
+    /// <summary>
+    /// adkim/aspf, read from DmarcRua's raw strings rather than its <c>Adkim</c>/<c>Aspf</c>.
+    /// <para>
+    /// 2.0.1 replaced those two settable <c>AlignmentType?</c> properties with get-only ones
+    /// computed from new <c>AdkimRaw</c>/<c>AspfRaw</c> strings, and the helper behind them
+    /// calls <c>Regex.Replace</c> on the raw value with no null check. Both tags are
+    /// <c>minOccurs="0"</c> in DmarcRua's own schema, so a reporter that just omits them
+    /// leaves the raw string null and merely *reading* the property throws
+    /// ArgumentNullException — after deserialization has already succeeded, so it surfaces
+    /// here rather than as a parse error. That is 1.5% of the 3241 real reports vendored in
+    /// 2.0.1's own test resources, Mail.Ru and Fastmail among them; every report from such a
+    /// reporter would fail ingestion outright, where 2.0.0 returned null and fell to the
+    /// default below.
+    /// </para>
+    /// <para>
+    /// Reading the raw string keeps 2.0.0's behaviour and does not wait on an upstream fix.
+    /// Absent means "relaxed": unlike sp, adkim and aspf have fixed RFC 7489 §6.3 defaults,
+    /// so collapsing an absent tag to its default is correct and needs no
+    /// HasSubdomainPolicyTag-style presence sniff. Do not simplify this back to
+    /// <c>.Adkim</c>/<c>.Aspf</c>.
+    /// </para>
+    /// <para>
+    /// Reported upstream as danielsen/DmarcRua#11. If a later release fixes it, this can
+    /// go back to the properties — but check first that an absent tag returns null rather
+    /// than throwing, and that the library has not changed what absent *means*: "relaxed"
+    /// is this method's decision to make, not the library's.
+    /// </para>
+    /// <para>
+    /// Trimming, lowercasing and dropping non-alphanumerics mirrors what 2.0.1 does to these
+    /// values — that much of its change is a real improvement, so '&#160;S&#160;' still reads
+    /// as strict instead of silently becoming relaxed.
+    /// </para>
+    /// </summary>
+    private static string MapAlignment(string? alignment)
     {
-        AlignmentType.Strict => "strict",
-        _ => "relaxed",
-    };
+        var cleaned = (alignment ?? string.Empty)
+            .ToLowerInvariant()
+            .Where(char.IsAsciiLetterOrDigit)
+            .ToArray();
+
+        return cleaned is ['s'] ? "strict" : "relaxed";
+    }
 
     /// <summary>
     /// Read-through only, per the DMARCbis (RFC 9989/9990/9991) impact report: np,
@@ -438,10 +475,21 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             // result, and '15' for a disposition. Repairing the value costs one field;
             // rejecting the document costs the whole report.
             //
-            // The accepted sets below are the XmlEnum names on the DmarcRua enums themselves,
-            // not the XSD, so they cannot drift from what the serializer will actually take.
-            // Note DispositionType, SpfResultType and DKIMResultType all accept '' — only
-            // DMARCResultType is strictly pass|fail, which is why an empty one was fatal.
+            // The accepted sets below started as the XmlEnum names on the DmarcRua enums
+            // themselves, not the XSD. Note DispositionType, SpfResultType and DKIMResultType
+            // all accept '' — only DMARCResultType was strictly pass|fail, which is why an
+            // empty one was fatal.
+            //
+            // As of DmarcRua 2.0.1 those sets are deliberately *narrower* than the enums, so
+            // this pass now pre-empts the library on three values rather than mirroring it:
+            // DMARCResultType gained softfail and none, DKIMResultType gained invalid and
+            // unknown, SpfResultType gained unknown. Keeping our reading matters most for
+            // policy_evaluated none, which 2.0.1 aliases to Pass (None = Pass) — we call it
+            // fail, because a mechanism the reporter did not evaluate must not manufacture a
+            // DMARC pass and inflate compliance. softfail agrees either way; invalid and
+            // unknown land on permerror here versus temperror upstream, and both read as
+            // "could not be evaluated". Adding a value to a set below hands that value back
+            // to the library, so check what its enum maps it to first.
             foreach (var element in document.Descendants())
             {
                 var parent = element.Parent?.Name.LocalName;

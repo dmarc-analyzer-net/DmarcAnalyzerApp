@@ -322,6 +322,66 @@ public sealed class DmarcRuaReportParserTests
         Assert.Equal("relaxed", result.SpfAlignment);
     }
 
+    /// <summary>
+    /// Both alignment tags are optional, and real reporters omit them — Mail.Ru and Fastmail
+    /// among them, 1.5% of the reports vendored in DmarcRua 2.0.1's own test resources. On
+    /// 2.0.1 that is not merely a default to fill in: reading its computed Adkim/Aspf
+    /// properties throws ArgumentNullException on an absent tag, which would have failed
+    /// ingestion for every report from those reporters. Every other test here supplies both
+    /// tags, so the suite went green on that upgrade while production would have broken.
+    /// </summary>
+    [Theory]
+    [InlineData("", "", "relaxed", "relaxed")]                                  // both omitted
+    [InlineData("<adkim>s</adkim>", "", "strict", "relaxed")]                    // aspf omitted
+    [InlineData("", "<aspf>s</aspf>", "relaxed", "strict")]                      // adkim omitted
+    [InlineData("<adkim></adkim>", "<aspf/>", "relaxed", "relaxed")]             // present but empty
+    [InlineData("<adkim> S </adkim>", "<aspf>R</aspf>", "strict", "relaxed")]    // padded, uppercase
+    [InlineData("<adkim>strict</adkim>", "<aspf>bogus</aspf>", "relaxed", "relaxed")] // unrecognised
+    public void Parse_DefaultsAlignmentWhenTagIsAbsentOrUnusable(
+        string adkim, string aspf, string expectedDkimAlignment, string expectedSpfAlignment)
+    {
+        var xml = $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback>
+              <report_metadata>
+                <org_name>alignment-test</org_name>
+                <email>noreply@example.com</email>
+                <report_id>alignment-1</report_id>
+                <date_range><begin>1737446400</begin><end>1737532800</end></date_range>
+              </report_metadata>
+              <policy_published>
+                <domain>example.com</domain>
+                {adkim}
+                {aspf}
+                <p>reject</p>
+                <pct>100</pct>
+              </policy_published>
+              <record>
+                <row>
+                  <source_ip>127.0.0.1</source_ip>
+                  <count>1</count>
+                  <policy_evaluated><disposition>reject</disposition><dkim>pass</dkim><spf>pass</spf></policy_evaluated>
+                </row>
+                <identifiers><header_from>example.com</header_from></identifiers>
+                <auth_results><spf><domain>example.com</domain><result>pass</result></spf></auth_results>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal(expectedDkimAlignment, result.DkimAlignment);
+        Assert.Equal(expectedSpfAlignment, result.SpfAlignment);
+
+        // The record itself must still survive: the throw was at policy-read time, after
+        // deserialization, so it discarded a report that had parsed perfectly well.
+        Assert.Equal("reject", result.PublishedPolicy);
+        Assert.Single(result.Records);
+        Assert.False(result.HasValidationErrors);
+    }
+
     private static Stream OpenFixture(string fixtureName)
     {
         var basePath = AppContext.BaseDirectory;
