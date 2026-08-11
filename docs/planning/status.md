@@ -48,7 +48,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
 - Core and ingestion/report schema migrations in place for:
   - `client`
   - `domain`
-  - `mailbox_source`
+  - `report_source`
 - API vertical slice endpoints:
   - clients: list/get/create/patch. `slug` is immutable after creation. Every
     install is bootstrapped with a `default` client, because a domain and a

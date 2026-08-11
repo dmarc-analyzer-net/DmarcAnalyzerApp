@@ -132,7 +132,12 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
 
         modelBuilder.Entity<MailboxSource>(entity =>
         {
-            entity.ToTable("mailbox_source");
+            // Named for what it is rather than for how the first implementation
+            // reached it: a row here is a place reports arrive from, and IMAP is
+            // one protocol among the ones Protocol can hold. The CLR type is still
+            // MailboxSource — renaming ~780 identifiers is a separate mechanical
+            // change, deliberately not mixed into a migration.
+            entity.ToTable("report_source");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
             entity.Property(x => x.Protocol).HasMaxLength(20).IsRequired();

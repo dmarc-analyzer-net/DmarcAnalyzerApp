@@ -137,9 +137,14 @@ nothing anywhere clears them.
 
 ## A.3 Mailbox sources and sync history
 
-### `mailbox_source`
-An IMAP mailbox to poll. Also carries its own sync checkpoint — there is no
-separate checkpoint table.
+### `report_source`
+A place reports arrive from. Today that is always an IMAP mailbox and `Protocol`
+says so; the name is the general one because the column already allows others.
+Also carries its own sync checkpoint — there is no separate checkpoint table.
+
+Was `mailbox_source` until the rename; the audit-log action names and the config
+export's entity keys still read `mailbox_source`, because both are values in data
+already written rather than references to the table.
 
 | Column | Notes |
 |---|---|
@@ -163,7 +168,7 @@ One row per sync attempt; the operational audit trail behind
 | Column | Notes |
 |---|---|
 | `Id` | PK |
-| `MailboxSourceId` | FK → `mailbox_source`, **restrict**, indexed |
+| `MailboxSourceId` | FK → `report_source`, **restrict**, indexed |
 | `Trigger` | max 32 — `scheduled` \| `manual` |
 | `Status` | max 32 — `running` \| `success` \| `failed` |
 | `StartedAtUtc` | indexed |
@@ -186,7 +191,7 @@ file, independent of the domain the report resolves to.
 |---|---|
 | `Id` | PK |
 | `ClientId` | FK → `client`, **restrict**, indexed |
-| `MailboxSourceId` | FK → `mailbox_source`, **restrict**, indexed |
+| `MailboxSourceId` | FK → `report_source`, **restrict**, indexed |
 | `PolicyDomain` | max 255 — domain as stated in the report |
 | `ReportId` | max 255 |
 | `ReportRangeBeginUtc`, `ReportRangeEndUtc` | |
@@ -202,7 +207,7 @@ A normalized aggregate (RUA) report, resolved to a `domain`.
 |---|---|
 | `Id` | PK |
 | `DomainId` | FK → `domain`, **restrict**, indexed |
-| `MailboxSourceId` | FK → `mailbox_source`, **restrict**, indexed |
+| `MailboxSourceId` | FK → `report_source`, **restrict**, indexed |
 | `OrganizationName` | max 255 — the reporter (e.g. `google.com`) |
 | `ReportId` | max 255 |
 | `RangeBeginUtc`, `RangeEndUtc` | reporting window |
@@ -278,7 +283,7 @@ tenancy and analytics hang off the policy rows.
 | Column | Notes |
 |---|---|
 | `Id` | PK |
-| `MailboxSourceId` | FK → `mailbox_source`, **restrict**, indexed |
+| `MailboxSourceId` | FK → `report_source`, **restrict**, indexed |
 | `OrganizationName`, `ReportId` | max 255 each; with the range, the dedupe key — unique `(OrganizationName, ReportId, RangeBeginUtc, RangeEndUtc)`: without a domain in the key, the org disambiguates report-id collisions across reporters |
 | `ContactInfo` | max 320, nullable |
 | `RangeBeginUtc`, `RangeEndUtc` | `RangeEndUtc` indexed for the orphan sweep |
@@ -454,9 +459,9 @@ skipped.
   `GROUP BY` for per-source aggregation (EF's grouped navigations produced
   per-group correlated subqueries — 33s vs ~75ms for a domain with 1.3k sources).
   Revisit if data volume outgrows it.
-- **No job table.** Background work is the worker polling `mailbox_source` and
+- **No job table.** Background work is the worker polling `report_source` and
   writing `mailbox_sync_run`; there is no generic queue table.
-- **No separate checkpoint table** — checkpoints live on `mailbox_source`.
+- **No separate checkpoint table** — checkpoints live on `report_source`.
 
 ## A.6 Backup
 
@@ -524,7 +529,7 @@ client
   `user_identity` is unique on `(Issuer, Subject)`; `user_client_grant` on
   `(UserId, ClientId)`.
 - Report data cascades on delete (report → records → auth results). Business
-  entities (`client`, `domain`, `mailbox_source`) use **restrict** so tenant data
+  entities (`client`, `domain`, `report_source`) use **restrict** so tenant data
   cannot be silently orphaned.
 - Unknown domains encountered during ingestion are auto-created under the
   originating mailbox's `DefaultClientId`.

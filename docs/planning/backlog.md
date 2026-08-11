@@ -121,7 +121,7 @@ Sequenced; each step is independently shippable.
       container. `Worker__EnforceSingleInstance` can turn it off.
 
 - [ ] (todo) **Lifting the one-worker limit**, if it is ever wanted. Needs, in
-      order of how much each buys: a real claim on `mailbox_source`
+      order of how much each buys: a real claim on `report_source`
       (`SELECT … FOR UPDATE SKIP LOCKED`, or reinstate the `running` row *and* the
       partial unique index and write it before the IMAP connect); a unique
       constraint on `alert_event` over client/domain/rule/cooldown-bucket with the

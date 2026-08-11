@@ -18,6 +18,11 @@ public static class AuditEvents
     public const string ClientUpdated = "client.updated";
     public const string DomainCreated = "domain.created";
     public const string DomainUpdated = "domain.updated";
+    // These three keep saying mailbox_source after the table was renamed to report_source,
+    // and that is deliberate. An action name is a value already written into audit_event rows
+    // on every install; changing it does not rename anything, it splits the history in two —
+    // rows before the upgrade say one thing, rows after say another, and the console's audit
+    // filter matches on the literal. Nothing here refers to the table.
     public const string MailboxSourceCreated = "mailbox_source.created";
     public const string MailboxSourceUpdated = "mailbox_source.updated";
     public const string MailboxSyncTriggered = "mailbox_source.sync.triggered";
@@ -54,6 +59,10 @@ public static class AuditEvents
     /// <summary>
     /// Report mail was deleted from a mailbox. The only record that it existed, once the
     /// pass has run.
+    /// <para>
+    /// Frozen at <c>mailbox_source</c> for the reason given above the create/update actions:
+    /// this is a value in existing audit rows, not a table reference.
+    /// </para>
     /// </summary>
     public const string MailboxRetentionDeleted = "mailbox_source.retention.deleted";
 }

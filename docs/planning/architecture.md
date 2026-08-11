@@ -182,7 +182,7 @@ Core entities:
 - `agency_user`
 - `client`
 - `domain` (globally unique)
-- `mailbox_source` (IMAP/POP3 settings, default client)
+- `report_source` (IMAP/POP3 settings, default client)
 - `mailbox_source_client` (if one source explicitly services multiple clients)
 - `sync_run`
 - `sync_checkpoint`

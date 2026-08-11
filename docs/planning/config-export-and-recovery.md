@@ -425,10 +425,11 @@ conflicts. All verified against `DmarcAnalyzerDbContext.cs`:
 | `notification_recipient` | `(clientId, email)`; null `clientId` = agency-wide | `:263` |
 | `digest_delivery` | `(clientId, periodStartUtc)` | `:296` |
 | `dmarc_report_ingest` | `(clientId, policyDomain, reportId, begin, end)` | `:154-160` |
-| `mailbox_source` | **none — `id` only** | no unique index beyond the PK |
+| `report_source` | **none — `id` only** | no unique index beyond the PK |
 | `alert_event`, `audit_event`, `mailbox_sync_run` | **none — `id` only** | non-unique indexes only |
 
-`mailbox_source` having no unique constraint is worth calling out: two sources may
+`report_source` (still keyed `mailbox_source` in the artifact, which is a wire
+value rather than a table reference) having no unique constraint is worth calling out: two sources may
 legitimately share host and username (different folders, different default
 clients), so import cannot dedupe them on anything but the Id.
 
