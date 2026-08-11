@@ -236,3 +236,13 @@ Start here before implementation details:
 - `docs/planning/api-contract.md`
 - `docs/planning/data-model.md`
 - `docs/planning/roadmap.md`
+
+## Contributing
+
+Pull requests are welcome, and there is no CLA to sign — see
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for how work gets merged and what review
+will ask of you. [`AGENTS.md`](AGENTS.md) is the orientation map for the
+codebase itself.
+
+Found a security problem? Do not open a public issue — see
+[`SECURITY.md`](SECURITY.md).
