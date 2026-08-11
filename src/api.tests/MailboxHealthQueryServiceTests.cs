@@ -55,7 +55,7 @@ public sealed class MailboxHealthQueryServiceTests
             new MailboxSyncRun
             {
                 Id = Guid.NewGuid(),
-                MailboxSourceId = mailbox.Id,
+                ReportSourceId = mailbox.Id,
                 Trigger = "scheduled",
                 Status = "failed",
                 StartedAtUtc = DateTime.UtcNow.AddHours(-2),
@@ -71,7 +71,7 @@ public sealed class MailboxHealthQueryServiceTests
             new MailboxSyncRun
             {
                 Id = Guid.NewGuid(),
-                MailboxSourceId = mailbox.Id,
+                ReportSourceId = mailbox.Id,
                 Trigger = "scheduled",
                 Status = "success",
                 StartedAtUtc = DateTime.UtcNow.AddHours(-1),
@@ -92,7 +92,7 @@ public sealed class MailboxHealthQueryServiceTests
 
         Assert.Single(result);
         var item = result[0];
-        Assert.Equal(mailbox.Id, item.MailboxSourceId);
+        Assert.Equal(mailbox.Id, item.ReportSourceId);
         Assert.Equal("success", item.LastRunStatus);
         Assert.Equal(25, item.LastRunMessagesScanned);
         Assert.Equal(20, item.LastRunReportsInserted);

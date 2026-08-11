@@ -1,7 +1,7 @@
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
 public sealed record MailboxSyncResult(
-    Guid MailboxSourceId,
+    Guid ReportSourceId,
     int MessagesScanned,
     int AttachmentsProcessed,
     int ReportsInserted,

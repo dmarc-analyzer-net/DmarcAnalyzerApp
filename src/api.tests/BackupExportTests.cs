@@ -128,7 +128,7 @@ public sealed class BackupExportTests
 
         db.Add(new DmarcReport
         {
-            DomainId = domainId, MailboxSourceId = sourceId, OrganizationName = "google.com",
+            DomainId = domainId, ReportSourceId = sourceId, OrganizationName = "google.com",
             ReportId = "r-1", RangeBeginUtc = DateTime.UtcNow.AddDays(-1), RangeEndUtc = DateTime.UtcNow,
             RecordCount = 1,
         });

@@ -9,7 +9,7 @@ namespace DmarcAnalyzer.Api.Data.Entities;
 public sealed class SmtpTlsReport
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid MailboxSourceId { get; set; }
+    public Guid ReportSourceId { get; set; }
     public string OrganizationName { get; set; } = string.Empty;
     public string ReportId { get; set; } = string.Empty;
     public string? ContactInfo { get; set; }

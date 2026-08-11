@@ -21,8 +21,8 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 /// for many clients, so the narrowest window must never be the one that decides.
 /// </param>
 public sealed record MailboxRetentionPlan(
-    Guid MailboxSourceId,
-    string MailboxSourceName,
+    Guid ReportSourceId,
+    string ReportSourceName,
     bool Enabled,
     bool Suspended,
     string? Reason,
@@ -70,7 +70,7 @@ public sealed class MailboxRetentionPlanner(
             // its cutoff would otherwise be computed from an empty set.
             var servedClientIds = await db.DmarcReports
                 .AsNoTracking()
-                .Where(r => r.MailboxSourceId == source.Id)
+                .Where(r => r.ReportSourceId == source.Id)
                 .Join(db.Domains.AsNoTracking(), r => r.DomainId, d => d.Id, (r, d) => d.ClientId)
                 .Distinct()
                 .ToListAsync(ct);
@@ -97,8 +97,8 @@ public sealed class MailboxRetentionPlanner(
             var (suspended, reason) = Suspension(source.DeleteAfterRetention, clients.Count, legalHold);
 
             plans.Add(new MailboxRetentionPlan(
-                MailboxSourceId: source.Id,
-                MailboxSourceName: source.Name,
+                ReportSourceId: source.Id,
+                ReportSourceName: source.Name,
                 Enabled: source.DeleteAfterRetention,
                 Suspended: suspended,
                 Reason: reason,

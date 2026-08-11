@@ -62,7 +62,7 @@ public sealed class MailboxRetentionPlannerTests
         db.Add(domain);
         db.Add(new DmarcReport
         {
-            DomainId = domain.Id, MailboxSourceId = source.Id, OrganizationName = "google.com",
+            DomainId = domain.Id, ReportSourceId = source.Id, OrganizationName = "google.com",
             ReportId = Guid.NewGuid().ToString(), RangeBeginUtc = DateTime.UtcNow.AddDays(-2),
             RangeEndUtc = DateTime.UtcNow.AddDays(-1), RecordCount = 1,
         });

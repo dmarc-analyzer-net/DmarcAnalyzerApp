@@ -42,7 +42,7 @@ public sealed class RetentionPurgeTests
         var end = DateTime.UtcNow.AddMonths(-monthsAgo);
         return new DmarcReport
         {
-            Id = Guid.NewGuid(), DomainId = domainId, MailboxSourceId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), DomainId = domainId, ReportSourceId = Guid.NewGuid(),
             OrganizationName = "google.com", ReportId = Guid.NewGuid().ToString("N"),
             RangeBeginUtc = end.AddDays(-1), RangeEndUtc = end,
             RecordCount = 1,
@@ -59,7 +59,7 @@ public sealed class RetentionPurgeTests
         var end = DateTime.UtcNow.AddMonths(-monthsAgo);
         var report = new SmtpTlsReport
         {
-            Id = Guid.NewGuid(), MailboxSourceId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), ReportSourceId = Guid.NewGuid(),
             OrganizationName = "reporter.example", ReportId = Guid.NewGuid().ToString("N"),
             RangeBeginUtc = end.AddDays(-1), RangeEndUtc = end,
             PolicyCount = domainIds.Length,
@@ -84,7 +84,7 @@ public sealed class RetentionPurgeTests
         var end = DateTime.UtcNow.AddMonths(-monthsAgo);
         return new TlsReportIngest
         {
-            Id = Guid.NewGuid(), ClientId = clientId, MailboxSourceId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), ClientId = clientId, ReportSourceId = Guid.NewGuid(),
             OrganizationName = "reporter.example", ReportId = Guid.NewGuid().ToString("N"),
             ReportRangeBeginUtc = end.AddDays(-1), ReportRangeEndUtc = end,
             PolicyDomains = "x.example", PolicyCount = 1, IngestedAtUtc = DateTime.UtcNow,
@@ -215,7 +215,7 @@ public sealed class RetentionPurgeTests
         {
             db.Add(new DmarcReportIngest
             {
-                Id = Guid.NewGuid(), ClientId = client.Id, MailboxSourceId = Guid.NewGuid(),
+                Id = Guid.NewGuid(), ClientId = client.Id, ReportSourceId = Guid.NewGuid(),
                 PolicyDomain = "acme.example", ReportId = Guid.NewGuid().ToString("N"),
                 ReportRangeBeginUtc = end.AddDays(-1), ReportRangeEndUtc = end,
                 OrganizationName = "google.com", RecordCount = 1, IngestedAtUtc = DateTime.UtcNow,

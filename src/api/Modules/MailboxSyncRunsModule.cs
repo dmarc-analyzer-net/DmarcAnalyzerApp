@@ -9,12 +9,12 @@ public sealed class MailboxSyncRunsModule : ICarterModule
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/v1/mailbox-sync-runs", async (
-            Guid? mailboxSourceId,
+            Guid? reportSourceId,
             int? limit,
             IMailboxSyncRunQueryService service,
             CancellationToken ct) =>
         {
-            var items = await service.ListAsync(mailboxSourceId, limit ?? 50, ct);
+            var items = await service.ListAsync(reportSourceId, limit ?? 50, ct);
             return Results.Ok(items);
         });
     }

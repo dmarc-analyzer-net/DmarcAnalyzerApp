@@ -61,7 +61,7 @@ public sealed class DigestTests
     {
         var report = new DmarcReport
         {
-            Id = Guid.NewGuid(), DomainId = domainId, MailboxSourceId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), DomainId = domainId, ReportSourceId = Guid.NewGuid(),
             OrganizationName = "google.com", ReportId = Guid.NewGuid().ToString("N"),
             RangeBeginUtc = day, RangeEndUtc = day.AddHours(23), RecordCount = 2,
             IngestedAtUtc = DateTime.UtcNow, PublishedPolicy = policy, SubdomainPolicy = policy, PublishedPct = 100,

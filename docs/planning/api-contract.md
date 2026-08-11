@@ -322,7 +322,7 @@ List sync run history across mailbox sources.
 
 Filters:
 
-- `mailboxSourceId` (optional)
+- `reportSourceId` (optional)
 - `limit` (optional, default server value)
 
 ### GET `/mailbox-health`

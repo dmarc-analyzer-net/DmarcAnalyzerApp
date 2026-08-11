@@ -146,7 +146,7 @@ public sealed class AnalyticsQueryService(
         {
             var mailboxTotal = await db.MailboxSources.CountAsync(ct);
             var latestRunStatuses = await db.MailboxSyncRuns
-                .GroupBy(x => x.MailboxSourceId)
+                .GroupBy(x => x.ReportSourceId)
                 .Select(g => g.OrderByDescending(r => r.StartedAtUtc).First().Status)
                 .ToListAsync(ct);
             var failingMailboxes = latestRunStatuses.Count(x => x == "failed");

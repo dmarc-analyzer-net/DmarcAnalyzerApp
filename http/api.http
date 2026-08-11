@@ -1,5 +1,5 @@
 @baseUrl = http://localhost:5076
-@mailboxSourceId = 00000000-0000-0000-0000-000000000000
+@reportSourceId = 00000000-0000-0000-0000-000000000000
 
 # Set this before running the register, create-user or login requests below.
 #
@@ -168,10 +168,10 @@ Content-Type: application/json
 }
 
 ### Manual mailbox sync (IMAP only; read-only, does not delete emails)
-POST {{baseUrl}}/api/v1/mailbox-sources/{{mailboxSourceId}}/sync
+POST {{baseUrl}}/api/v1/mailbox-sources/{{reportSourceId}}/sync
 
-### List mailbox sync runs (optional mailboxSourceId, optional limit)
-GET {{baseUrl}}/api/v1/mailbox-sync-runs?mailboxSourceId={{mailboxSourceId}}&limit=20
+### List mailbox sync runs (optional reportSourceId, optional limit)
+GET {{baseUrl}}/api/v1/mailbox-sync-runs?reportSourceId={{reportSourceId}}&limit=20
 
-### Mailbox health summary (optional mailboxSourceId)
-GET {{baseUrl}}/api/v1/mailbox-health?mailboxSourceId={{mailboxSourceId}}
+### Mailbox health summary (optional reportSourceId)
+GET {{baseUrl}}/api/v1/mailbox-health?reportSourceId={{reportSourceId}}

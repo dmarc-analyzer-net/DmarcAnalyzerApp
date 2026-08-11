@@ -3,7 +3,7 @@ namespace DmarcAnalyzer.Api.Data.Entities;
 public sealed class MailboxSyncRun
 {
     public Guid Id { get; set; } = Guid.NewGuid();
-    public Guid MailboxSourceId { get; set; }
+    public Guid ReportSourceId { get; set; }
     public string Trigger { get; set; } = "scheduled";
     public string Status { get; set; } = "running";
     public DateTime StartedAtUtc { get; set; } = DateTime.UtcNow;

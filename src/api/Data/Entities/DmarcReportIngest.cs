@@ -4,7 +4,7 @@ public sealed class DmarcReportIngest
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ClientId { get; set; }
-    public Guid MailboxSourceId { get; set; }
+    public Guid ReportSourceId { get; set; }
     public string PolicyDomain { get; set; } = string.Empty;
     public string ReportId { get; set; } = string.Empty;
     public DateTime ReportRangeBeginUtc { get; set; }

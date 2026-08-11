@@ -2,5 +2,5 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 
 public interface IMailboxSyncRunQueryService
 {
-    Task<IReadOnlyList<MailboxSyncRunDto>> ListAsync(Guid? mailboxSourceId, int limit, CancellationToken ct);
+    Task<IReadOnlyList<MailboxSyncRunDto>> ListAsync(Guid? reportSourceId, int limit, CancellationToken ct);
 }

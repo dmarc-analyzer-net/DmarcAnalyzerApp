@@ -32,7 +32,7 @@ public sealed class EnforcementGuidanceTests
         };
         var report = new DmarcReport
         {
-            Id = Guid.NewGuid(), DomainId = domain.Id, MailboxSourceId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), DomainId = domain.Id, ReportSourceId = Guid.NewGuid(),
             OrganizationName = "google.com", ReportId = "r1",
             RangeBeginUtc = DateTime.UtcNow.AddDays(-2), RangeEndUtc = DateTime.UtcNow.AddDays(-1),
             RecordCount = sources.Length, IngestedAtUtc = DateTime.UtcNow,
@@ -88,7 +88,7 @@ public sealed class EnforcementGuidanceTests
         {
             db.Add(new DmarcReport
             {
-                Id = Guid.NewGuid(), DomainId = stale.Id, MailboxSourceId = Guid.NewGuid(),
+                Id = Guid.NewGuid(), DomainId = stale.Id, ReportSourceId = Guid.NewGuid(),
                 OrganizationName = "google.com", ReportId = "old",
                 RangeBeginUtc = DateTime.UtcNow.AddDays(-daysAgo - 1),
                 RangeEndUtc = DateTime.UtcNow.AddDays(-daysAgo),
@@ -100,7 +100,7 @@ public sealed class EnforcementGuidanceTests
         // Anchors the window to now, pushing the stale report out of it.
         db.Add(new DmarcReport
         {
-            Id = Guid.NewGuid(), DomainId = recent.Id, MailboxSourceId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), DomainId = recent.Id, ReportSourceId = Guid.NewGuid(),
             OrganizationName = "google.com", ReportId = "new",
             RangeBeginUtc = DateTime.UtcNow.AddDays(-2), RangeEndUtc = DateTime.UtcNow.AddDays(-1),
             RecordCount = 0, IngestedAtUtc = DateTime.UtcNow,

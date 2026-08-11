@@ -181,7 +181,7 @@ public sealed class RecordInspectionTests
         };
         db.AddRange(client, domain, new DmarcReport
         {
-            Id = Guid.NewGuid(), DomainId = domain.Id, MailboxSourceId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), DomainId = domain.Id, ReportSourceId = Guid.NewGuid(),
             OrganizationName = "google.com", ReportId = "r1",
             RangeBeginUtc = DateTime.UtcNow.AddDays(-2), RangeEndUtc = DateTime.UtcNow.AddDays(-1),
             RecordCount = 0, IngestedAtUtc = DateTime.UtcNow,

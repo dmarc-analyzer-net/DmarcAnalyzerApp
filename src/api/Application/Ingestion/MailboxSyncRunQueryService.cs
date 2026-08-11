@@ -5,7 +5,7 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 
 public sealed class MailboxSyncRunQueryService(DmarcAnalyzerDbContext db) : IMailboxSyncRunQueryService
 {
-    public async Task<IReadOnlyList<MailboxSyncRunDto>> ListAsync(Guid? mailboxSourceId, int limit, CancellationToken ct)
+    public async Task<IReadOnlyList<MailboxSyncRunDto>> ListAsync(Guid? reportSourceId, int limit, CancellationToken ct)
     {
         var boundedLimit = Math.Clamp(limit, 1, 200);
 
@@ -14,16 +14,16 @@ public sealed class MailboxSyncRunQueryService(DmarcAnalyzerDbContext db) : IMai
             .OrderByDescending(x => x.StartedAtUtc)
             .AsQueryable();
 
-        if (mailboxSourceId.HasValue)
+        if (reportSourceId.HasValue)
         {
-            query = query.Where(x => x.MailboxSourceId == mailboxSourceId.Value);
+            query = query.Where(x => x.ReportSourceId == reportSourceId.Value);
         }
 
         return await query
             .Take(boundedLimit)
             .Select(x => new MailboxSyncRunDto(
                 x.Id,
-                x.MailboxSourceId,
+                x.ReportSourceId,
                 x.Trigger,
                 x.Status,
                 x.StartedAtUtc,

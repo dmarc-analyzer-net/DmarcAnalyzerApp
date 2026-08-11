@@ -128,7 +128,7 @@ export function MailboxSourcesPage() {
   )
 
   const healthBySourceId = useMemo(
-    () => new Map(mailboxHealth.map((health) => [health.mailboxSourceId, health])),
+    () => new Map(mailboxHealth.map((health) => [health.reportSourceId, health])),
     [mailboxHealth],
   )
 
@@ -183,17 +183,17 @@ export function MailboxSourcesPage() {
   }, [mailboxHealth, mailboxOpsFilter])
 
   const filteredMailboxSourcesForOps = useMemo(() => {
-    const ids = new Set(filteredMailboxHealth.map((x) => x.mailboxSourceId))
+    const ids = new Set(filteredMailboxHealth.map((x) => x.reportSourceId))
     return filteredMailboxSources.filter((source) => ids.has(source.id))
   }, [filteredMailboxSources, filteredMailboxHealth])
 
   const recentSyncRunsByMailbox = useMemo(() => {
     const grouped = new Map<string, MailboxSyncRun[]>()
     for (const run of syncRuns) {
-      const current = grouped.get(run.mailboxSourceId) ?? []
+      const current = grouped.get(run.reportSourceId) ?? []
       if (current.length < 3) {
         current.push(run)
-        grouped.set(run.mailboxSourceId, current)
+        grouped.set(run.reportSourceId, current)
       }
     }
 
@@ -405,10 +405,10 @@ export function MailboxSourcesPage() {
           {failingMailboxes.length > 0 ? (
             <div className="mt-3 space-y-1.5">
               {failingMailboxes.map((health) => {
-                const source = sourceById.get(health.mailboxSourceId)
+                const source = sourceById.get(health.reportSourceId)
                 return (
                   <div
-                    key={health.mailboxSourceId}
+                    key={health.reportSourceId}
                     className="flex items-center gap-2 text-sm text-secondary"
                   >
                     <span className="inline-flex shrink-0 text-[var(--status-danger-dot)]">
@@ -459,7 +459,7 @@ export function MailboxSourcesPage() {
                 <TableBody>
                   {filteredMailboxHealth.map((health, index) => (
                     <TableRow
-                      key={health.mailboxSourceId}
+                      key={health.reportSourceId}
                       last={index === filteredMailboxHealth.length - 1}
                     >
                       <TableCell className="font-semibold">{health.name}</TableCell>

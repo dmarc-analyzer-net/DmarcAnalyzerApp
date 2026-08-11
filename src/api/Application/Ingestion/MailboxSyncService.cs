@@ -364,7 +364,7 @@ public sealed class MailboxSyncService(
 
             db.MailboxSyncRuns.Add(new MailboxSyncRun
             {
-                MailboxSourceId = mailboxSource.Id,
+                ReportSourceId = mailboxSource.Id,
                 Trigger = string.IsNullOrWhiteSpace(trigger) ? "unknown" : trigger.Trim().ToLowerInvariant(),
                 Status = "success",
                 StartedAtUtc = startedAtUtc,
@@ -426,7 +426,7 @@ public sealed class MailboxSyncService(
 
             db.MailboxSyncRuns.Add(new MailboxSyncRun
             {
-                MailboxSourceId = mailboxSource.Id,
+                ReportSourceId = mailboxSource.Id,
                 Trigger = string.IsNullOrWhiteSpace(trigger) ? "unknown" : trigger.Trim().ToLowerInvariant(),
                 Status = status,
                 StartedAtUtc = startedAtUtc,
@@ -495,7 +495,7 @@ public sealed class MailboxSyncService(
     {
         var rows = await db.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dmarc_report_ingest
-                (""Id"", ""ClientId"", ""MailboxSourceId"", ""PolicyDomain"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"", ""OrganizationName"", ""RecordCount"", ""IngestedAtUtc"")
+                (""Id"", ""ClientId"", ""ReportSourceId"", ""PolicyDomain"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"", ""OrganizationName"", ""RecordCount"", ""IngestedAtUtc"")
             VALUES
                 ({Guid.NewGuid()}, {clientId}, {mailboxSourceId}, {policyDomain}, {reportId}, {reportRangeBeginUtc}, {reportRangeEndUtc}, {organizationName}, {recordCount}, {DateTime.UtcNow})
             ON CONFLICT (""ClientId"", ""PolicyDomain"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"") DO NOTHING;
@@ -518,7 +518,7 @@ public sealed class MailboxSyncService(
         var id = Guid.NewGuid();
         var rows = await db.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dmarc_report
-                (""Id"", ""DomainId"", ""MailboxSourceId"", ""OrganizationName"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"", ""RecordCount"", ""IngestedAtUtc"", ""PublishedPolicy"", ""SubdomainPolicy"", ""PublishedPct"", ""DkimAlignment"", ""SpfAlignment"")
+                (""Id"", ""DomainId"", ""ReportSourceId"", ""OrganizationName"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"", ""RecordCount"", ""IngestedAtUtc"", ""PublishedPolicy"", ""SubdomainPolicy"", ""PublishedPct"", ""DkimAlignment"", ""SpfAlignment"")
             VALUES
                 ({id}, {domainId}, {mailboxSourceId}, {organizationName}, {reportId}, {rangeBeginUtc}, {rangeEndUtc}, {recordCount}, {DateTime.UtcNow}, {parsed.PublishedPolicy}, {parsed.SubdomainPolicy}, {parsed.PublishedPct}, {parsed.DkimAlignment}, {parsed.SpfAlignment})
             ON CONFLICT (""DomainId"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"") DO NOTHING;

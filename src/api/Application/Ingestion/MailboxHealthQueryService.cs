@@ -5,15 +5,15 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 
 public sealed class MailboxHealthQueryService(DmarcAnalyzerDbContext db) : IMailboxHealthQueryService
 {
-    public async Task<IReadOnlyList<MailboxSourceHealthDto>> ListAsync(Guid? mailboxSourceId, CancellationToken ct)
+    public async Task<IReadOnlyList<MailboxSourceHealthDto>> ListAsync(Guid? reportSourceId, CancellationToken ct)
     {
         var mailboxSources = db.MailboxSources
             .AsNoTracking()
             .AsQueryable();
 
-        if (mailboxSourceId.HasValue)
+        if (reportSourceId.HasValue)
         {
-            mailboxSources = mailboxSources.Where(x => x.Id == mailboxSourceId.Value);
+            mailboxSources = mailboxSources.Where(x => x.Id == reportSourceId.Value);
         }
 
         return await mailboxSources
@@ -26,57 +26,57 @@ public sealed class MailboxHealthQueryService(DmarcAnalyzerDbContext db) : IMail
                 source.LastProcessedUid,
                 source.LastProcessedUidValidity,
                 db.MailboxSyncRuns
-                    .Where(run => run.MailboxSourceId == source.Id)
+                    .Where(run => run.ReportSourceId == source.Id)
                     .OrderByDescending(run => run.StartedAtUtc)
                     .Select(run => run.Status)
                     .FirstOrDefault(),
                 db.MailboxSyncRuns
-                    .Where(run => run.MailboxSourceId == source.Id)
+                    .Where(run => run.ReportSourceId == source.Id)
                     .OrderByDescending(run => run.StartedAtUtc)
                     .Select(run => (DateTime?)run.StartedAtUtc)
                     .FirstOrDefault(),
                 db.MailboxSyncRuns
-                    .Where(run => run.MailboxSourceId == source.Id)
+                    .Where(run => run.ReportSourceId == source.Id)
                     .OrderByDescending(run => run.StartedAtUtc)
                     .Select(run => run.FinishedAtUtc)
                     .FirstOrDefault(),
                 db.MailboxSyncRuns
-                    .Where(run => run.MailboxSourceId == source.Id)
+                    .Where(run => run.ReportSourceId == source.Id)
                     .OrderByDescending(run => run.StartedAtUtc)
                     .Select(run => run.Error)
                     .FirstOrDefault(),
                 db.MailboxSyncRuns
-                    .Where(run => run.MailboxSourceId == source.Id)
+                    .Where(run => run.ReportSourceId == source.Id)
                     .OrderByDescending(run => run.StartedAtUtc)
                     .Select(run => (int?)run.MessagesScanned)
                     .FirstOrDefault(),
                 db.MailboxSyncRuns
-                    .Where(run => run.MailboxSourceId == source.Id)
+                    .Where(run => run.ReportSourceId == source.Id)
                     .OrderByDescending(run => run.StartedAtUtc)
                     .Select(run => (int?)run.AttachmentsProcessed)
                     .FirstOrDefault(),
                 db.MailboxSyncRuns
-                    .Where(run => run.MailboxSourceId == source.Id)
+                    .Where(run => run.ReportSourceId == source.Id)
                     .OrderByDescending(run => run.StartedAtUtc)
                     .Select(run => (int?)run.ReportsInserted)
                     .FirstOrDefault(),
                 db.MailboxSyncRuns
-                    .Where(run => run.MailboxSourceId == source.Id)
+                    .Where(run => run.ReportSourceId == source.Id)
                     .OrderByDescending(run => run.StartedAtUtc)
                     .Select(run => (int?)run.ReportsSkippedAsDuplicate)
                     .FirstOrDefault(),
                 db.MailboxSyncRuns
-                    .Where(run => run.MailboxSourceId == source.Id)
+                    .Where(run => run.ReportSourceId == source.Id)
                     .OrderByDescending(run => run.StartedAtUtc)
                     .Select(run => (int?)run.ParseFailures)
                     .FirstOrDefault(),
                 db.MailboxSyncRuns
-                    .Where(run => run.MailboxSourceId == source.Id)
+                    .Where(run => run.ReportSourceId == source.Id)
                     .OrderByDescending(run => run.StartedAtUtc)
                     .Select(run => (int?)run.TlsReportsInserted)
                     .FirstOrDefault(),
                 db.MailboxSyncRuns
-                    .Where(run => run.MailboxSourceId == source.Id)
+                    .Where(run => run.ReportSourceId == source.Id)
                     .OrderByDescending(run => run.StartedAtUtc)
                     .Select(run => (int?)run.TlsReportsSkippedAsDuplicate)
                     .FirstOrDefault()))

@@ -43,7 +43,7 @@ public sealed class SubdomainPolicyInheritanceTests
 
             var report = new DmarcReport
             {
-                Id = Guid.NewGuid(), DomainId = domain.Id, MailboxSourceId = Guid.NewGuid(),
+                Id = Guid.NewGuid(), DomainId = domain.Id, ReportSourceId = Guid.NewGuid(),
                 OrganizationName = "google.com", ReportId = Guid.NewGuid().ToString("N"),
                 RangeBeginUtc = DateTime.UtcNow.AddDays(-2), RangeEndUtc = DateTime.UtcNow.AddDays(-1),
                 RecordCount = 1, IngestedAtUtc = DateTime.UtcNow,

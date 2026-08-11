@@ -32,7 +32,7 @@ public sealed class TlsRptQueryServiceTests
         var end = DateTime.UtcNow.AddDays(-daysAgo);
         var report = new SmtpTlsReport
         {
-            Id = Guid.NewGuid(), MailboxSourceId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), ReportSourceId = Guid.NewGuid(),
             OrganizationName = reporter, ReportId = Guid.NewGuid().ToString("N"),
             RangeBeginUtc = end.AddDays(-1), RangeEndUtc = end, PolicyCount = 1,
         };

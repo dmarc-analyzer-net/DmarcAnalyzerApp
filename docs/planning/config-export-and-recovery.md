@@ -220,7 +220,7 @@ with an unbounded batch, and it is worse in two specific ways:
   and a timeout at 90% costs the entire pass.
 - **Nothing is gained.** Overlap protection already exists, so "skip the next run
   if this one is still going" is *already the behaviour* — `mailbox_sync_run` has a
-  partial unique index on `MailboxSourceId WHERE Status = 'running'`
+  partial unique index on `ReportSourceId WHERE Status = 'running'`
   (`20260402150000_AddMailboxSyncActiveRunUnique`), and `StaleRunTimeoutMinutes`
   (90) reaps a run that died holding it.
 

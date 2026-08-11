@@ -47,7 +47,7 @@ public sealed class DomainListAnalyticsTests
     {
         var report = new DmarcReport
         {
-            Id = Guid.NewGuid(), DomainId = domainId, MailboxSourceId = Guid.NewGuid(),
+            Id = Guid.NewGuid(), DomainId = domainId, ReportSourceId = Guid.NewGuid(),
             OrganizationName = organization, ReportId = Guid.NewGuid().ToString("N"),
             RangeBeginUtc = DateTime.UtcNow.AddDays(-daysAgo),
             RangeEndUtc = DateTime.UtcNow.AddDays(-daysAgo).AddHours(23),

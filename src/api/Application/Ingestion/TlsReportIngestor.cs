@@ -102,7 +102,7 @@ public sealed class TlsReportIngestor(
         var id = Guid.NewGuid();
         var rows = await db.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO smtp_tls_report
-                (""Id"", ""MailboxSourceId"", ""OrganizationName"", ""ReportId"", ""ContactInfo"", ""RangeBeginUtc"", ""RangeEndUtc"", ""PolicyCount"", ""TotalSuccessfulSessionCount"", ""TotalFailureSessionCount"", ""IngestedAtUtc"")
+                (""Id"", ""ReportSourceId"", ""OrganizationName"", ""ReportId"", ""ContactInfo"", ""RangeBeginUtc"", ""RangeEndUtc"", ""PolicyCount"", ""TotalSuccessfulSessionCount"", ""TotalFailureSessionCount"", ""IngestedAtUtc"")
             VALUES
                 ({id}, {mailboxSourceId}, {organizationName}, {reportId}, {contactInfo}, {parsed.RangeBeginUtc}, {parsed.RangeEndUtc}, {parsed.Policies.Count}, {totalSuccessful}, {totalFailed}, {DateTime.UtcNow})
             ON CONFLICT (""OrganizationName"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"") DO NOTHING;
@@ -120,7 +120,7 @@ public sealed class TlsReportIngestor(
 
         await db.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO tls_report_ingest
-                (""Id"", ""ClientId"", ""MailboxSourceId"", ""OrganizationName"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"", ""PolicyDomains"", ""PolicyCount"", ""TotalSuccessfulSessionCount"", ""TotalFailureSessionCount"", ""ContactInfo"", ""IngestedAtUtc"")
+                (""Id"", ""ClientId"", ""ReportSourceId"", ""OrganizationName"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"", ""PolicyDomains"", ""PolicyCount"", ""TotalSuccessfulSessionCount"", ""TotalFailureSessionCount"", ""ContactInfo"", ""IngestedAtUtc"")
             VALUES
                 ({Guid.NewGuid()}, {source.DefaultClientId}, {source.Id}, {organizationName}, {reportId}, {parsed.RangeBeginUtc}, {parsed.RangeEndUtc}, {policyDomains ?? string.Empty}, {parsed.Policies.Count}, {totalSuccessful}, {totalFailed}, {contactInfo}, {DateTime.UtcNow})
             ON CONFLICT (""ClientId"", ""OrganizationName"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"") DO NOTHING;

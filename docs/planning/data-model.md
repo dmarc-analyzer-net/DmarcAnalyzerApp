@@ -168,7 +168,7 @@ One row per sync attempt; the operational audit trail behind
 | Column | Notes |
 |---|---|
 | `Id` | PK |
-| `MailboxSourceId` | FK → `report_source`, **restrict**, indexed |
+| `ReportSourceId` | FK → `report_source`, **restrict**, indexed |
 | `Trigger` | max 32 — `scheduled` \| `manual` |
 | `Status` | max 32 — `running` \| `success` \| `failed` |
 | `StartedAtUtc` | indexed |
@@ -191,7 +191,7 @@ file, independent of the domain the report resolves to.
 |---|---|
 | `Id` | PK |
 | `ClientId` | FK → `client`, **restrict**, indexed |
-| `MailboxSourceId` | FK → `report_source`, **restrict**, indexed |
+| `ReportSourceId` | FK → `report_source`, **restrict**, indexed |
 | `PolicyDomain` | max 255 — domain as stated in the report |
 | `ReportId` | max 255 |
 | `ReportRangeBeginUtc`, `ReportRangeEndUtc` | |
@@ -207,7 +207,7 @@ A normalized aggregate (RUA) report, resolved to a `domain`.
 |---|---|
 | `Id` | PK |
 | `DomainId` | FK → `domain`, **restrict**, indexed |
-| `MailboxSourceId` | FK → `report_source`, **restrict**, indexed |
+| `ReportSourceId` | FK → `report_source`, **restrict**, indexed |
 | `OrganizationName` | max 255 — the reporter (e.g. `google.com`) |
 | `ReportId` | max 255 |
 | `RangeBeginUtc`, `RangeEndUtc` | reporting window |
@@ -283,7 +283,7 @@ tenancy and analytics hang off the policy rows.
 | Column | Notes |
 |---|---|
 | `Id` | PK |
-| `MailboxSourceId` | FK → `report_source`, **restrict**, indexed |
+| `ReportSourceId` | FK → `report_source`, **restrict**, indexed |
 | `OrganizationName`, `ReportId` | max 255 each; with the range, the dedupe key — unique `(OrganizationName, ReportId, RangeBeginUtc, RangeEndUtc)`: without a domain in the key, the org disambiguates report-id collisions across reporters |
 | `ContactInfo` | max 320, nullable |
 | `RangeBeginUtc`, `RangeEndUtc` | `RangeEndUtc` indexed for the orphan sweep |
@@ -516,7 +516,7 @@ client
           ← dmarc_report_record.DmarcReportId
               ← dmarc_report_record_{dkim,spf}_auth_result.DmarcReportRecordId
   ← mailbox_source.DefaultClientId
-      ← mailbox_sync_run.MailboxSourceId
+      ← mailbox_sync_run.ReportSourceId
   ← dmarc_report_ingest.ClientId
   ← user_client_grant.ClientId
 ```

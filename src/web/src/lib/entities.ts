@@ -71,7 +71,7 @@ export type MailboxSource = {
 }
 
 export type MailboxHealth = {
-  mailboxSourceId: string
+  reportSourceId: string
   name: string
   isActive: boolean
   lastSuccessSyncAtUtc: string | null
@@ -92,7 +92,7 @@ export type MailboxHealth = {
 
 export type MailboxSyncRun = {
   id: string
-  mailboxSourceId: string
+  reportSourceId: string
   trigger: string
   status: SyncRunStatus
   startedAtUtc: string

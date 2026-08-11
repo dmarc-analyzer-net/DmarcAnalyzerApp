@@ -2,7 +2,7 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 
 public sealed record MailboxSyncRunDto(
     Guid Id,
-    Guid MailboxSourceId,
+    Guid ReportSourceId,
     string Trigger,
     string Status,
     DateTime StartedAtUtc,
