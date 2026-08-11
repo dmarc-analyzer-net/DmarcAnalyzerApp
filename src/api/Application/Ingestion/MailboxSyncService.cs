@@ -10,7 +10,6 @@ using MailKit.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MimeKit;
-using System.IO.Compression;
 using System.Linq;
 using DmarcAnalyzer.Api.Workers;
 using System.Threading.Tasks;
@@ -200,7 +199,8 @@ public sealed class MailboxSyncService(
                     IReadOnlyList<ExtractedReportPayload> payloads;
                     try
                     {
-                        payloads = await ExtractReportPayloadsAsync(attachment, logger, operationToken);
+                        payloads = await ReportPayloadExtractor.ExtractAsync(
+                            attachment, PayloadLimits(), logger, operationToken);
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {
@@ -613,140 +613,13 @@ public sealed class MailboxSyncService(
             .Where(x => !lastProcessedUid.HasValue || x.Id > lastProcessedUid.Value)
             .OrderBy(x => x.Id)];
 
-    private static async Task<IReadOnlyList<ExtractedReportPayload>> ExtractReportPayloadsAsync(MimeEntity attachment, ILogger logger, CancellationToken ct)
-    {
-        var result = new List<ExtractedReportPayload>();
-
-        await using var raw = new MemoryStream();
-
-        // Both of these are nullable: a malformed part can declare itself a message
-        // or a MIME part and carry nothing. We are parsing attachments that arrived
-        // from the internet, so treat that as an empty extraction — the same as an
-        // entity type we don't handle — rather than throwing.
-        if (attachment is MessagePart { Message: not null } embeddedMessagePart)
-        {
-            await embeddedMessagePart.Message.WriteToAsync(raw, ct);
-        }
-        else if (attachment is MimePart { Content: not null } mimePart)
-        {
-            await mimePart.Content.DecodeToAsync(raw, ct);
-        }
-        else
-        {
-            return result;
-        }
-
-        var fileName = GetAttachmentFileName(attachment);
-        var payload = raw.ToArray();
-
-        // Container detection prefers magic bytes over filename: DMARC senders
-        // frequently misname attachments (.zip holding gzip data and vice versa).
-        if (IsZip(payload))
-        {
-            using var zipStream = new MemoryStream(payload, writable: false);
-            using var zip = SharpCompress.Archives.ArchiveFactory.OpenArchive(zipStream);
-            foreach (var entry in zip.Entries)
-            {
-                ct.ThrowIfCancellationRequested();
-                if (entry.IsDirectory || entry.Key is null)
-                {
-                    continue;
-                }
-
-                // The suffix pre-filter keeps skipping junk; the extracted bytes
-                // decide the format, same contract as everywhere else.
-                if (!entry.Key.EndsWith(".xml", StringComparison.OrdinalIgnoreCase)
-                    && !entry.Key.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                try
-                {
-                    await using var entryStream = entry.OpenEntryStream();
-                    var extracted = new MemoryStream();
-                    await entryStream.CopyToAsync(extracted, ct);
-                    extracted.Position = 0;
-
-                    var entryKind = ReportPayloadFormat.Classify(
-                        extracted.GetBuffer().AsSpan(0, (int)extracted.Length), entry.Key, null);
-                    if (entryKind == ReportPayloadKind.Unknown)
-                    {
-                        await extracted.DisposeAsync();
-                        logger.LogInformation(
-                            "Skipped unrecognisable zip entry {EntryName} in attachment {AttachmentName}",
-                            entry.Key, fileName);
-                        continue;
-                    }
-
-                    result.Add(new ExtractedReportPayload(entryKind, extracted, entry.Key));
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    logger.LogWarning(ex,
-                        "Failed to extract zip entry {EntryName} from attachment {AttachmentName}",
-                        entry.Key, fileName);
-                }
-            }
-
-            return result;
-        }
-
-        if (IsGzip(payload))
-        {
-            using var gzipSource = new MemoryStream(payload, writable: false);
-            await using var gzip = new GZipStream(gzipSource, CompressionMode.Decompress);
-            var decoded = new MemoryStream();
-            await gzip.CopyToAsync(decoded, ct);
-            decoded.Position = 0;
-
-            // Gzip is detected by magic bytes, so whatever was inside lands here
-            // regardless of format — TLS reports arrive exactly this way
-            // (application/tlsrpt+gzip). The filename fallback strips the .gz so
-            // report.json.gz still label-classifies when the bytes are inconclusive.
-            var innerName = StripGzipSuffix(fileName);
-            var kind = ReportPayloadFormat.Classify(
-                decoded.GetBuffer().AsSpan(0, (int)decoded.Length), innerName, null);
-
-            // Unknown keeps the legacy route: gzip content that is neither format
-            // always went to the DMARC parser, whose parse-failure accounting for
-            // garbage is behavior operators already understand.
-            result.Add(new ExtractedReportPayload(
-                kind == ReportPayloadKind.Unknown ? ReportPayloadKind.DmarcAggregateXml : kind,
-                decoded,
-                fileName));
-            return result;
-        }
-
-        var mimeType = attachment.ContentType?.MimeType ?? string.Empty;
-        var bareKind = ReportPayloadFormat.Classify(payload, fileName, mimeType);
-        if (bareKind != ReportPayloadKind.Unknown)
-        {
-            result.Add(new ExtractedReportPayload(
-                bareKind, new MemoryStream(payload, writable: false), fileName));
-        }
-
-        return result;
-    }
-
-    /// <summary>report.json.gz → report.json, so the label fallback still applies inside gzip.</summary>
-    private static string StripGzipSuffix(string fileName)
-    {
-        if (fileName.EndsWith(".gz", StringComparison.OrdinalIgnoreCase))
-        {
-            return fileName[..^3];
-        }
-
-        return fileName.EndsWith(".gzip", StringComparison.OrdinalIgnoreCase)
-            ? fileName[..^5]
-            : fileName;
-    }
-
-    private static bool IsZip(byte[] payload)
-        => payload.Length >= 4 && payload[0] == 0x50 && payload[1] == 0x4B &&
-           (payload[2] == 0x03 || payload[2] == 0x05 || payload[2] == 0x07);
-
-    private static bool IsGzip(byte[] payload)
-        => payload.Length >= 2 && payload[0] == 0x1F && payload[1] == 0x8B;
+    /// <summary>
+    /// The decompression budget for one attachment, read fresh from options each time so
+    /// a limit raised in response to an incident applies on the next pass.
+    /// </summary>
+    private ReportPayloadLimits PayloadLimits() => new(
+        _options.MaxReportEntryBytes,
+        _options.MaxReportAttachmentBytes,
+        _options.MaxReportArchiveEntries);
 
 }

@@ -38,6 +38,36 @@ public sealed class WorkerOptions
     /// <summary>How often the mailbox retention pass runs. It is measured in months, so daily is plenty.</summary>
     public int MailboxRetentionIntervalHours { get; set; } = 24;
 
+    /// <summary>
+    /// Cap on a single decompressed report payload.
+    /// <para>
+    /// A DMARC RUA address is published in DNS, so the address of this decompressor is
+    /// advertised to strangers by design. The default is far above any real aggregate
+    /// report — it exists to stop a bomb, not to police size — and the log line names
+    /// this setting when it trips, so an operator with a genuinely enormous sender knows
+    /// exactly what to raise.
+    /// </para>
+    /// </summary>
+    public long MaxReportEntryBytes { get; set; } = 64L * 1024 * 1024;
+
+    /// <summary>
+    /// Cap on everything one mail attachment expands to, across all of its entries.
+    /// <para>
+    /// Not redundant with <see cref="MaxReportEntryBytes"/>. Every payload in an
+    /// attachment is extracted before any of them is parsed, so they are all resident at
+    /// once, and a thousand entries each just under the per-entry cap is the same attack
+    /// with more steps.
+    /// </para>
+    /// </summary>
+    public long MaxReportAttachmentBytes { get; set; } = 128L * 1024 * 1024;
+
+    /// <summary>
+    /// Cap on how many archive entries are examined in one attachment. Bounds the walk
+    /// itself, so an archive of millions of tiny members costs bounded work even when
+    /// nothing inside it is large.
+    /// </summary>
+    public int MaxReportArchiveEntries { get; set; } = 512;
+
     public int MaxRetryAttempts { get; set; } = 3;
     public int RetryBaseDelaySeconds { get; set; } = 2;
     public int StaleRunTimeoutMinutes { get; set; } = 30;
