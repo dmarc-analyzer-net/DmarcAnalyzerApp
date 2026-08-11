@@ -154,8 +154,8 @@ public sealed class BackupOffloadService(
 
         logger.LogInformation(
             "Backup snapshot offloaded to {Destination} ({Bytes} bytes, {Clients} client(s), " +
-            "{Sources} mailbox source(s))",
-            storage.Describe(), bytes.Length, artifact.Clients.Count, artifact.MailboxSources.Count);
+            "{Sources} report source(s))",
+            storage.Describe(), bytes.Length, artifact.Clients.Count, artifact.ReportSources.Count);
 
         return latestKey;
     }

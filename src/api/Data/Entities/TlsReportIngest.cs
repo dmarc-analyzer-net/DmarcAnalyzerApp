@@ -29,5 +29,5 @@ public sealed class TlsReportIngest
     public DateTime IngestedAtUtc { get; set; } = DateTime.UtcNow;
 
     public Client? Client { get; set; }
-    public MailboxSource? MailboxSource { get; set; }
+    public ReportSource? ReportSource { get; set; }
 }

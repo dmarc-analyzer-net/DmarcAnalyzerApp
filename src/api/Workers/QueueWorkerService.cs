@@ -356,31 +356,31 @@ public sealed class QueueWorkerService(
         using var scope = scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<DmarcAnalyzerDbContext>();
 
-        var activeMailboxSources = await db.MailboxSources
+        var activeReportSources = await db.ReportSources
             .AsNoTracking()
             .Where(x => x.IsActive && x.Protocol == "imap")
             .Select(x => x.Id)
             .ToListAsync(ct);
 
-        if (activeMailboxSources.Count == 0)
+        if (activeReportSources.Count == 0)
         {
-            logger.LogDebug("No active IMAP mailbox sources found for scheduled pass");
+            logger.LogDebug("No active report sources with protocol=imap found for scheduled pass");
             return;
         }
 
-        logger.LogInformation("Scheduled sync pass for {Count} mailbox sources", activeMailboxSources.Count);
+        logger.LogInformation("Scheduled sync pass for {Count} report sources", activeReportSources.Count);
 
-        foreach (var mailboxSourceId in activeMailboxSources)
+        foreach (var reportSourceId in activeReportSources)
         {
             try
             {
-                var result = await ExecuteWithRetryAsync(mailboxSourceId, ct);
+                var result = await ExecuteWithRetryAsync(reportSourceId, ct);
 
                 if (!result.IsSuccess)
                 {
                     logger.LogInformation(
-                        "Scheduled sync failed to start for mailbox source {MailboxSourceId}: {Error}",
-                        mailboxSourceId,
+                        "Scheduled sync failed to start for report source {ReportSourceId}: {Error}",
+                        reportSourceId,
                         result.Error);
                     continue;
                 }
@@ -389,15 +389,15 @@ public sealed class QueueWorkerService(
                 if (!value.Success)
                 {
                     logger.LogWarning(
-                        "Scheduled sync failed for mailbox source {MailboxSourceId}: {Error}",
-                        mailboxSourceId,
+                        "Scheduled sync failed for report source {ReportSourceId}: {Error}",
+                        reportSourceId,
                         value.Error);
                     continue;
                 }
 
                 logger.LogInformation(
-                    "Scheduled sync completed for mailbox source {MailboxSourceId}. Messages={MessagesScanned}, Attachments={AttachmentsProcessed}, Inserted={ReportsInserted}, Duplicates={ReportsSkippedAsDuplicate}, ParseFailures={ParseFailures}",
-                    mailboxSourceId,
+                    "Scheduled sync completed for report source {ReportSourceId}. Messages={MessagesScanned}, Attachments={AttachmentsProcessed}, Inserted={ReportsInserted}, Duplicates={ReportsSkippedAsDuplicate}, ParseFailures={ParseFailures}",
+                    reportSourceId,
                     value.MessagesScanned,
                     value.AttachmentsProcessed,
                     value.ReportsInserted,
@@ -406,12 +406,12 @@ public sealed class QueueWorkerService(
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                logger.LogDebug("Scheduled sync cancelled for mailbox source {MailboxSourceId}", mailboxSourceId);
+                logger.LogDebug("Scheduled sync cancelled for report source {ReportSourceId}", reportSourceId);
                 throw;
             }
             catch (Exception ex)
             {
-                logger.LogError(ex, "Scheduled sync crashed for mailbox source {MailboxSourceId}", mailboxSourceId);
+                logger.LogError(ex, "Scheduled sync crashed for report source {ReportSourceId}", reportSourceId);
             }
         }
     }
@@ -450,7 +450,7 @@ public sealed class QueueWorkerService(
             staleRunTimeoutMinutes);
     }
 
-    private async Task<ServiceResult<MailboxSyncResult>> ExecuteWithRetryAsync(Guid mailboxSourceId, CancellationToken ct)
+    private async Task<ServiceResult<MailboxSyncResult>> ExecuteWithRetryAsync(Guid reportSourceId, CancellationToken ct)
     {
         var maxAttempts = Math.Max(1, _options.MaxRetryAttempts);
         var baseDelay = Math.Max(1, _options.RetryBaseDelaySeconds);
@@ -460,7 +460,7 @@ public sealed class QueueWorkerService(
         {
             using var syncScope = scopeFactory.CreateScope();
             var syncService = syncScope.ServiceProvider.GetRequiredService<IMailboxSyncService>();
-            var result = await syncService.SyncMailboxSourceAsync(mailboxSourceId, "scheduled", ct);
+            var result = await syncService.SyncReportSourceAsync(reportSourceId, "scheduled", ct);
             lastResult = result;
 
             if (!result.IsSuccess)
@@ -480,10 +480,10 @@ public sealed class QueueWorkerService(
 
             var delay = TimeSpan.FromSeconds(baseDelay * Math.Pow(2, attempt - 1));
             logger.LogWarning(
-                "Scheduled sync attempt {Attempt}/{MaxAttempts} failed for mailbox source {MailboxSourceId}. Retrying in {DelaySeconds}s",
+                "Scheduled sync attempt {Attempt}/{MaxAttempts} failed for report source {ReportSourceId}. Retrying in {DelaySeconds}s",
                 attempt,
                 maxAttempts,
-                mailboxSourceId,
+                reportSourceId,
                 (int)delay.TotalSeconds);
 
             await Task.Delay(delay, ct);

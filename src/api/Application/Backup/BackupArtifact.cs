@@ -15,7 +15,7 @@ public sealed record BackupArtifact(
     BackupManifest Manifest,
     IReadOnlyList<BackupClient> Clients,
     IReadOnlyList<BackupDomain> Domains,
-    IReadOnlyList<BackupMailboxSource> MailboxSources,
+    IReadOnlyList<BackupReportSource> ReportSources,
     IReadOnlyList<BackupNotificationRecipient> NotificationRecipients,
     IReadOnlyList<BackupUser> Users,
     IReadOnlyList<BackupUserIdentity> UserIdentities,
@@ -119,7 +119,7 @@ public sealed record BackupDomain(
 /// of the mailbox would skip mail, and UIDVALIDITY makes a stale value actively
 /// misleading.
 /// </summary>
-public sealed record BackupMailboxSource(
+public sealed record BackupReportSource(
     Guid Id,
     string Name,
     string Protocol,

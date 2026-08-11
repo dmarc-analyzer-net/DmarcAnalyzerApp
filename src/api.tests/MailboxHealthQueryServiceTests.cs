@@ -29,7 +29,7 @@ public sealed class MailboxHealthQueryServiceTests
             UpdatedAtUtc = DateTime.UtcNow,
         };
 
-        var mailbox = new MailboxSource
+        var mailbox = new ReportSource
         {
             Id = Guid.NewGuid(),
             Name = "Inbox A",
@@ -49,7 +49,7 @@ public sealed class MailboxHealthQueryServiceTests
         };
 
         db.Clients.Add(client);
-        db.MailboxSources.Add(mailbox);
+        db.ReportSources.Add(mailbox);
 
         db.MailboxSyncRuns.AddRange(
             new MailboxSyncRun

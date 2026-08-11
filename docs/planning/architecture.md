@@ -89,7 +89,7 @@ Carter modules as implemented (`src/api/Modules`):
 | `AuthModule` | login/logout/register/me/setup/providers |
 | `OidcAuthModule` | OIDC challenge + callback (see ADR 0007) |
 | `ClientsModule`, `DomainsModule`, `UsersModule` | tenant CRUD + viewer grants |
-| `MailboxSourcesModule` | mailbox CRUD + manual sync trigger |
+| `ReportSourcesModule` | mailbox CRUD + manual sync trigger |
 | `MailboxHealthModule`, `MailboxSyncRunsModule` | ingestion operations views |
 | `AnalyticsModule` | all report analytics + enforcement, threats, record inspection |
 | `SystemModule` | status |
@@ -100,7 +100,7 @@ a report-upload/query surface. See [`api-contract.md`](api-contract.md) §0 for 
 authoritative endpoint list.
 
 - Responsibilities:
-  - CRUD for clients, domains, mailbox sources, and users/grants.
+  - CRUD for clients, domains, report sources, and users/grants.
   - Analytics query APIs over ingested report data.
   - Trigger and inspect ingestion/sync runs.
 
@@ -121,7 +121,7 @@ authoritative endpoint list.
 
 ### Worker Mode (same image, hosted service enabled)
 
-- Poll scheduler processes mailbox sources sequentially (one source at a time per worker pass).
+- Poll scheduler processes report sources sequentially (one source at a time per worker pass).
 - Implemented per-pass work:
   - Auto-close stale `running` sync runs.
   - Mailbox sync: fetch, extract attachments, parse, dedup, persist.
@@ -261,7 +261,7 @@ export.
 
 - `GET /api/v1/mailbox-health`
 - `GET /api/v1/mailbox-sync-runs`
-- `POST /api/v1/mailbox-sources/{id}/sync` (manual operator trigger)
+- `POST /api/v1/report-sources/{id}/sync` (manual operator trigger)
 
 ### Current Worker Controls
 

@@ -13,7 +13,7 @@ import { DashboardPage } from '@/pages/DashboardPage'
 import { DomainDetailPage } from '@/pages/DomainDetailPage'
 import { DomainsPage } from '@/pages/DomainsPage'
 import { FirstRunImportPage } from '@/pages/FirstRunImportPage'
-import { MailboxSourcesPage } from '@/pages/MailboxSourcesPage'
+import { ReportSourcesPage } from '@/pages/ReportSourcesPage'
 import { NotificationsPage } from '@/pages/NotificationsPage'
 import { ThreatsPage } from '@/pages/ThreatsPage'
 import { UsersPage } from '@/pages/UsersPage'
@@ -52,7 +52,7 @@ function App() {
         <Route path="/threats" element={<ThreatsPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/notifications" element={staff ? <NotificationsPage /> : fallback} />
-        <Route path="/mailbox-sources" element={staff ? <MailboxSourcesPage /> : fallback} />
+        <Route path="/report-sources" element={staff ? <ReportSourcesPage /> : fallback} />
         <Route path="/users" element={admin ? <UsersPage /> : fallback} />
         <Route path="/audit" element={admin ? <AuditPage /> : fallback} />
         <Route path="/backup" element={admin ? <BackupPage /> : fallback} />

@@ -9,7 +9,7 @@ namespace DmarcAnalyzer.Api.Tests;
 /// as DMARC reports, normally gzipped as application/tlsrpt+gzip. Extraction
 /// detects gzip by magic bytes and returned whatever was inside without checking
 /// it, so the JSON reached the DMARC parser, threw, and incremented the
-/// parse-failure counter that marks a mailbox source unhealthy in the console.
+/// parse-failure counter that marks a report source unhealthy in the console.
 /// </summary>
 public sealed class ReportPayloadFormatTests
 {

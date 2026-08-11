@@ -39,7 +39,7 @@ public static class CredentialKeyFingerprint
 
     /// <summary>
     /// Whether an artifact's fingerprint matches the running key. A null on either side
-    /// means "unknown", which is never a match — importing mailbox sources that can
+    /// means "unknown", which is never a match — importing report sources that can
     /// never be decrypted is the failure this is here to prevent.
     /// </summary>
     public static bool Matches(string? artifactFingerprint, string? runningKey)

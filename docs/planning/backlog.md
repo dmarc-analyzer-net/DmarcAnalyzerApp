@@ -32,7 +32,7 @@ design system.) See the categorized lists below for the full inventory.
 - [x] (done) Define MVP feature set by benchmarking core workflows from dmarcian and EasyDMARC.
 - [x] (done) Scaffold solution in `src/` with C# web app backend and React frontend.
 - [x] (done) Integrate `DmarcRua` serializer and validate parsing against sample RUA XML fixtures.
-- [x] (done) Design PostgreSQL schema for agency, clients, domains, mailbox sources, reports, records, and retention policies.
+- [x] (done) Design PostgreSQL schema for agency, clients, domains, report sources, reports, records, and retention policies.
 - [ ] (todo) Add POP3 support to mailbox ingestion (IMAP via MailKit is implemented).
 - [x] (done) Implement tenant-aware data access model with strict client isolation for agency operators (client_viewer scoping via per-request user context).
 - [x] (done) Implement single-database tenant-keyed architecture (direct or transitive ClientId on all client-scoped entities, enforced in query services).
@@ -157,11 +157,11 @@ Sequenced; each step is independently shippable.
       Worth doing before the next change to this file.
 
 - [ ] (todo) Implement API endpoints for report upload, mailbox sync trigger, and report/query retrieval.
-- [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, mailbox sources).
+- [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, report sources).
 - [x] (done) Add initial client/domain CRUD baseline endpoints for API vertical slice.
-- [x] (done) Add mailbox source CRUD baseline endpoints for API vertical slice.
+- [x] (done) Add report source CRUD baseline endpoints for API vertical slice.
 - [x] (done) Refactor API route handlers to use an application service layer (DTOs + validation in services).
-- [x] (done) Build admin operations UI for clients/domains/mailbox sources with list-first tables and modal create/edit.
+- [x] (done) Build admin operations UI for clients/domains/report sources with list-first tables and modal create/edit.
 - [ ] (todo) Add migrations, repository layer, and indexing strategy for PostgreSQL.
 - [x] (done) Build React dashboards for pass/fail, SPF/DKIM alignment, and disposition (source IP trends pending drill-down below).
 - [x] (done) Add per-source drill-down with daily aggregates (domain detail page with per-IP DMARC results and raw auth breakdown).
@@ -305,7 +305,7 @@ zero undocumented. The problems are everywhere else.
       silently gets an incomplete list.
 - [ ] (todo) **Seven endpoints are documented in *unmarked* sections and do not
       exist** — both password-reset routes, `DELETE /clients/{id}`,
-      `DELETE /mailbox-sources/{id}`, `test-connection`, nested `sync-runs`, and
+      `DELETE /report-sources/{id}`, `test-connection`, nested `sync-runs`, and
       `GET /admin/health` (the real probes are `/health/live` and
       `/health/ready`). `http/api.http` agrees with the code, so the doc is the
       outlier. Marking them planned, as §7/§11–13 already do, is enough.
@@ -416,7 +416,7 @@ zero undocumented. The problems are everywhere else.
       sources have it on).
 - [ ] (todo) **Missing runbooks:** a restore-from-backup *drill* — now scriptable
       end to end, since export → import into a throwaway instance → compare
-      manifest counts → sync a mailbox source is the check that actually proves
+      manifest counts → sync a report source is the check that actually proves
       the encryption key round-tripped; encryption-key rotation (the consequence is
       documented, the procedure is not, and the code's legacy-passthrough makes
       a staged rotation genuinely possible); deployment rollback when a release

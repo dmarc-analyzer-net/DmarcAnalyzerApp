@@ -20,7 +20,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   existing ADO.NET `ConnectionStrings__Default`.
 - **Backup, offload and recovery** (ADR 0009, design detail in
   `config-export-and-recovery.md`). A JSON configuration artifact — clients, domains,
-  mailbox sources with their encrypted credentials, recipients, users, identities,
+  report sources with their encrypted credentials, recipients, users, identities,
   grants — is the primary backup; `pg_dump` is demoted to the pre-upgrade artifact a
   rollback across a migration needs. Report data is deliberately excluded, because the
   mailbox is the archive and re-ingestion is idempotent.
@@ -36,7 +36,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     **Additive: never deletes a row.** On an email collision the imported user wins and
     only that account's sessions are revoked. An encryption-key fingerprint mismatch is
     an acknowledgeable warning, not a hard block — the rest of the artifact still
-    imports, and the console reports which mailbox sources need their password
+    imports, and the console reports which report sources need their password
     re-entered by hand.
   - Optional report-mail archive to the same bucket, and **opt-in mailbox retention
     deletion** so the system has one retention window instead of two — cut on the widest
@@ -52,9 +52,9 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
 - API vertical slice endpoints:
   - clients: list/get/create/patch. `slug` is immutable after creation. Every
     install is bootstrapped with a `default` client, because a domain and a
-    mailbox source both require one
+    report source both require one
   - domains: list/get/create/patch
-  - mailbox sources: list/create/patch/sync
+  - report sources: list/create/patch/sync
   - mailbox health: list
   - mailbox sync runs: list
   - admin migrate endpoint

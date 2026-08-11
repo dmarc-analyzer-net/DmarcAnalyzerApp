@@ -35,11 +35,11 @@ Recommended baseline:
 ## Health and Diagnostics Endpoints
 
 - `GET /api/v1/mailbox-health`
-  - latest run status/error and counters per mailbox source
+  - latest run status/error and counters per report source
   - checkpoint state (`lastProcessedUid`, `lastProcessedUidValidity`)
 - `GET /api/v1/mailbox-sync-runs`
   - sync run history with per-run counts and errors
-- `POST /api/v1/mailbox-sources/{id}/sync`
+- `POST /api/v1/report-sources/{id}/sync`
   - manual operator trigger for targeted testing/recovery
 
 ## Common Failure Patterns

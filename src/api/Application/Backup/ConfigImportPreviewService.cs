@@ -68,7 +68,7 @@ public sealed class ConfigImportPreviewService(
                     [
                         new("clients", artifact.Clients.Count),
                         new("domains", artifact.Domains.Count),
-                        new("mailboxSources", artifact.MailboxSources.Count),
+                        new("reportSources", artifact.ReportSources.Count),
                         new("notificationRecipients", artifact.NotificationRecipients.Count),
                         new("users", artifact.Users.Count),
                         new("userIdentities", artifact.UserIdentities.Count),

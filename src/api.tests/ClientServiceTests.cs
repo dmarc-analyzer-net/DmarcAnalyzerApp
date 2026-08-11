@@ -126,16 +126,16 @@ public sealed class ClientServiceTests
     }
 
     /// <summary>
-    /// A mailbox source can only be created against a client, and on a fresh install that is
+    /// A report source can only be created against a client, and on a fresh install that is
     /// the default one — so without counting sources, an install with a configured mailbox and
     /// no domains yet would still read as pristine and let a restore union two installs.
     /// </summary>
     [Fact]
-    public async Task IsPristineInstall_WithAMailboxSourceButNoDomains_IsFalse()
+    public async Task IsPristineInstall_WithAReportSourceButNoDomains_IsFalse()
     {
         await using var db = NewDb();
         var client = await DefaultClient.EnsureAsync(db, CancellationToken.None);
-        db.MailboxSources.Add(new MailboxSource
+        db.ReportSources.Add(new ReportSource
         {
             Id = Guid.NewGuid(),
             DefaultClientId = client!.Id,

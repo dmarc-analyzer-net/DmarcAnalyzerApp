@@ -109,7 +109,7 @@ public sealed class BackupImportService(
         // the protector the app is actually running rather than inferring one.
         var runningKey = configuration[CredentialProtectionExtensions.KeyConfigPath];
 
-        if (artifact.MailboxSources.Count > 0
+        if (artifact.ReportSources.Count > 0
             && !CredentialKeyFingerprint.Matches(artifact.Manifest.EncryptionKeyFingerprint, runningKey))
         {
             if (!allowKeyFingerprintMismatch)
@@ -130,7 +130,7 @@ public sealed class BackupImportService(
 
             credentialsWillNotDecrypt = true;
             warnings.Add(
-                $"{artifact.MailboxSources.Count} mailbox source(s) were imported with credentials " +
+                $"{artifact.ReportSources.Count} report source(s) were imported with credentials " +
                 "this install holds no key for; each one needs its password re-entered before it will " +
                 "sync.");
         }
@@ -151,7 +151,7 @@ public sealed class BackupImportService(
             {
                 return ServiceResult<BackupImportResult>.Failure(
                     "restore is only allowed into an install nothing has been added to yet (no " +
-                    "clients of your own, no domains, no mailbox sources). Because import never " +
+                    "clients of your own, no domains, no report sources). Because import never " +
                     "deletes, restoring over existing rows would produce a union of two installs " +
                     "rather than a copy of one. Use merge if a union is what you want.",
                     409);
@@ -160,7 +160,7 @@ public sealed class BackupImportService(
 
         var clientTally = new Tally(BackupImportEntities.Client);
         var domainTally = new Tally(BackupImportEntities.Domain);
-        var sourceTally = new Tally(BackupImportEntities.MailboxSource);
+        var sourceTally = new Tally(BackupImportEntities.ReportSource);
         var userTally = new Tally(BackupImportEntities.AgencyUser);
         var identityTally = new Tally(BackupImportEntities.UserIdentity);
         var grantTally = new Tally(BackupImportEntities.UserClientGrant);
@@ -180,7 +180,7 @@ public sealed class BackupImportService(
             ImportClients(artifact, state, clientTally);
             ImportDomains(artifact, state, domainTally);
             ImportMtaStsPolicies(artifact, state, mtaStsPolicyTally);
-            ImportMailboxSources(artifact, state, sourceTally);
+            ImportReportSources(artifact, state, sourceTally);
             userReport = ImportUsers(artifact, state, userTally);
             ImportUserIdentities(artifact, state, identityTally);
             ImportGrants(artifact, state, grantTally);
@@ -443,15 +443,15 @@ public sealed class BackupImportService(
     /// username — different folders, different default clients — so host+username is not an
     /// identity and deduping on it would silently collapse two real sources into one.
     /// </summary>
-    private void ImportMailboxSources(BackupArtifact artifact, ImportState state, Tally tally)
+    private void ImportReportSources(BackupArtifact artifact, ImportState state, Tally tally)
     {
-        foreach (var source in artifact.MailboxSources)
+        foreach (var source in artifact.ReportSources)
         {
             var label = $"id:{source.Id}";
 
             if (!TryResolveClientId(state, source.DefaultClientId, out var defaultClientId))
             {
-                Skip(tally, BackupImportEntities.MailboxSource, label, source.Id, Guid.Empty,
+                Skip(tally, BackupImportEntities.ReportSource, label, source.Id, Guid.Empty,
                     $"its default client ({source.DefaultClientId}) is neither in this artifact nor in " +
                     "this install, so newly discovered domains would have nowhere to land");
                 continue;
@@ -477,7 +477,7 @@ public sealed class BackupImportService(
                 continue;
             }
 
-            var row = new MailboxSource
+            var row = new ReportSource
             {
                 Id = source.Id,
                 Name = source.Name,
@@ -500,7 +500,7 @@ public sealed class BackupImportService(
                 LastProcessedUidValidity = null,
             };
 
-            db.MailboxSources.Add(row);
+            db.ReportSources.Add(row);
             state.SourcesById[row.Id] = row;
             tally.Created++;
         }
@@ -770,7 +770,7 @@ public sealed class BackupImportService(
         // first.
         var clients = await db.Clients.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
         var domains = await db.Domains.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
-        var sources = await db.MailboxSources.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
+        var sources = await db.ReportSources.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
         var users = await db.AgencyUsers.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
         var identities = await db.UserIdentities.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
         var grants = await db.UserClientGrants.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
@@ -927,7 +927,7 @@ public sealed class BackupImportService(
         public required Dictionary<string, Domain> DomainsByName { get; init; }
 
         /// <summary>Keyed by Id alone, because <c>mailbox_source</c> has no natural key at all.</summary>
-        public required Dictionary<Guid, MailboxSource> SourcesById { get; init; }
+        public required Dictionary<Guid, ReportSource> SourcesById { get; init; }
         public required Dictionary<string, AgencyUser> UsersByEmail { get; init; }
         public required Dictionary<string, UserIdentity> IdentitiesByIssuerSubject { get; init; }
         public required Dictionary<string, UserClientGrant> GrantsByUserClient { get; init; }

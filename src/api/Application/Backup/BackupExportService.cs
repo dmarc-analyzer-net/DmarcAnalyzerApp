@@ -79,11 +79,11 @@ public sealed class BackupExportService(
 
         // PasswordEncrypted goes out verbatim: it is the enc:v1: ciphertext, useless
         // without the key the manifest fingerprints. LastProcessedUid is left behind so a
-        // restored source rescans — see BackupMailboxSource.
-        var mailboxSources = await db.MailboxSources
+        // restored source rescans — see BackupReportSource.
+        var reportSources = await db.ReportSources
             .AsNoTracking()
             .OrderBy(x => x.Name)
-            .Select(x => new BackupMailboxSource(
+            .Select(x => new BackupReportSource(
                 x.Id, x.Name, x.Protocol, x.Host, x.Port, x.UseTls, x.Username,
                 x.PasswordEncrypted, x.DefaultClientId, x.IsActive,
                 x.CreatedAtUtc, x.UpdatedAtUtc))
@@ -149,7 +149,7 @@ public sealed class BackupExportService(
             logger.LogWarning(
                 "Exported configuration with unprotected credentials: {SourceCount} mailbox " +
                 "password(s) are in this artifact in plaintext",
-                mailboxSources.Count);
+                reportSources.Count);
         }
 
         if (manifest.LegalHoldClients.Count > 0)
@@ -163,7 +163,7 @@ public sealed class BackupExportService(
         }
 
         return ServiceResult<BackupArtifact>.Success(new BackupArtifact(
-            manifest, clients, domains, mailboxSources, recipients, users, identities, grants,
+            manifest, clients, domains, reportSources, recipients, users, identities, grants,
             mtaStsPolicies));
     }
 

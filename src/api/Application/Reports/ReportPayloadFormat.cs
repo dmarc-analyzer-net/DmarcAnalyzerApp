@@ -23,7 +23,7 @@ public enum ReportPayloadKind
 /// They arrive as I-JSON, normally gzipped as <c>application/tlsrpt+gzip</c>, and
 /// the extraction path decompresses gzip by magic bytes without checking what
 /// came out — so the JSON reached the DMARC parser, threw, and incremented the
-/// parse-failure counter that marks a mailbox source unhealthy in the console.
+/// parse-failure counter that marks a report source unhealthy in the console.
 /// </para>
 /// </summary>
 public static class ReportPayloadFormat

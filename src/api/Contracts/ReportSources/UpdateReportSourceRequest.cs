@@ -1,6 +1,6 @@
-namespace DmarcAnalyzer.Api.Contracts.MailboxSources;
+namespace DmarcAnalyzer.Api.Contracts.ReportSources;
 
-public sealed class UpdateMailboxSourceRequest
+public sealed class UpdateReportSourceRequest
 {
     public string? Name { get; set; }
     public string? Protocol { get; set; }
@@ -14,7 +14,7 @@ public sealed class UpdateMailboxSourceRequest
 
     /// <summary>
     /// Delete report mail from this mailbox once it is older than the retention window.
-    /// Irreversible and off by default — see <c>MailboxSource.DeleteAfterRetention</c>.
+    /// Irreversible and off by default — see <c>ReportSource.DeleteAfterRetention</c>.
     /// </summary>
     public bool? DeleteAfterRetention { get; set; }
 }

@@ -2,5 +2,5 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 
 public interface IMailboxHealthQueryService
 {
-    Task<IReadOnlyList<MailboxSourceHealthDto>> ListAsync(Guid? reportSourceId, CancellationToken ct);
+    Task<IReadOnlyList<ReportSourceHealthDto>> ListAsync(Guid? reportSourceId, CancellationToken ct);
 }

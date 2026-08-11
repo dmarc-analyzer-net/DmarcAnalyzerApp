@@ -30,10 +30,10 @@ public sealed class MailboxSyncService(
 {
     private readonly WorkerOptions _options = options.Value;
 
-    public async Task<ServiceResult<MailboxSyncResult>> SyncMailboxSourceAsync(Guid mailboxSourceId, CancellationToken ct)
-        => await SyncMailboxSourceAsync(mailboxSourceId, "manual", ct);
+    public async Task<ServiceResult<MailboxSyncResult>> SyncReportSourceAsync(Guid reportSourceId, CancellationToken ct)
+        => await SyncReportSourceAsync(reportSourceId, "manual", ct);
 
-    public async Task<ServiceResult<MailboxSyncResult>> SyncMailboxSourceAsync(Guid mailboxSourceId, string trigger, CancellationToken ct)
+    public async Task<ServiceResult<MailboxSyncResult>> SyncReportSourceAsync(Guid reportSourceId, string trigger, CancellationToken ct)
     {
         var startedAtUtc = DateTime.UtcNow;
         using var syncTimeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -41,15 +41,15 @@ public sealed class MailboxSyncService(
         syncTimeoutCts.CancelAfter(TimeSpan.FromMinutes(syncRunTimeoutMinutes));
         var operationToken = syncTimeoutCts.Token;
 
-        var mailboxSource = await db.MailboxSources
-            .SingleOrDefaultAsync(x => x.Id == mailboxSourceId, operationToken);
+        var reportSource = await db.ReportSources
+            .SingleOrDefaultAsync(x => x.Id == reportSourceId, operationToken);
 
-        if (mailboxSource is null)
+        if (reportSource is null)
         {
-            return ServiceResult<MailboxSyncResult>.Failure("mailbox source not found", 404);
+            return ServiceResult<MailboxSyncResult>.Failure("report source not found", 404);
         }
 
-        if (!string.Equals(mailboxSource.Protocol, "imap", StringComparison.OrdinalIgnoreCase))
+        if (!string.Equals(reportSource.Protocol, "imap", StringComparison.OrdinalIgnoreCase))
         {
             return ServiceResult<MailboxSyncResult>.Failure("manual sync currently supports only IMAP", 400);
         }
@@ -63,19 +63,19 @@ public sealed class MailboxSyncService(
         var tlsReportsSkippedAsDuplicate = 0;
 
         // Legacy rows store the password in plaintext; re-protect them on first use.
-        if (!credentialProtector.IsProtected(mailboxSource.PasswordEncrypted))
+        if (!credentialProtector.IsProtected(reportSource.PasswordEncrypted))
         {
-            var reprotected = credentialProtector.Protect(mailboxSource.PasswordEncrypted);
-            if (reprotected != mailboxSource.PasswordEncrypted)
+            var reprotected = credentialProtector.Protect(reportSource.PasswordEncrypted);
+            if (reprotected != reportSource.PasswordEncrypted)
             {
-                mailboxSource.PasswordEncrypted = reprotected;
-                mailboxSource.UpdatedAtUtc = DateTime.UtcNow;
+                reportSource.PasswordEncrypted = reprotected;
+                reportSource.UpdatedAtUtc = DateTime.UtcNow;
                 await db.SaveChangesAsync(operationToken);
-                logger.LogInformation("Re-protected stored credential for mailbox source {MailboxSourceId}", mailboxSource.Id);
+                logger.LogInformation("Re-protected stored credential for report source {ReportSourceId}", reportSource.Id);
             }
         }
 
-        var mailboxPassword = credentialProtector.Unprotect(mailboxSource.PasswordEncrypted);
+        var mailboxPassword = credentialProtector.Unprotect(reportSource.PasswordEncrypted);
 
         // Declared out here so the failure path can persist them. A run that times
         // out mid-drain has still read everything up to this UID, and throwing that
@@ -87,18 +87,18 @@ public sealed class MailboxSyncService(
         try
         {
             using var client = new ImapClient();
-            var secureSocketOptions = mailboxSource.UseTls ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
+            var secureSocketOptions = reportSource.UseTls ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
 
-            await client.ConnectAsync(mailboxSource.Host, mailboxSource.Port, secureSocketOptions, ct);
-            await client.AuthenticateAsync(mailboxSource.Username, mailboxPassword, operationToken);
+            await client.ConnectAsync(reportSource.Host, reportSource.Port, secureSocketOptions, ct);
+            await client.AuthenticateAsync(reportSource.Username, mailboxPassword, operationToken);
 
             var inbox = client.Inbox;
             await inbox.OpenAsync(FolderAccess.ReadOnly, operationToken);
 
             currentUidValidity = (long)inbox.UidValidity;
-            var lastProcessedUid = mailboxSource.LastProcessedUid;
-            if (mailboxSource.LastProcessedUidValidity.HasValue &&
-                mailboxSource.LastProcessedUidValidity.Value != currentUidValidity)
+            var lastProcessedUid = reportSource.LastProcessedUid;
+            if (reportSource.LastProcessedUidValidity.HasValue &&
+                reportSource.LastProcessedUidValidity.Value != currentUidValidity)
             {
                 lastProcessedUid = null;
             }
@@ -146,9 +146,9 @@ public sealed class MailboxSyncService(
                     return;
                 }
 
-                mailboxSource.LastProcessedUid = highestProcessedUid;
-                mailboxSource.LastProcessedUidValidity = currentUidValidity;
-                mailboxSource.UpdatedAtUtc = DateTime.UtcNow;
+                reportSource.LastProcessedUid = highestProcessedUid;
+                reportSource.LastProcessedUidValidity = currentUidValidity;
+                reportSource.UpdatedAtUtc = DateTime.UtcNow;
                 await db.SaveChangesAsync(operationToken);
             }
 
@@ -181,7 +181,7 @@ public sealed class MailboxSyncService(
                 if (reportMailArchive.IsEnabled)
                 {
                     await reportMailArchive.TryArchiveAsync(
-                        message, mailboxSource.Id, uid.Id, currentUidValidity.Value,
+                        message, reportSource.Id, uid.Id, currentUidValidity.Value,
                         message.Date.UtcDateTime, operationToken);
                 }
 
@@ -206,8 +206,8 @@ public sealed class MailboxSyncService(
                     {
                         parseFailures++;
                         logger.LogWarning(ex,
-                            "Failed to extract report attachment {AttachmentName} for mailbox source {MailboxSourceId}",
-                            GetAttachmentFileName(attachment), mailboxSource.Id);
+                            "Failed to extract report attachment {AttachmentName} for report source {ReportSourceId}",
+                            GetAttachmentFileName(attachment), reportSource.Id);
                         continue;
                     }
 
@@ -228,7 +228,7 @@ public sealed class MailboxSyncService(
                                 {
                                     var tlsResult = tlsParser.Parse(payload.Stream);
                                     var outcome = await tlsIngestor.IngestAsync(
-                                        tlsResult, mailboxSource, operationToken);
+                                        tlsResult, reportSource, operationToken);
 
                                     if (outcome == TlsReportIngestOutcome.Inserted)
                                     {
@@ -247,8 +247,8 @@ public sealed class MailboxSyncService(
                                     // log line names which one it was.
                                     parseFailures++;
                                     logger.LogWarning(ex,
-                                        "Failed to parse TLS report attachment {AttachmentName} for mailbox source {MailboxSourceId}",
-                                        payload.SourceName, mailboxSource.Id);
+                                        "Failed to parse TLS report attachment {AttachmentName} for report source {ReportSourceId}",
+                                        payload.SourceName, reportSource.Id);
                                 }
 
                                 continue;
@@ -269,7 +269,7 @@ public sealed class MailboxSyncService(
                                 // wrong. A domain with no reports yet is a state the
                                 // console already handles.
                                 var domainId = await domainResolver.ResolveOrCreateAsync(
-                                    mailboxSource.DefaultClientId,
+                                    reportSource.DefaultClientId,
                                     normalizedPolicyDomain,
                                     operationToken);
 
@@ -285,7 +285,7 @@ public sealed class MailboxSyncService(
 
                                 var reportId = await TryInsertDmarcReportAsync(
                                     domainId,
-                                    mailboxSource.Id,
+                                    reportSource.Id,
                                     result.OrganizationName.Trim(),
                                     normalizedReportId,
                                     result.RangeBeginUtc,
@@ -307,8 +307,8 @@ public sealed class MailboxSyncService(
                                     reportEntityId, result.RangeBeginUtc, result.Records, operationToken);
 
                                 await TryInsertReportIngestAsync(
-                                    mailboxSource.DefaultClientId,
-                                    mailboxSource.Id,
+                                    reportSource.DefaultClientId,
+                                    reportSource.Id,
                                     normalizedPolicyDomain,
                                     normalizedReportId,
                                     result.RangeBeginUtc,
@@ -324,7 +324,7 @@ public sealed class MailboxSyncService(
                             catch (Exception ex)
                             {
                                 parseFailures++;
-                                logger.LogWarning(ex, "Failed to parse DMARC attachment for mailbox source {MailboxSourceId}", mailboxSource.Id);
+                                logger.LogWarning(ex, "Failed to parse DMARC attachment for report source {ReportSourceId}", reportSource.Id);
                             }
                         }
                     }
@@ -343,19 +343,19 @@ public sealed class MailboxSyncService(
                 // Worth saying out loud, because the alternative reading of a short run
                 // on a big mailbox is that ingestion has quietly stalled.
                 logger.LogInformation(
-                    "Drain budget of {Budget} minute(s) reached for mailbox source {MailboxSourceId} after " +
+                    "Drain budget of {Budget} minute(s) reached for report source {ReportSourceId} after " +
                     "{Scanned} message(s) in {Batches} batch(es); {Remaining} still queued for the next pass",
-                    drainBudgetMinutes, mailboxSource.Id, messagesScanned, batchesDrained + 1,
+                    drainBudgetMinutes, reportSource.Id, messagesScanned, batchesDrained + 1,
                     uids.Count - messagesScanned);
             }
 
-            mailboxSource.LastSuccessSyncAtUtc = DateTime.UtcNow;
-            mailboxSource.LastProcessedUidValidity = currentUidValidity;
+            reportSource.LastSuccessSyncAtUtc = DateTime.UtcNow;
+            reportSource.LastProcessedUidValidity = currentUidValidity;
             if (highestProcessedUid.HasValue)
             {
-                mailboxSource.LastProcessedUid = highestProcessedUid;
+                reportSource.LastProcessedUid = highestProcessedUid;
             }
-            mailboxSource.UpdatedAtUtc = DateTime.UtcNow;
+            reportSource.UpdatedAtUtc = DateTime.UtcNow;
 
             if (operationToken.IsCancellationRequested)
             {
@@ -364,7 +364,7 @@ public sealed class MailboxSyncService(
 
             db.MailboxSyncRuns.Add(new MailboxSyncRun
             {
-                ReportSourceId = mailboxSource.Id,
+                ReportSourceId = reportSource.Id,
                 Trigger = string.IsNullOrWhiteSpace(trigger) ? "unknown" : trigger.Trim().ToLowerInvariant(),
                 Status = "success",
                 StartedAtUtc = startedAtUtc,
@@ -384,7 +384,7 @@ public sealed class MailboxSyncService(
             await client.DisconnectAsync(true, operationToken);
 
             return ServiceResult<MailboxSyncResult>.Success(new MailboxSyncResult(
-                mailboxSource.Id,
+                reportSource.Id,
                 messagesScanned,
                 attachmentsProcessed,
                 reportsInserted,
@@ -399,7 +399,7 @@ public sealed class MailboxSyncService(
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Mailbox sync failed for source {MailboxSourceId}", mailboxSource.Id);
+            logger.LogError(ex, "Mailbox sync failed for source {ReportSourceId}", reportSource.Id);
 
             db.ChangeTracker.Clear();
 
@@ -410,12 +410,12 @@ public sealed class MailboxSyncService(
             // success even when it made progress.
             if (highestProcessedUid.HasValue)
             {
-                mailboxSource.LastProcessedUid = highestProcessedUid;
-                mailboxSource.LastProcessedUidValidity = currentUidValidity;
-                mailboxSource.UpdatedAtUtc = DateTime.UtcNow;
+                reportSource.LastProcessedUid = highestProcessedUid;
+                reportSource.LastProcessedUidValidity = currentUidValidity;
+                reportSource.UpdatedAtUtc = DateTime.UtcNow;
 
-                db.MailboxSources.Attach(mailboxSource);
-                var checkpoint = db.Entry(mailboxSource);
+                db.ReportSources.Attach(reportSource);
+                var checkpoint = db.Entry(reportSource);
                 checkpoint.Property(x => x.LastProcessedUid).IsModified = true;
                 checkpoint.Property(x => x.LastProcessedUidValidity).IsModified = true;
                 checkpoint.Property(x => x.UpdatedAtUtc).IsModified = true;
@@ -426,7 +426,7 @@ public sealed class MailboxSyncService(
 
             db.MailboxSyncRuns.Add(new MailboxSyncRun
             {
-                ReportSourceId = mailboxSource.Id,
+                ReportSourceId = reportSource.Id,
                 Trigger = string.IsNullOrWhiteSpace(trigger) ? "unknown" : trigger.Trim().ToLowerInvariant(),
                 Status = status,
                 StartedAtUtc = startedAtUtc,
@@ -445,10 +445,10 @@ public sealed class MailboxSyncService(
                 CreatedAtUtc = startedAtUtc,
             });
 
-            await TryPersistRunStateAsync(mailboxSource.Id);
+            await TryPersistRunStateAsync(reportSource.Id);
 
             return ServiceResult<MailboxSyncResult>.Success(new MailboxSyncResult(
-                mailboxSource.Id,
+                reportSource.Id,
                 messagesScanned,
                 attachmentsProcessed,
                 reportsInserted,
@@ -484,7 +484,7 @@ public sealed class MailboxSyncService(
 
     private async Task<bool> TryInsertReportIngestAsync(
         Guid clientId,
-        Guid mailboxSourceId,
+        Guid reportSourceId,
         string policyDomain,
         string reportId,
         DateTime reportRangeBeginUtc,
@@ -497,7 +497,7 @@ public sealed class MailboxSyncService(
             INSERT INTO dmarc_report_ingest
                 (""Id"", ""ClientId"", ""ReportSourceId"", ""PolicyDomain"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"", ""OrganizationName"", ""RecordCount"", ""IngestedAtUtc"")
             VALUES
-                ({Guid.NewGuid()}, {clientId}, {mailboxSourceId}, {policyDomain}, {reportId}, {reportRangeBeginUtc}, {reportRangeEndUtc}, {organizationName}, {recordCount}, {DateTime.UtcNow})
+                ({Guid.NewGuid()}, {clientId}, {reportSourceId}, {policyDomain}, {reportId}, {reportRangeBeginUtc}, {reportRangeEndUtc}, {organizationName}, {recordCount}, {DateTime.UtcNow})
             ON CONFLICT (""ClientId"", ""PolicyDomain"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"") DO NOTHING;
             ", ct);
 
@@ -506,7 +506,7 @@ public sealed class MailboxSyncService(
 
     private async Task<Guid?> TryInsertDmarcReportAsync(
         Guid domainId,
-        Guid mailboxSourceId,
+        Guid reportSourceId,
         string organizationName,
         string reportId,
         DateTime rangeBeginUtc,
@@ -520,7 +520,7 @@ public sealed class MailboxSyncService(
             INSERT INTO dmarc_report
                 (""Id"", ""DomainId"", ""ReportSourceId"", ""OrganizationName"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"", ""RecordCount"", ""IngestedAtUtc"", ""PublishedPolicy"", ""SubdomainPolicy"", ""PublishedPct"", ""DkimAlignment"", ""SpfAlignment"")
             VALUES
-                ({id}, {domainId}, {mailboxSourceId}, {organizationName}, {reportId}, {rangeBeginUtc}, {rangeEndUtc}, {recordCount}, {DateTime.UtcNow}, {parsed.PublishedPolicy}, {parsed.SubdomainPolicy}, {parsed.PublishedPct}, {parsed.DkimAlignment}, {parsed.SpfAlignment})
+                ({id}, {domainId}, {reportSourceId}, {organizationName}, {reportId}, {rangeBeginUtc}, {rangeEndUtc}, {recordCount}, {DateTime.UtcNow}, {parsed.PublishedPolicy}, {parsed.SubdomainPolicy}, {parsed.PublishedPct}, {parsed.DkimAlignment}, {parsed.SpfAlignment})
             ON CONFLICT (""DomainId"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"") DO NOTHING;
             ", ct);
 
@@ -565,7 +565,7 @@ public sealed class MailboxSyncService(
         }
     }
 
-    private async Task TryPersistRunStateAsync(Guid mailboxSourceId)
+    private async Task TryPersistRunStateAsync(Guid reportSourceId)
     {
         try
         {
@@ -575,8 +575,8 @@ public sealed class MailboxSyncService(
         {
             logger.LogWarning(
                 persistEx,
-                "Failed to persist mailbox sync run final state for mailbox source {MailboxSourceId}",
-                mailboxSourceId);
+                "Failed to persist mailbox sync run final state for report source {ReportSourceId}",
+                reportSourceId);
         }
     }
 

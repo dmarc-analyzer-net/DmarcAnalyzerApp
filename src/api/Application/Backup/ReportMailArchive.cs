@@ -16,7 +16,7 @@ public interface IReportMailArchive
     /// </summary>
     Task<bool> TryArchiveAsync(
         MimeMessage message,
-        Guid mailboxSourceId,
+        Guid reportSourceId,
         uint uid,
         long uidValidity,
         DateTime receivedAtUtc,
@@ -28,7 +28,7 @@ public interface IReportMailArchive
     /// bucket rather than assumed from configuration.
     /// </summary>
     Task<bool> ExistsAsync(
-        Guid mailboxSourceId,
+        Guid reportSourceId,
         uint uid,
         long uidValidity,
         DateTime receivedAtUtc,
@@ -61,7 +61,7 @@ public sealed class ReportMailArchive(
 
     public async Task<bool> TryArchiveAsync(
         MimeMessage message,
-        Guid mailboxSourceId,
+        Guid reportSourceId,
         uint uid,
         long uidValidity,
         DateTime receivedAtUtc,
@@ -72,7 +72,7 @@ public sealed class ReportMailArchive(
             return false;
         }
 
-        var key = Key(_options.Prefix, mailboxSourceId, uid, uidValidity, receivedAtUtc);
+        var key = Key(_options.Prefix, reportSourceId, uid, uidValidity, receivedAtUtc);
 
         try
         {
@@ -104,7 +104,7 @@ public sealed class ReportMailArchive(
     }
 
     public async Task<bool> ExistsAsync(
-        Guid mailboxSourceId,
+        Guid reportSourceId,
         uint uid,
         long uidValidity,
         DateTime receivedAtUtc,
@@ -115,7 +115,7 @@ public sealed class ReportMailArchive(
             return false;
         }
 
-        var key = Key(_options.Prefix, mailboxSourceId, uid, uidValidity, receivedAtUtc);
+        var key = Key(_options.Prefix, reportSourceId, uid, uidValidity, receivedAtUtc);
 
         return await storage.GetLengthAsync(key, ct) is > 0;
     }
@@ -128,10 +128,10 @@ public sealed class ReportMailArchive(
     /// </summary>
     public static string Key(
         string prefix,
-        Guid mailboxSourceId,
+        Guid reportSourceId,
         uint uid,
         long uidValidity,
         DateTime receivedAtUtc)
         => $"{prefix.Trim().Trim('/')}/reports/{receivedAtUtc:yyyy}/{receivedAtUtc:MM}/{receivedAtUtc:dd}/" +
-           $"{mailboxSourceId}/{uidValidity}-{uid}.eml.gz";
+           $"{reportSourceId}/{uidValidity}-{uid}.eml.gz";
 }

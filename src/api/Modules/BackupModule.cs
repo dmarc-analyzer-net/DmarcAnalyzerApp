@@ -45,7 +45,7 @@ public sealed class BackupModule : ICarterModule
             await audit.RecordAsync(
                 AuditEvents.ConfigExported,
                 $"Exported configuration: {artifact.Clients.Count} client(s), " +
-                $"{artifact.Domains.Count} domain(s), {artifact.MailboxSources.Count} mailbox source(s)",
+                $"{artifact.Domains.Count} domain(s), {artifact.ReportSources.Count} report source(s)",
                 details: artifact.Manifest.CredentialsProtected
                     ? null
                     : "credentials unprotected: mailbox passwords exported in plaintext",

@@ -1,6 +1,6 @@
 namespace DmarcAnalyzer.Api.Data.Entities;
 
-public sealed class MailboxSource
+public sealed class ReportSource
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public string Name { get; set; } = string.Empty;

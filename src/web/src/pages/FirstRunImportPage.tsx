@@ -92,7 +92,7 @@ export function FirstRunImportPage() {
           {!preview.isEmptyInstall ? (
             <Notice tone="warn" title="Restore mode is no longer available">
               Restore only accepts an install nothing has been added to yet — no clients of your
-              own, no domains, no mailbox sources — because an import that never deletes cannot
+              own, no domains, no report sources — because an import that never deletes cannot
               reproduce a state something was deleted from. Merge still works, and the{' '}
               <Link
                 to="/backup"

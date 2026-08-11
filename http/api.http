@@ -138,11 +138,11 @@ Content-Type: application/json
   "isActive": false
 }
 
-### List mailbox sources
-GET {{baseUrl}}/api/v1/mailbox-sources
+### List report sources
+GET {{baseUrl}}/api/v1/report-sources
 
-### Create mailbox source (replace defaultClientId)
-POST {{baseUrl}}/api/v1/mailbox-sources
+### Create report source (replace defaultClientId)
+POST {{baseUrl}}/api/v1/report-sources
 Content-Type: application/json
 
 {
@@ -157,8 +157,8 @@ Content-Type: application/json
   "isActive": true
 }
 
-### Patch mailbox source (replace id)
-PATCH {{baseUrl}}/api/v1/mailbox-sources/00000000-0000-0000-0000-000000000000
+### Patch report source (replace id)
+PATCH {{baseUrl}}/api/v1/report-sources/00000000-0000-0000-0000-000000000000
 Content-Type: application/json
 
 {
@@ -168,7 +168,7 @@ Content-Type: application/json
 }
 
 ### Manual mailbox sync (IMAP only; read-only, does not delete emails)
-POST {{baseUrl}}/api/v1/mailbox-sources/{{reportSourceId}}/sync
+POST {{baseUrl}}/api/v1/report-sources/{{reportSourceId}}/sync
 
 ### List mailbox sync runs (optional reportSourceId, optional limit)
 GET {{baseUrl}}/api/v1/mailbox-sync-runs?reportSourceId={{reportSourceId}}&limit=20

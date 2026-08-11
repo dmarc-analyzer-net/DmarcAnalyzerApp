@@ -292,7 +292,7 @@ export function BackupPage() {
           <Card pad>
             <CardHeader
               title="Export configuration"
-              description="One JSON document with everything a fresh install needs to become this one — clients, domains, mailbox sources, recipients, users, identities and grants."
+              description="One JSON document with everything a fresh install needs to become this one — clients, domains, report sources, recipients, users, identities and grants."
             />
 
             {exportError ? (

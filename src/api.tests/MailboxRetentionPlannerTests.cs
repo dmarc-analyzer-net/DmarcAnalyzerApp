@@ -43,7 +43,7 @@ public sealed class MailboxRetentionPlannerTests
             LegalHold = legalHold, Timezone = "UTC",
         };
 
-    private static MailboxSource NewSource(Guid defaultClientId, bool enabled)
+    private static ReportSource NewSource(Guid defaultClientId, bool enabled)
         => new()
         {
             Name = "mailbox", Host = "imap.example", Port = 993, Username = "dmarc@example",
@@ -56,7 +56,7 @@ public sealed class MailboxRetentionPlannerTests
     /// for it against this source — which is how the planner discovers who a mailbox serves.
     /// </summary>
     private static void AddReportFor(
-        DmarcAnalyzerDbContext db, Client client, MailboxSource source, string domainName)
+        DmarcAnalyzerDbContext db, Client client, ReportSource source, string domainName)
     {
         var domain = new Domain { ClientId = client.Id, Name = domainName };
         db.Add(domain);

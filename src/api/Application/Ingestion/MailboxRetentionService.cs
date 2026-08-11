@@ -96,7 +96,7 @@ public sealed class MailboxRetentionService(
             await audit.RecordSystemAsync(
                 AuditEvents.MailboxRetentionDeleted,
                 $"Deleted {deleted} report message(s) past retention from " +
-                $"{results.Count(x => x.Deleted > 0)} mailbox source(s)",
+                $"{results.Count(x => x.Deleted > 0)} report source(s)",
                 details: string.Join("; ", results
                     .Where(x => x.Deleted > 0)
                     .Select(x => $"{x.ReportSourceName}: {x.Deleted} before {x.CutoffUtc:yyyy-MM-dd}")),
@@ -112,7 +112,7 @@ public sealed class MailboxRetentionService(
         bool dryRun,
         CancellationToken ct)
     {
-        var source = await db.MailboxSources.SingleAsync(x => x.Id == plan.ReportSourceId, ct);
+        var source = await db.ReportSources.SingleAsync(x => x.Id == plan.ReportSourceId, ct);
         var password = credentialProtector.Unprotect(source.PasswordEncrypted);
 
         using var client = new ImapClient();
@@ -203,7 +203,7 @@ public sealed class MailboxRetentionService(
             oldest = summaries.FirstOrDefault()?.InternalDate?.UtcDateTime;
         }
 
-        var tracked = await db.MailboxSources.SingleAsync(x => x.Id == sourceId, ct);
+        var tracked = await db.ReportSources.SingleAsync(x => x.Id == sourceId, ct);
         tracked.OldestMessageAtUtc = oldest;
         tracked.UpdatedAtUtc = DateTime.UtcNow;
 

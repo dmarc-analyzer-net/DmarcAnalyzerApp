@@ -27,7 +27,7 @@ const primaryNav: NavItem[] = [
 const manageNav: NavItem[] = [
   { to: '/clients', label: 'Clients', icon: 'shield-check', visibleTo: isStaff },
   { to: '/users', label: 'Users', icon: 'users', visibleTo: isAdmin },
-  { to: '/mailbox-sources', label: 'Mailbox sources', icon: 'mail', visibleTo: isStaff },
+  { to: '/report-sources', label: 'Report sources', icon: 'mail', visibleTo: isStaff },
   { to: '/notifications', label: 'Notifications', icon: 'inbox', visibleTo: isStaff },
   { to: '/audit', label: 'Audit trail', icon: 'file-text', visibleTo: isAdmin },
   { to: '/backup', label: 'Backup and recovery', icon: 'cloud-upload', visibleTo: isAdmin },

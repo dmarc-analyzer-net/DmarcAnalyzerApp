@@ -23,6 +23,6 @@ public sealed class SmtpTlsReport
     public long TotalFailureSessionCount { get; set; }
     public DateTime IngestedAtUtc { get; set; } = DateTime.UtcNow;
 
-    public MailboxSource? MailboxSource { get; set; }
+    public ReportSource? ReportSource { get; set; }
     public ICollection<SmtpTlsReportPolicy> Policies { get; set; } = [];
 }

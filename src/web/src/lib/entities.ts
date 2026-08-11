@@ -46,7 +46,7 @@ export type Domain = {
   clientName: string | null
 }
 
-export type MailboxSource = {
+export type ReportSource = {
   id: string
   name: string
   protocol: 'imap' | 'pop3'
@@ -266,7 +266,7 @@ export type ConfigImportResult = {
   signedInSessionInvalidated: boolean
   /**
    * True when the artifact's mailbox credentials were imported under a key
-   * fingerprint mismatch the operator chose to override. Every mailbox source in
+   * fingerprint mismatch the operator chose to override. Every report source in
    * the artifact needs its password re-entered by hand before it will sync.
    */
   mailboxCredentialsWillNotDecrypt: boolean

@@ -81,7 +81,7 @@ public static class BackupImportEntities
 {
     public const string Client = "client";
     public const string Domain = "domain";
-    public const string MailboxSource = "mailbox_source";
+    public const string ReportSource = "mailbox_source";
     public const string AgencyUser = "agency_user";
     public const string UserIdentity = "user_identity";
     public const string UserClientGrant = "user_client_grant";

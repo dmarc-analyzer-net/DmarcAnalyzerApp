@@ -7,7 +7,7 @@ namespace DmarcAnalyzer.Api.Application.Clients;
 /// <summary>
 /// The catch-all client every install is bootstrapped with. It exists because a client is a
 /// hard prerequisite for the first two things an operator reaches for — a domain and a
-/// mailbox source both require one — so without it the console dead-ends on a required
+/// report source both require one — so without it the console dead-ends on a required
 /// select with nothing in it. The domain list flags domains still sitting under this slug,
 /// so the catch-all does not quietly become where everything lives.
 /// </summary>
@@ -54,9 +54,9 @@ public static class DefaultClient
     /// requiring a literally empty <c>client</c> table would mean no install could ever be
     /// restored into — the recovery path would be dead on arrival.
     /// <para>
-    /// Mailbox sources do count, and have to: one can only be created against a client, and
+    /// Report sources do count, and have to: one can only be created against a client, and
     /// on a fresh install that client is the default one. Were they left out, an install
-    /// with a configured mailbox source and no domains yet would still read as pristine and
+    /// with a configured report source and no domains yet would still read as pristine and
     /// let a restore union two installs together.
     /// </para>
     /// <para>
@@ -67,5 +67,5 @@ public static class DefaultClient
     public static async Task<bool> IsPristineInstallAsync(DmarcAnalyzerDbContext db, CancellationToken ct)
         => !await db.Clients.AnyAsync(x => x.Slug != Slug, ct)
             && !await db.Domains.AnyAsync(ct)
-            && !await db.MailboxSources.AnyAsync(ct);
+            && !await db.ReportSources.AnyAsync(ct);
 }

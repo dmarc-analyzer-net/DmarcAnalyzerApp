@@ -1,6 +1,6 @@
-namespace DmarcAnalyzer.Api.Application.MailboxSources;
+namespace DmarcAnalyzer.Api.Application.ReportSources;
 
-public sealed record MailboxSourceDto(
+public sealed record ReportSourceDto(
     Guid Id,
     string Name,
     string Protocol,

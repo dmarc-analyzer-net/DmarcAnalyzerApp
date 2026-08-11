@@ -22,7 +22,7 @@ import { isAdmin } from '@/lib/authz'
 import type {
   Client,
   MailboxHealth,
-  MailboxSource,
+  ReportSource,
   MailboxSyncRun,
   SyncRunStatus,
 } from '@/lib/entities'
@@ -73,13 +73,13 @@ const formatWhen = (value: string | null) => {
   return date.toLocaleString()
 }
 
-export function MailboxSourcesPage() {
-  usePageTitle('Mailbox sources')
+export function ReportSourcesPage() {
+  usePageTitle('Report sources')
   const { user } = useAuth()
   const canManage = isAdmin(user)
 
   const [clients, setClients] = useState<Client[]>([])
-  const [mailboxSources, setMailboxSources] = useState<MailboxSource[]>([])
+  const [reportSources, setReportSources] = useState<ReportSource[]>([])
   const [mailboxHealth, setMailboxHealth] = useState<MailboxHealth[]>([])
   const [syncRuns, setSyncRuns] = useState<MailboxSyncRun[]>([])
 
@@ -99,7 +99,7 @@ export function MailboxSourcesPage() {
     try {
       const [clientData, mailboxData] = await Promise.all([
         fetchJson<Client[]>('/api/v1/clients'),
-        fetchJson<MailboxSource[]>('/api/v1/mailbox-sources'),
+        fetchJson<ReportSource[]>('/api/v1/report-sources'),
       ])
 
       const [healthData, syncRunData] = await Promise.all([
@@ -108,7 +108,7 @@ export function MailboxSourcesPage() {
       ])
 
       setClients(clientData)
-      setMailboxSources(mailboxData)
+      setReportSources(mailboxData)
       setMailboxHealth(healthData)
       setSyncRuns(syncRunData)
     } catch (loadError) {
@@ -133,20 +133,20 @@ export function MailboxSourcesPage() {
   )
 
   const sourceById = useMemo(
-    () => new Map(mailboxSources.map((source) => [source.id, source])),
-    [mailboxSources],
+    () => new Map(reportSources.map((source) => [source.id, source])),
+    [reportSources],
   )
 
-  const filteredMailboxSources = useMemo(() => {
+  const filteredReportSources = useMemo(() => {
     const q = search.toLowerCase().trim()
-    if (!q) return mailboxSources
-    return mailboxSources.filter(
+    if (!q) return reportSources
+    return reportSources.filter(
       (x) =>
         x.name.toLowerCase().includes(q) ||
         x.host.toLowerCase().includes(q) ||
         x.username.toLowerCase().includes(q),
     )
-  }, [search, mailboxSources])
+  }, [search, reportSources])
 
   const failingMailboxes = useMemo(
     () => mailboxHealth.filter((health) => health.lastRunStatus === 'failed'),
@@ -182,10 +182,10 @@ export function MailboxSourcesPage() {
     })
   }, [mailboxHealth, mailboxOpsFilter])
 
-  const filteredMailboxSourcesForOps = useMemo(() => {
+  const filteredReportSourcesForOps = useMemo(() => {
     const ids = new Set(filteredMailboxHealth.map((x) => x.reportSourceId))
-    return filteredMailboxSources.filter((source) => ids.has(source.id))
-  }, [filteredMailboxSources, filteredMailboxHealth])
+    return filteredReportSources.filter((source) => ids.has(source.id))
+  }, [filteredReportSources, filteredMailboxHealth])
 
   const recentSyncRunsByMailbox = useMemo(() => {
     const grouped = new Map<string, MailboxSyncRun[]>()
@@ -207,7 +207,7 @@ export function MailboxSourcesPage() {
     setError(null)
   }
 
-  const openMailboxDialog = (source?: MailboxSource) => {
+  const openMailboxDialog = (source?: ReportSource) => {
     setError(null)
     setDialogOpen(true)
     if (source) {
@@ -233,7 +233,7 @@ export function MailboxSourcesPage() {
     }
   }
 
-  const createOrUpdateMailboxSource = async (event: FormEvent<HTMLFormElement>) => {
+  const createOrUpdateReportSource = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
     try {
@@ -243,13 +243,13 @@ export function MailboxSourcesPage() {
       }
 
       if (editingMailboxId) {
-        await fetchJson(`/api/v1/mailbox-sources/${editingMailboxId}`, {
+        await fetchJson(`/api/v1/report-sources/${editingMailboxId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
         })
       } else {
-        await fetchJson('/api/v1/mailbox-sources', {
+        await fetchJson('/api/v1/report-sources', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -259,7 +259,7 @@ export function MailboxSourcesPage() {
       resetDialog()
       await loadData()
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'Failed to save mailbox source')
+      setError(saveError instanceof Error ? saveError.message : 'Failed to save report source')
     }
   }
 
@@ -267,7 +267,7 @@ export function MailboxSourcesPage() {
     setSyncingId(id)
     setError(null)
     try {
-      await fetchJson(`/api/v1/mailbox-sources/${id}/sync`, { method: 'POST' })
+      await fetchJson(`/api/v1/report-sources/${id}/sync`, { method: 'POST' })
       await loadData()
     } catch (syncError) {
       setError(syncError instanceof Error ? syncError.message : 'Failed to sync mailbox')
@@ -281,14 +281,14 @@ export function MailboxSourcesPage() {
     return formatRelativeOrDate(health?.lastSuccessSyncAtUtc ?? null)
   }
 
-  const count = mailboxSources.length
+  const count = reportSources.length
   const subtitle = `${count} ${count === 1 ? 'mailbox' : 'mailboxes'} · ${healthyCount}/${count} healthy`
 
   return (
     <>
       <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
         <div>
-          <h1 className="font-display text-xl font-bold tracking-tight text-body">Mailbox sources</h1>
+          <h1 className="font-display text-xl font-bold tracking-tight text-body">Report sources</h1>
           <p className="mt-1 text-sm text-secondary">{subtitle}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2.5 sm:flex-nowrap sm:shrink-0">
@@ -313,7 +313,7 @@ export function MailboxSourcesPage() {
         </div>
       ) : null}
 
-      {busy && mailboxSources.length === 0 ? (
+      {busy && reportSources.length === 0 ? (
         <div className="flex justify-center py-20">
           <Icon name="loader-circle" size={24} className="animate-spin text-secondary" />
         </div>
@@ -335,14 +335,14 @@ export function MailboxSourcesPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredMailboxSources.map((source, index) => {
+                  {filteredReportSources.map((source, index) => {
                     const health = healthBySourceId.get(source.id)
                     const badge = source.isActive
                       ? getHealthBadge(health?.lastRunStatus)
                       : { label: 'Inactive', variant: 'neutral' as const }
                     const isSyncing = syncingId === source.id
                     return (
-                      <TableRow key={source.id} last={index === filteredMailboxSources.length - 1}>
+                      <TableRow key={source.id} last={index === filteredReportSources.length - 1}>
                         <TableCell mono>{source.name}</TableCell>
                         <TableCell mono>
                           {source.protocol}:{source.port}
@@ -395,9 +395,9 @@ export function MailboxSourcesPage() {
                 </TableBody>
               </Table>
             </div>
-            {filteredMailboxSources.length === 0 ? (
+            {filteredReportSources.length === 0 ? (
               <p className="px-5 py-10 text-center text-sm text-secondary">
-                No mailbox sources found{search ? ' for the current search' : ''}.
+                No report sources found{search ? ' for the current search' : ''}.
               </p>
             ) : null}
           </Card>
@@ -509,13 +509,13 @@ export function MailboxSourcesPage() {
 
           <Card pad={false} className="mt-3.5">
             <div className="px-5 pt-4 pb-2">
-              <CardHeader title="Recent sync runs" description="Last three runs per mailbox source." />
+              <CardHeader title="Recent sync runs" description="Last three runs per report source." />
             </div>
             <CardContent className="space-y-4 pt-2">
-              {filteredMailboxSourcesForOps.length === 0 ? (
+              {filteredReportSourcesForOps.length === 0 ? (
                 <p className="text-sm text-secondary">No sync runs to show for the selected filter.</p>
               ) : (
-                filteredMailboxSourcesForOps.map((source) => {
+                filteredReportSourcesForOps.map((source) => {
                   const runs = recentSyncRunsByMailbox.get(source.id) ?? []
                   return (
                     <div key={source.id} className="rounded-md border border-border p-3">
@@ -591,10 +591,10 @@ export function MailboxSourcesPage() {
       <Dialog open={dialogOpen} onOpenChange={(open) => (!open ? resetDialog() : setDialogOpen(true))}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingMailboxId ? 'Edit mailbox source' : 'Add mailbox source'}</DialogTitle>
+            <DialogTitle>{editingMailboxId ? 'Edit report source' : 'Add report source'}</DialogTitle>
             <DialogDescription>Configure mailbox transport and default routing client.</DialogDescription>
           </DialogHeader>
-          <form className="grid gap-4" onSubmit={createOrUpdateMailboxSource}>
+          <form className="grid gap-4" onSubmit={createOrUpdateReportSource}>
             <label className="grid gap-1.5 text-sm font-medium text-body">
               Source name
               <Input

@@ -5,20 +5,20 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 
 public sealed class MailboxHealthQueryService(DmarcAnalyzerDbContext db) : IMailboxHealthQueryService
 {
-    public async Task<IReadOnlyList<MailboxSourceHealthDto>> ListAsync(Guid? reportSourceId, CancellationToken ct)
+    public async Task<IReadOnlyList<ReportSourceHealthDto>> ListAsync(Guid? reportSourceId, CancellationToken ct)
     {
-        var mailboxSources = db.MailboxSources
+        var reportSources = db.ReportSources
             .AsNoTracking()
             .AsQueryable();
 
         if (reportSourceId.HasValue)
         {
-            mailboxSources = mailboxSources.Where(x => x.Id == reportSourceId.Value);
+            reportSources = reportSources.Where(x => x.Id == reportSourceId.Value);
         }
 
-        return await mailboxSources
+        return await reportSources
             .OrderBy(x => x.Name)
-            .Select(source => new MailboxSourceHealthDto(
+            .Select(source => new ReportSourceHealthDto(
                 source.Id,
                 source.Name,
                 source.IsActive,

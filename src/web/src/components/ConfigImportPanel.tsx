@@ -151,7 +151,7 @@ export function ConfigImportPanel({ preview, onImported }: ConfigImportPanelProp
           'This artifact was exported without a credential encryption key, so it carries plaintext mailbox passwords, while this install expects ciphertext under the key it holds.'
       } else {
         keyMismatchReason =
-          'This artifact was encrypted with a different key than this install holds, so its mailbox sources cannot be decrypted with the key here.'
+          'This artifact was encrypted with a different key than this install holds, so its report sources cannot be decrypted with the key here.'
       }
     }
     if (mode === 'restore' && !preview.isEmptyInstall) {
@@ -225,7 +225,7 @@ export function ConfigImportPanel({ preview, onImported }: ConfigImportPanelProp
     <Card pad>
       <CardHeader
         title="Import configuration"
-        description="Restores clients, domains, mailbox sources, recipients, users and grants from an export. Import never deletes: anything here that the artifact does not mention is left exactly as it is."
+        description="Restores clients, domains, report sources, recipients, users and grants from an export. Import never deletes: anything here that the artifact does not mention is left exactly as it is."
       />
 
       {result ? (
@@ -327,7 +327,7 @@ export function ConfigImportPanel({ preview, onImported }: ConfigImportPanelProp
 
           {/* Not a blocker: the config underneath — clients, domains, users, grants —
               is still good, and the server accepts this given the checkbox below. The
-              cost is real but bounded: every mailbox source in the artifact needs its
+              cost is real but bounded: every report source in the artifact needs its
               password re-entered by hand before it will sync again. */}
           {candidate && blockers.length === 0 && keyMismatchReason ? (
             <Notice tone="warn" title="Mailbox credentials will not carry over">
@@ -343,7 +343,7 @@ export function ConfigImportPanel({ preview, onImported }: ConfigImportPanelProp
                   Import anyway, and re-enter every mailbox password by hand afterward.
                   <span className="block text-xs text-secondary">
                     Everything else in the artifact — clients, domains, recipients, users and grants —
-                    imports normally. Only the mailbox sources' passwords are affected.
+                    imports normally. Only the report sources' passwords are affected.
                   </span>
                 </span>
               </label>
@@ -487,7 +487,7 @@ function ImportResultView({
       {result.mailboxCredentialsWillNotDecrypt ? (
         <Notice tone="warn" title="Re-enter every mailbox password by hand">
           This artifact's mailbox credentials were imported under a different encryption key, so they
-          cannot be decrypted here. Every mailbox source above needs its password typed in again
+          cannot be decrypted here. Every report source above needs its password typed in again
           before it will sync.
         </Notice>
       ) : null}
@@ -581,7 +581,7 @@ function ImportResultView({
           </Button>
         )}
         <span className="text-xs text-faint">
-          Mailbox sources rescan from the beginning — a restored checkpoint would skip mail — so the
+          Report sources rescan from the beginning — a restored checkpoint would skip mail — so the
           first sync after a restore takes longer than usual.
         </span>
       </div>

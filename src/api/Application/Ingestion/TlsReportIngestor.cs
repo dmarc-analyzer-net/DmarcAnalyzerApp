@@ -22,7 +22,7 @@ public interface ITlsReportIngestor
     /// whole thing back and report as such.
     /// </summary>
     Task<TlsReportIngestOutcome> IngestAsync(
-        TlsRptParseResult parsed, MailboxSource source, CancellationToken ct);
+        TlsRptParseResult parsed, ReportSource source, CancellationToken ct);
 }
 
 /// <summary>
@@ -38,7 +38,7 @@ public sealed class TlsReportIngestor(
     IDomainIngestResolver domainResolver) : ITlsReportIngestor
 {
     public async Task<TlsReportIngestOutcome> IngestAsync(
-        TlsRptParseResult parsed, MailboxSource source, CancellationToken ct)
+        TlsRptParseResult parsed, ReportSource source, CancellationToken ct)
     {
         var organizationName = Truncate(parsed.OrganizationName.Trim(), 255)!;
         var reportId = Truncate(parsed.ReportId.Trim(), 255)!;
@@ -96,7 +96,7 @@ public sealed class TlsReportIngestor(
     }
 
     private async Task<Guid?> TryInsertReportAsync(
-        Guid mailboxSourceId, string organizationName, string reportId, string? contactInfo,
+        Guid reportSourceId, string organizationName, string reportId, string? contactInfo,
         TlsRptParseResult parsed, long totalSuccessful, long totalFailed, CancellationToken ct)
     {
         var id = Guid.NewGuid();
@@ -104,7 +104,7 @@ public sealed class TlsReportIngestor(
             INSERT INTO smtp_tls_report
                 (""Id"", ""ReportSourceId"", ""OrganizationName"", ""ReportId"", ""ContactInfo"", ""RangeBeginUtc"", ""RangeEndUtc"", ""PolicyCount"", ""TotalSuccessfulSessionCount"", ""TotalFailureSessionCount"", ""IngestedAtUtc"")
             VALUES
-                ({id}, {mailboxSourceId}, {organizationName}, {reportId}, {contactInfo}, {parsed.RangeBeginUtc}, {parsed.RangeEndUtc}, {parsed.Policies.Count}, {totalSuccessful}, {totalFailed}, {DateTime.UtcNow})
+                ({id}, {reportSourceId}, {organizationName}, {reportId}, {contactInfo}, {parsed.RangeBeginUtc}, {parsed.RangeEndUtc}, {parsed.Policies.Count}, {totalSuccessful}, {totalFailed}, {DateTime.UtcNow})
             ON CONFLICT (""OrganizationName"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"") DO NOTHING;
             ", ct);
 
@@ -112,7 +112,7 @@ public sealed class TlsReportIngestor(
     }
 
     private async Task TryInsertLedgerAsync(
-        MailboxSource source, string organizationName, string reportId, string? contactInfo,
+        ReportSource source, string organizationName, string reportId, string? contactInfo,
         TlsRptParseResult parsed, long totalSuccessful, long totalFailed, CancellationToken ct)
     {
         var policyDomains = Truncate(

@@ -52,13 +52,13 @@ staff (`agency_admin` or `agency_analyst`).
 | PATCH | `/users/{id}` | admin |
 | PUT | `/users/{id}/grants` | admin — sets a viewer's client grants |
 
-### Mailbox sources and sync
+### Report sources and sync
 | Method | Path | Access |
 |---|---|---|
-| GET | `/mailbox-sources` | staff |
-| POST | `/mailbox-sources` | admin |
-| PATCH | `/mailbox-sources/{id}` | admin |
-| POST | `/mailbox-sources/{id}/sync` | staff — manual trigger |
+| GET | `/report-sources` | staff |
+| POST | `/report-sources` | admin |
+| PATCH | `/report-sources/{id}` | admin |
+| POST | `/report-sources/{id}/sync` | staff — manual trigger |
 | GET | `/mailbox-health` | staff |
 | GET | `/mailbox-sync-runs` | staff |
 
@@ -108,7 +108,7 @@ never a redirect) and `GET /mta-sts/ask?domain=` (Caddy's on-demand-TLS gate —
 | POST | `/admin/retention/purge` | admin — runs the purge now. Optional `batchSize` |
 | GET | `/admin/config/export` | admin — the configuration artifact, as a JSON download. Refused with 409 when no credential encryption key is set, because the mailbox passwords in it would be plaintext; `allowPlaintextCredentials=true` overrides |
 | GET | `/admin/config/import/preview` | admin — what an import would change; writes nothing |
-| POST | `/admin/config/import` | admin — `mode` of `restore` (only into an install nothing has been added to: no clients of your own, no domains, no mailbox sources) or `merge`. Additive: never deletes a row |
+| POST | `/admin/config/import` | admin — `mode` of `restore` (only into an install nothing has been added to: no clients of your own, no domains, no report sources) or `merge`. Additive: never deletes a row |
 | GET | `/admin/backup/status` | admin — offload destination, last success, bucket versioning, whether credentials are protected |
 | POST | `/admin/backup/offload` | admin — runs an offload pass now rather than waiting for the worker |
 | GET | `/admin/mailbox-retention/preview` | admin — per source: cutoff, eligible messages, and which rule is suspending it; deletes nothing |
@@ -265,11 +265,11 @@ Update domain settings or ownership transfer.
 
 ## 5) Mailbox Sources
 
-### GET `/mailbox-sources`
+### GET `/report-sources`
 
-List mailbox sources.
+List report sources.
 
-### POST `/mailbox-sources`
+### POST `/report-sources`
 
 Create source (IMAP or POP3).
 
@@ -294,10 +294,10 @@ Notes:
 - Password is encrypted at rest server-side.
 - One source may serve multiple clients through domain routing.
 
-### PATCH `/mailbox-sources/{sourceId}`
-### DELETE `/mailbox-sources/{sourceId}`
+### PATCH `/report-sources/{sourceId}`
+### DELETE `/report-sources/{sourceId}`
 
-### POST `/mailbox-sources/{sourceId}/sync`
+### POST `/report-sources/{sourceId}/sync`
 
 Manual sync trigger for operations/testing. Returns sync summary payload immediately from execution.
 
@@ -306,11 +306,11 @@ Notes:
 - Intended for operator use; steady-state sync is worker-scheduled.
 - Mailbox processing is read-only (does not delete emails).
 
-### POST `/mailbox-sources/{sourceId}/test-connection`
+### POST `/report-sources/{sourceId}/test-connection`
 
 Run connectivity/auth test.
 
-### GET `/mailbox-sources/{sourceId}/sync-runs`
+### GET `/report-sources/{sourceId}/sync-runs`
 
 List sync run history.
 
@@ -318,7 +318,7 @@ List sync run history.
 
 ### GET `/mailbox-sync-runs`
 
-List sync run history across mailbox sources.
+List sync run history across report sources.
 
 Filters:
 
@@ -327,7 +327,7 @@ Filters:
 
 ### GET `/mailbox-health`
 
-Operational health summary by mailbox source.
+Operational health summary by report source.
 
 Fields include:
 

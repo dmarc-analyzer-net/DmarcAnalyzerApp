@@ -122,7 +122,7 @@ export function DashboardPage() {
             </div>
             {staff ? (
               <Button asChild variant="secondary" size="sm">
-                <Link to="/mailbox-sources">Review mailbox sources</Link>
+                <Link to="/report-sources">Review report sources</Link>
               </Button>
             ) : null}
           </div>

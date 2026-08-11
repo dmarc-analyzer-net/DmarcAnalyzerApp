@@ -24,12 +24,16 @@ const DAY_OPTIONS = [7, 30, 90, 365, 730] as const
  * segment before the first dot covers every event in that family without
  * enumerating them.
  */
+// The values are what is stored in audit_event rows and are matched literally, so
+// `mailbox_source` stays even though the entity is now a report source: rows written
+// before the rename say that, and changing it here would hide all of them. Only the
+// labels follow the new name.
 const EVENT_GROUPS: Array<{ value: string; label: string }> = [
   { value: '', label: 'All activity' },
   { value: 'auth', label: 'Sign-in and sign-out' },
   { value: 'client', label: 'Clients' },
   { value: 'domain', label: 'Domains' },
-  { value: 'mailbox_source', label: 'Mailbox sources' },
+  { value: 'mailbox_source', label: 'Report sources' },
   { value: 'user', label: 'Users and access' },
   { value: 'alert', label: 'Alert triage' },
   { value: 'notification_recipient', label: 'Notification recipients' },
@@ -47,8 +51,8 @@ const EVENT_LABEL: Record<string, string> = {
   'client.updated': 'Client updated',
   'domain.created': 'Domain created',
   'domain.updated': 'Domain updated',
-  'mailbox_source.created': 'Mailbox source created',
-  'mailbox_source.updated': 'Mailbox source updated',
+  'mailbox_source.created': 'Report source created',
+  'mailbox_source.updated': 'Report source updated',
   'mailbox_source.sync.triggered': 'Sync triggered',
   'user.created': 'User created',
   'user.updated': 'User updated',

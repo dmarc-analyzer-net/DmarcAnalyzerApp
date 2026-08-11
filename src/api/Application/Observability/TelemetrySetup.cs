@@ -115,7 +115,7 @@ public static class TelemetrySetup
 
                 // Without these the exported record keeps the message template and drops the
                 // values, so a log line arrives at the collector as "Failed to parse DMARC
-                // attachment for mailbox source {MailboxSourceId}" with no id in it.
+                // attachment for report source {ReportSourceId}" with no id in it.
                 logging.IncludeFormattedMessage = true;
                 logging.IncludeScopes = true;
                 logging.ParseStateValues = true;

@@ -1,19 +1,19 @@
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Application.Security;
-using DmarcAnalyzer.Api.Contracts.MailboxSources;
+using DmarcAnalyzer.Api.Contracts.ReportSources;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
-namespace DmarcAnalyzer.Api.Application.MailboxSources;
+namespace DmarcAnalyzer.Api.Application.ReportSources;
 
-public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialProtector credentialProtector) : IMailboxSourceService
+public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialProtector credentialProtector) : IReportSourceService
 {
     private static readonly string[] SupportedProtocols = ["imap", "pop3"];
 
-    public async Task<IReadOnlyList<MailboxSourceDto>> ListAsync(CancellationToken ct)
+    public async Task<IReadOnlyList<ReportSourceDto>> ListAsync(CancellationToken ct)
     {
-        return await db.MailboxSources
+        return await db.ReportSources
             .AsNoTracking()
             .Include(x => x.DefaultClient)
             .OrderBy(x => x.Name)
@@ -21,12 +21,12 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
             .ToListAsync(ct);
     }
 
-    public async Task<ServiceResult<MailboxSourceDto>> CreateAsync(CreateMailboxSourceRequest request, CancellationToken ct)
+    public async Task<ServiceResult<ReportSourceDto>> CreateAsync(CreateReportSourceRequest request, CancellationToken ct)
     {
         var protocol = request.Protocol.Trim().ToLowerInvariant();
         if (!SupportedProtocols.Contains(protocol))
         {
-            return ServiceResult<MailboxSourceDto>.Failure("protocol must be imap or pop3", 400);
+            return ServiceResult<ReportSourceDto>.Failure("protocol must be imap or pop3", 400);
         }
 
         if (string.IsNullOrWhiteSpace(request.Name) ||
@@ -36,17 +36,17 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
             request.Port <= 0 ||
             request.DefaultClientId == Guid.Empty)
         {
-            return ServiceResult<MailboxSourceDto>.Failure("name, host, port, username, password, and defaultClientId are required", 400);
+            return ServiceResult<ReportSourceDto>.Failure("name, host, port, username, password, and defaultClientId are required", 400);
         }
 
         var clientExists = await db.Clients.AnyAsync(x => x.Id == request.DefaultClientId, ct);
         if (!clientExists)
         {
-            return ServiceResult<MailboxSourceDto>.Failure("default client not found", 400);
+            return ServiceResult<ReportSourceDto>.Failure("default client not found", 400);
         }
 
         var now = DateTime.UtcNow;
-        var source = new MailboxSource
+        var source = new ReportSource
         {
             Name = request.Name.Trim(),
             Protocol = protocol,
@@ -62,18 +62,18 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
             UpdatedAtUtc = now,
         };
 
-        db.MailboxSources.Add(source);
+        db.ReportSources.Add(source);
         await db.SaveChangesAsync(ct);
 
-        return ServiceResult<MailboxSourceDto>.Success(ToDto(source, null));
+        return ServiceResult<ReportSourceDto>.Success(ToDto(source, null));
     }
 
-    public async Task<ServiceResult<MailboxSourceDto>> UpdateAsync(Guid id, UpdateMailboxSourceRequest request, CancellationToken ct)
+    public async Task<ServiceResult<ReportSourceDto>> UpdateAsync(Guid id, UpdateReportSourceRequest request, CancellationToken ct)
     {
-        var source = await db.MailboxSources.SingleOrDefaultAsync(x => x.Id == id, ct);
+        var source = await db.ReportSources.SingleOrDefaultAsync(x => x.Id == id, ct);
         if (source is null)
         {
-            return ServiceResult<MailboxSourceDto>.Failure("not found", 404);
+            return ServiceResult<ReportSourceDto>.Failure("not found", 404);
         }
 
         if (request.Protocol is not null)
@@ -81,7 +81,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
             var protocol = request.Protocol.Trim().ToLowerInvariant();
             if (!SupportedProtocols.Contains(protocol))
             {
-                return ServiceResult<MailboxSourceDto>.Failure("protocol must be imap or pop3", 400);
+                return ServiceResult<ReportSourceDto>.Failure("protocol must be imap or pop3", 400);
             }
 
             source.Protocol = protocol;
@@ -91,7 +91,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         {
             if (string.IsNullOrWhiteSpace(request.Name))
             {
-                return ServiceResult<MailboxSourceDto>.Failure("name cannot be empty", 400);
+                return ServiceResult<ReportSourceDto>.Failure("name cannot be empty", 400);
             }
 
             source.Name = request.Name.Trim();
@@ -101,7 +101,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         {
             if (string.IsNullOrWhiteSpace(request.Host))
             {
-                return ServiceResult<MailboxSourceDto>.Failure("host cannot be empty", 400);
+                return ServiceResult<ReportSourceDto>.Failure("host cannot be empty", 400);
             }
 
             source.Host = request.Host.Trim().ToLowerInvariant();
@@ -111,7 +111,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         {
             if (request.Port.Value <= 0)
             {
-                return ServiceResult<MailboxSourceDto>.Failure("port must be greater than 0", 400);
+                return ServiceResult<ReportSourceDto>.Failure("port must be greater than 0", 400);
             }
 
             source.Port = request.Port.Value;
@@ -121,7 +121,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         {
             if (string.IsNullOrWhiteSpace(request.Username))
             {
-                return ServiceResult<MailboxSourceDto>.Failure("username cannot be empty", 400);
+                return ServiceResult<ReportSourceDto>.Failure("username cannot be empty", 400);
             }
 
             source.Username = request.Username.Trim();
@@ -131,7 +131,7 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         {
             if (string.IsNullOrWhiteSpace(request.Password))
             {
-                return ServiceResult<MailboxSourceDto>.Failure("password cannot be empty", 400);
+                return ServiceResult<ReportSourceDto>.Failure("password cannot be empty", 400);
             }
 
             source.PasswordEncrypted = credentialProtector.Protect(request.Password);
@@ -141,13 +141,13 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         {
             if (request.DefaultClientId.Value == Guid.Empty)
             {
-                return ServiceResult<MailboxSourceDto>.Failure("defaultClientId cannot be empty", 400);
+                return ServiceResult<ReportSourceDto>.Failure("defaultClientId cannot be empty", 400);
             }
 
             var clientExists = await db.Clients.AnyAsync(x => x.Id == request.DefaultClientId.Value, ct);
             if (!clientExists)
             {
-                return ServiceResult<MailboxSourceDto>.Failure("default client not found", 400);
+                return ServiceResult<ReportSourceDto>.Failure("default client not found", 400);
             }
 
             source.DefaultClientId = request.DefaultClientId.Value;
@@ -171,10 +171,10 @@ public sealed class MailboxSourceService(DmarcAnalyzerDbContext db, ICredentialP
         source.UpdatedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
-        return ServiceResult<MailboxSourceDto>.Success(ToDto(source, null));
+        return ServiceResult<ReportSourceDto>.Success(ToDto(source, null));
     }
 
-    private static MailboxSourceDto ToDto(MailboxSource x, string? defaultClientName) =>
+    private static ReportSourceDto ToDto(ReportSource x, string? defaultClientName) =>
         new(
             x.Id,
             x.Name,

@@ -61,7 +61,7 @@ public sealed class BackupExportTests
             // The DNS cache: written by the worker, must not travel.
             DnsPolicy = "reject", DnsLookupStatus = "found", DnsCheckedAtUtc = DateTime.UtcNow,
         };
-        var source = new MailboxSource
+        var source = new ReportSource
         {
             Name = "Acme mailbox", Host = "imap.example", Port = 993, Username = "dmarc@acme.example",
             PasswordEncrypted = "enc:v1:ZmFrZS1jaXBoZXJ0ZXh0", DefaultClientId = client.Id,
@@ -95,7 +95,7 @@ public sealed class BackupExportTests
 
         // Without these two the operator re-enters every mailbox password and every
         // account, which is the expensive half of a recovery.
-        Assert.Equal("enc:v1:ZmFrZS1jaXBoZXJ0ZXh0", Assert.Single(artifact.MailboxSources).PasswordEncrypted);
+        Assert.Equal("enc:v1:ZmFrZS1jaXBoZXJ0ZXh0", Assert.Single(artifact.ReportSources).PasswordEncrypted);
         Assert.Equal("pbkdf2$fake$hash", Assert.Single(artifact.Users).PasswordHash);
     }
 
@@ -232,7 +232,7 @@ public sealed class BackupExportTests
         var root = document.RootElement;
 
         Assert.Equal(
-            ["manifest", "clients", "domains", "mailboxSources", "notificationRecipients",
+            ["manifest", "clients", "domains", "reportSources", "notificationRecipients",
              "users", "userIdentities", "grants", "mtaStsPolicies"],
             root.EnumerateObject().Select(p => p.Name).ToArray());
 
@@ -251,7 +251,7 @@ public sealed class BackupExportTests
         Assert.Equal(
             ["id", "name", "protocol", "host", "port", "useTls", "username", "passwordEncrypted",
              "defaultClientId", "isActive", "createdAtUtc", "updatedAtUtc"],
-            root.GetProperty("mailboxSources")[0].EnumerateObject().Select(p => p.Name).ToArray());
+            root.GetProperty("reportSources")[0].EnumerateObject().Select(p => p.Name).ToArray());
 
         Assert.Equal(1, root.GetProperty("manifest").GetProperty("formatVersion").GetInt32());
     }

@@ -60,7 +60,7 @@ public sealed class MailboxRetentionPlanner(
     public async Task<IReadOnlyList<MailboxRetentionPlan>> PlanAsync(CancellationToken ct)
     {
         var graceDays = Math.Max(0, _options.MailboxRetentionGraceDays);
-        var sources = await db.MailboxSources.AsNoTracking().OrderBy(x => x.Name).ToListAsync(ct);
+        var sources = await db.ReportSources.AsNoTracking().OrderBy(x => x.Name).ToListAsync(ct);
         var plans = new List<MailboxRetentionPlan>(sources.Count);
 
         foreach (var source in sources)

@@ -23,8 +23,8 @@ public static class AuditEvents
     // on every install; changing it does not rename anything, it splits the history in two —
     // rows before the upgrade say one thing, rows after say another, and the console's audit
     // filter matches on the literal. Nothing here refers to the table.
-    public const string MailboxSourceCreated = "mailbox_source.created";
-    public const string MailboxSourceUpdated = "mailbox_source.updated";
+    public const string ReportSourceCreated = "mailbox_source.created";
+    public const string ReportSourceUpdated = "mailbox_source.updated";
     public const string MailboxSyncTriggered = "mailbox_source.sync.triggered";
 
     public const string UserCreated = "user.created";

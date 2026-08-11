@@ -1,6 +1,6 @@
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
-public sealed record MailboxSourceHealthDto(
+public sealed record ReportSourceHealthDto(
     Guid ReportSourceId,
     string Name,
     bool IsActive,

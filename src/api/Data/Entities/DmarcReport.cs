@@ -21,6 +21,6 @@ public sealed class DmarcReport
     public string SpfAlignment { get; set; } = "relaxed";
 
     public Domain? Domain { get; set; }
-    public MailboxSource? MailboxSource { get; set; }
+    public ReportSource? ReportSource { get; set; }
     public ICollection<DmarcReportRecord> Records { get; set; } = new List<DmarcReportRecord>();
 }

@@ -22,7 +22,7 @@ import type {
 const ARTIFACT_COLLECTIONS = [
   'clients',
   'domains',
-  'mailboxSources',
+  'reportSources',
   'notificationRecipients',
   'users',
   'userIdentities',
@@ -37,7 +37,7 @@ const ARTIFACT_COLLECTIONS = [
 const ENTITY_LABEL: Record<string, string> = {
   clients: 'Clients',
   domains: 'Domains',
-  mailboxSources: 'Mailbox sources',
+  reportSources: 'Report sources',
   notificationRecipients: 'Notification recipients',
   users: 'Users',
   userIdentities: 'Linked identities',

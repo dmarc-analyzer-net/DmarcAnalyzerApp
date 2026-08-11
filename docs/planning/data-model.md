@@ -135,7 +135,7 @@ A failed lookup keeps the previous policy *and* source. A transient SERVFAIL mus
 not make a `p=reject` domain look unprotected; only a successful lookup finding
 nothing anywhere clears them.
 
-## A.3 Mailbox sources and sync history
+## A.3 Report sources and sync history
 
 ### `report_source`
 A place reports arrive from. Today that is always an IMAP mailbox and `Protocol`
@@ -324,7 +324,7 @@ Unique `(ClientId, OrganizationName, ReportId, ReportRangeBeginUtc,
 ReportRangeEndUtc)` — the DMARC key with the policy domain (meaningless for a
 multi-domain report) swapped for the organization name. `PolicyDomains` is a
 comma-joined, truncated copy for post-purge "did we ever receive it" searches.
-`ClientId` is the mailbox source's default client, exactly as for DMARC.
+`ClientId` is the report source's default client, exactly as for DMARC.
 
 Retention: policy rows purge per client on the window end; the ledger likewise;
 report rows left with no policies sweep once older than the **longest**
@@ -515,7 +515,7 @@ client
       ← dmarc_report.DomainId
           ← dmarc_report_record.DmarcReportId
               ← dmarc_report_record_{dkim,spf}_auth_result.DmarcReportRecordId
-  ← mailbox_source.DefaultClientId
+  ← report_source.DefaultClientId
       ← mailbox_sync_run.ReportSourceId
   ← dmarc_report_ingest.ClientId
   ← user_client_grant.ClientId

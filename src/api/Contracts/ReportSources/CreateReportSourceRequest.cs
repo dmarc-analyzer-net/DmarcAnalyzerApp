@@ -1,6 +1,6 @@
-namespace DmarcAnalyzer.Api.Contracts.MailboxSources;
+namespace DmarcAnalyzer.Api.Contracts.ReportSources;
 
-public sealed class CreateMailboxSourceRequest
+public sealed class CreateReportSourceRequest
 {
     public string Name { get; set; } = string.Empty;
     public string Protocol { get; set; } = "imap";

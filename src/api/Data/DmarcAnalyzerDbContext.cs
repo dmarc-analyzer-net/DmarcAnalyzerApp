@@ -11,7 +11,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<DmarcReportRecord> DmarcReportRecords => Set<DmarcReportRecord>();
     public DbSet<DmarcReportRecordDkimAuthResult> DmarcReportRecordDkimAuthResults => Set<DmarcReportRecordDkimAuthResult>();
     public DbSet<DmarcReportRecordSpfAuthResult> DmarcReportRecordSpfAuthResults => Set<DmarcReportRecordSpfAuthResult>();
-    public DbSet<MailboxSource> MailboxSources => Set<MailboxSource>();
+    public DbSet<ReportSource> ReportSources => Set<ReportSource>();
     public DbSet<DmarcReportIngest> DmarcReportIngests => Set<DmarcReportIngest>();
     public DbSet<NotificationRecipient> NotificationRecipients => Set<NotificationRecipient>();
     public DbSet<AlertEvent> AlertEvents => Set<AlertEvent>();
@@ -130,12 +130,12 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
-        modelBuilder.Entity<MailboxSource>(entity =>
+        modelBuilder.Entity<ReportSource>(entity =>
         {
             // Named for what it is rather than for how the first implementation
             // reached it: a row here is a place reports arrive from, and IMAP is
             // one protocol among the ones Protocol can hold. The CLR type is still
-            // MailboxSource — renaming ~780 identifiers is a separate mechanical
+            // ReportSource — renaming ~780 identifiers is a separate mechanical
             // change, deliberately not mixed into a migration.
             entity.ToTable("report_source");
             entity.HasKey(x => x.Id);
@@ -178,7 +178,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .HasForeignKey(x => x.ClientId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasOne(x => x.MailboxSource)
+            entity.HasOne(x => x.ReportSource)
                 .WithMany()
                 .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
@@ -195,7 +195,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .HasDatabaseName("IX_mailbox_sync_run_ReportSourceId");
             entity.HasIndex(x => x.StartedAtUtc);
 
-            entity.HasOne(x => x.MailboxSource)
+            entity.HasOne(x => x.ReportSource)
                 .WithMany()
                 .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
@@ -221,7 +221,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .HasForeignKey(x => x.DomainId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasOne(x => x.MailboxSource)
+            entity.HasOne(x => x.ReportSource)
                 .WithMany()
                 .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
@@ -428,7 +428,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             // The orphan sweep in retention scans on this.
             entity.HasIndex(x => x.RangeEndUtc);
 
-            entity.HasOne(x => x.MailboxSource)
+            entity.HasOne(x => x.ReportSource)
                 .WithMany()
                 .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
@@ -507,7 +507,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .HasForeignKey(x => x.ClientId)
                 .OnDelete(DeleteBehavior.Restrict);
 
-            entity.HasOne(x => x.MailboxSource)
+            entity.HasOne(x => x.ReportSource)
                 .WithMany()
                 .HasForeignKey(x => x.ReportSourceId)
                 .OnDelete(DeleteBehavior.Restrict);
