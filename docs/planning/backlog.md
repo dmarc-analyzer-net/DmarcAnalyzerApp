@@ -237,7 +237,7 @@ designed and then built differently.** `data-model.md` and the newer ops docs
 are accurate; the older planning docs are not, and they are what a new
 contributor reads first.
 
-### `architecture.md` — four things that do not exist
+### `architecture.md` — five drift items, two of them now fixed
 
 - [ ] (todo) **§7 documents a DB-backed job queue** (`job_type`, `payload`,
       `attempt_count`, `locked_by`, dead-letter states, backoff). There is no
@@ -246,19 +246,24 @@ contributor reads first.
       ADR 0008 states it plainly — "there is no claim path" — and
       `data-model.md:320` already records the truth. The class name is the only
       surviving trace of the decision.
-- [ ] (todo) **§5 lists 21 entities; 12 do not exist** — `sync_run`,
-      `sync_checkpoint`, `raw_report`, `dmarc_record`, `alert_rule`,
-      `digest_schedule`, `export_job`, `magic_link_nonce`, `retention_policy`
-      and others. `data-model.md:9` explicitly warns these guessed names "are
-      *not* what shipped". Delete the list and point at `data-model.md` rather
-      than maintaining a second, wrong copy.
-- [ ] (todo) **"All client-scoped entities include `client_id`" is false** for
-      the four report tables and `mailbox_sync_run`. Tenancy is transitive via
-      `dmarc_report.DomainId → domain.ClientId`, which is *why* global domain
-      uniqueness is load-bearing. None of the three composite indexes it lists
-      exists, and `grep HasQueryFilter` returns nothing — isolation is explicit
-      in application code, not EF global filters. Worth stating correctly: it is
-      the single most important invariant in the system.
+- [x] (done) **§5 listed 20 entities; 12 did not exist** — eight were never
+      created (`mailbox_source_client`, `sync_checkpoint`, `raw_report`,
+      `alert_rule`, `digest_schedule`, `export_job`, `magic_link_nonce`,
+      `retention_policy`) and four shipped under other names (`sync_run`,
+      `dmarc_record`, `dmarc_auth_result`, `alert_recipient`). The list is gone
+      rather than re-synced, because a second copy of the schema is what let it
+      drift; §5 now points at `data-model.md` and keeps only what is specific to
+      the design — tenancy, the two dedup keys, and a table recording where the
+      build departed from the sketch. That table is the part worth keeping: a
+      corrected list would have erased the fact that these names were ever
+      intended, which is what makes the departures legible.
+- [x] (done) **"All client-scoped entities include `client_id`" was false** for
+      the four report tables and `mailbox_sync_run`. §5 now states the transitive
+      path (`dmarc_report.DomainId → domain.ClientId`) and says why global domain
+      uniqueness is load-bearing rather than tidy, drops the three composite
+      indexes that never existed, and records that isolation is enforced in
+      application code with no `HasQueryFilter` anywhere — so nothing in the data
+      layer catches a query that forgets it.
 - [ ] (todo) **Alerts, digest, retention, notifications and audit are marked
       "planned, not built"** across §98, §128–130 and two "Not implemented"
       banners. All five ship, with modules, services, worker passes and console

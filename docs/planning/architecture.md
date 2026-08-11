@@ -175,40 +175,67 @@ authoritative endpoint list.
 
 ## 5) Data Model (Tenant-Keyed, Single DB)
 
-All client-scoped entities include `client_id`.
+This section was written before the build, and the entity list it originally
+carried was a sketch rather than a schema. Eight of the twenty entities it named
+were never created, four more arrived under different names, and it anticipated
+none of the twelve auth, TLS-RPT/MTA-STS and config-export tables that exist
+today. The list has been removed rather than re-synced: keeping a second copy of
+the schema here is what let it drift in the first place.
 
-Core entities:
+**The implemented data model is [`data-model.md`](data-model.md)** — entities,
+columns, keys, tenancy paths and retention, tracked against the code. What
+follows is only the shape the design settled on, and the places the build
+departed from it.
 
-- `agency_user`
-- `client`
-- `domain` (globally unique)
-- `report_source` (IMAP/POP3 settings, default client)
-- `mailbox_source_client` (if one source explicitly services multiple clients)
-- `sync_run`
-- `sync_checkpoint`
-- `raw_report` (raw XML payload hash + metadata)
-- `dmarc_report` (normalized report envelope)
-- `dmarc_record` (row-level aggregate records)
-- `dmarc_auth_result` (spf/dkim outcomes)
-- `alert_rule`
-- `alert_recipient`
-- `alert_event`
-- `digest_schedule`
-- `digest_delivery`
-- `export_job`
-- `magic_link_nonce`
-- `audit_event`
-- `retention_policy`
+### Tenancy
 
-Constraints and indexes:
+Not every client-scoped table carries a client id — the four report tables and
+`mailbox_sync_run` do not. `domain.ClientId` and `report_source.DefaultClientId`
+are the direct keys; reports and records derive tenancy transitively through
+`dmarc_report.DomainId → domain.ClientId`. Domain names are globally unique, and
+that is *why* the uniqueness is load-bearing rather than merely tidy: it is what
+makes the derivation unambiguous.
 
-- Unique `domain.name` globally.
-- Dedup unique key for normalized reports: `(domain_id, report_id, begin_utc, end_utc)`.
-- Indexed query paths:
-  - `(client_id, domain_id, report_date)`
-  - `(client_id, source_ip, report_date)`
-  - `(client_id, disposition, report_date)`
-- Partitioning can be introduced later by report period if needed.
+Isolation is enforced explicitly in application code, not by the ORM — there is
+no `HasQueryFilter` anywhere in the codebase. This is the single most important
+invariant in the system, and nothing in the data layer will catch a query that
+forgets it.
+
+### Deduplication
+
+Two unique keys do the work, at different levels:
+
+- `dmarc_report` on `(DomainId, ReportId, RangeBeginUtc, RangeEndUtc)` — the
+  report envelope itself.
+- `dmarc_report_ingest` on `(ClientId, PolicyDomain, ReportId,
+  ReportRangeBeginUtc, ReportRangeEndUtc)` — the ledger, which is what a repeated
+  mailbox pass hits first.
+
+Partitioning by report period is still available as a later step and has not been
+introduced.
+
+### Where the build departed from this sketch
+
+| Sketched | What exists |
+|---|---|
+| `mailbox_source_client` | never built — a source has one `DefaultClientId`, and routing is by policy domain |
+| `sync_run` | `mailbox_sync_run` |
+| `sync_checkpoint` | never built — checkpoint columns live on `report_source` |
+| `raw_report` | never built — raw report mail is archived outside the database, before parsing and independently of whether it parses |
+| `dmarc_record` | `dmarc_report_record` |
+| `dmarc_auth_result` | split in two: `dmarc_report_record_dkim_auth_result` and `dmarc_report_record_spf_auth_result` |
+| `alert_rule` | never built — thresholds are columns on `client` (`AlertsEnabled`, `AlertComplianceDropPercent`, `AlertMinMessages`) |
+| `alert_recipient` | `notification_recipient`, unique on `(ClientId, Email)` |
+| `digest_schedule` | never built — `digest_delivery` is unique on `(ClientId, PeriodStartUtc)` |
+| `export_job` | never built |
+| `magic_link_nonce` | never built — magic links are still on the backlog, and no token or bearer path exists |
+| `retention_policy` | never built — retention is `client.RetentionMonths`, with `LegalHold` |
+
+Arriving since, and unanticipated by the sketch: `user_session`, `user_identity`
+and `user_client_grant` for auth; `smtp_tls_report`, `smtp_tls_report_policy`,
+`smtp_tls_failure_detail`, `tls_report_ingest`, `mta_sts_state` and
+`mta_sts_policy` for TLS-RPT and MTA-STS; and `backup_stream_state` for config
+export.
 
 ## 6) Ingestion and Routing Flow
 
