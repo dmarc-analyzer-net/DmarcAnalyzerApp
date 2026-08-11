@@ -46,6 +46,17 @@ design system.) See the categorized lists below for the full inventory.
 - [x] (done) Add support for ZIP and GZIP attachment extraction in ingestion pipeline (magic-byte detection; SharpCompress codecs incl. deflate64/bzip2/lzma/zstd).
 - [x] (done) Implement unlimited initial mailbox backfill (oldest-to-newest) with durable checkpoints.
 - [ ] (todo) Add magic link access model (single-client, read-only, 7-day default expiry).
+      Per ADR 0010 this stays a separate mechanism from machine credentials — a
+      human, one client, read-only, short-lived — but must reuse the same token
+      minting and constant-time verification helper rather than growing a second one.
+- [ ] (todo) **Implement machine credentials** ([ADR 0010](adr/0010-machine-credentials.md),
+      decided and unbuilt). `api_credential` as a first-class row so rotation can
+      overlap, split `dmarcanalyzer_<id>_<secret>` token with SHA-256 over the
+      secret half (not the password PBKDF2 — a 256-bit random token has no
+      guessing attack to slow down), reveal-once, `Authorization: Bearer`, and
+      deny-by-default per endpoint the way `client_viewer` already is. Gates the
+      HTTP ingestion endpoint proposed in #156; the seam and bounds work in that
+      issue's steps 1–2 does not depend on it and can land first.
 
 ## Medium Priority
 

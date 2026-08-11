@@ -90,6 +90,7 @@ cd src/web && npm install              # ~274M; or symlink node_modules if packa
 7. [Authorization & pluggable authentication](docs/planning/adr/0007-authorization-and-pluggable-authentication.md)
 8. [Deployment topologies & config contract](docs/planning/adr/0008-deployment-topologies-and-config-contract.md)
 9. [Configuration export & recovery](docs/planning/adr/0009-configuration-export-and-recovery.md)
+10. [Machine credentials](docs/planning/adr/0010-machine-credentials.md)
 
 ### Operations runbooks — [`docs/ops/`](docs/ops/)
 - [Directory listings](docs/ops/directory-listings.md) — Artifact Hub is live with the Verified publisher badge; the awesome-selfhosted PR was closed unmerged without comment; Umbrel and CasaOS are awaiting review

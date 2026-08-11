@@ -19,3 +19,4 @@ This folder captures key technical and product architecture decisions for `Dmarc
 - `0007-authorization-and-pluggable-authentication.md`
 - `0008-deployment-topologies-and-config-contract.md`
 - `0009-configuration-export-and-recovery.md`
+- `0010-machine-credentials.md`
