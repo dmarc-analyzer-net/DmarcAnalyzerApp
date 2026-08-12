@@ -63,6 +63,7 @@ public sealed class ReportIngestionModule : ICarterModule
                 : Results.Json(new { error = result.Error }, statusCode: result.StatusCode);
         })
         .RequireMachineCredential(MachineCredentialKinds.ReportIngest)
+        .RequireRateLimiting(ReportIngestRateLimiting.PolicyName)
         .DisableAntiforgery();
     }
 

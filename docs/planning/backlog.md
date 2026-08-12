@@ -62,7 +62,8 @@ design system.) See the categorized lists below for the full inventory.
       extractor, parsers and ingestors the mailbox worker uses, with SHA-256 transport
       idempotency in `report_ingest_receipt` and a request-size ceiling of its own. The
       `api` protocol is accepted on a report source, which takes no host, username or
-      password. Console screen for issuing and revoking.
+      password. Console screen for issuing and revoking. Rate limited per credential, which
+      ADR 0010 required before the endpoint is reachable from the internet.
 
 - [ ] (step 1) **`APP_MODE=all` — combined runtime mode.** One container running
       the API and the worker loop in-process. The web host already registers every

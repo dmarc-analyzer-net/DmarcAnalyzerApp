@@ -245,6 +245,7 @@ builder.Services.AddScoped<ITlsReportIngestor, TlsReportIngestor>();
 builder.Services.AddScoped<IDmarcReportIngestor, DmarcReportIngestor>();
 builder.Services.AddScoped<IApiCredentialService, ApiCredentialService>();
 builder.Services.AddScoped<IPushedReportIngestService, PushedReportIngestService>();
+builder.Services.AddReportIngestRateLimiter();
 builder.Services.AddScoped<MachineCallerContext>();
 builder.Services.AddScoped<IMachineCallerContext>(sp => sp.GetRequiredService<MachineCallerContext>());
 builder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
@@ -374,6 +375,7 @@ if (app.Configuration.GetValue<bool>("Auth:Oidc:Enabled"))
 // reaches the session middleware's cookie check. Authorisation for both is decided
 // afterwards, in one place.
 app.UseMiddleware<MachineAuthMiddleware>();
+app.UseRateLimiter();
 app.UseMiddleware<SessionAuthMiddleware>();
 app.UseMiddleware<RoleAuthorizationMiddleware>();
 

@@ -724,6 +724,8 @@ only.
 - `413` — over `Worker:MaxPushedReportRequestBytes`, or expanding past the decompression
   limits. The message names the limit.
 - `401` — missing, malformed, revoked or expired credential.
+- `429` — too many requests for this credential, with `Retry-After` in seconds. The
+  bucket is per credential, not per address, so one caller cannot starve another.
 
 A payload that fails entirely records no receipt, so the caller can retry it.
 

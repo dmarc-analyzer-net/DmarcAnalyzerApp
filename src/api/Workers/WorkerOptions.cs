@@ -79,6 +79,22 @@ public sealed class WorkerOptions
     /// </summary>
     public long MaxPushedReportRequestBytes { get; set; } = 32L * 1024 * 1024;
 
+    /// <summary>
+    /// Requests one credential may make to the ingestion endpoint per
+    /// <see cref="ReportIngestRateLimitWindowSeconds"/>.
+    /// <para>
+    /// The size ceiling bounds one request; this bounds how many. Without it a leaked
+    /// credential can post the maximum payload as fast as the network allows, and the size
+    /// limit only decides how much damage each one does. The default is far above any real
+    /// reporting pipeline — aggregate reports arrive daily, not continuously — so it should
+    /// only ever be reached by something that has gone wrong or gone hostile.
+    /// </para>
+    /// </summary>
+    public int ReportIngestRateLimitPermits { get; set; } = 60;
+
+    /// <summary>Window the permit count applies to.</summary>
+    public int ReportIngestRateLimitWindowSeconds { get; set; } = 60;
+
     public int MaxRetryAttempts { get; set; } = 3;
     public int RetryBaseDelaySeconds { get; set; } = 2;
     public int StaleRunTimeoutMinutes { get; set; } = 30;
