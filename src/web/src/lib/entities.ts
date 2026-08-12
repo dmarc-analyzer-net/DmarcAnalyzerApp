@@ -49,6 +49,7 @@ export type Domain = {
 export type ReportSource = {
   id: string
   name: string
+  /** Only 'imap' can be created; rows predating that removal may still say 'pop3'. */
   protocol: 'imap' | 'pop3'
   host: string
   port: number

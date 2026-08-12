@@ -9,7 +9,21 @@ namespace DmarcAnalyzer.Api.Application.ReportSources;
 
 public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialProtector credentialProtector) : IReportSourceService
 {
-    private static readonly string[] SupportedProtocols = ["imap", "pop3"];
+    /// <summary>
+    /// What a source may actually be, not what it might one day be.
+    /// <para>
+    /// <c>pop3</c> was accepted here for a long time and never worked: the worker polls
+    /// <c>Protocol == "imap"</c> and manual sync refuses anything else, so a POP3 source
+    /// could be created, would appear in the console, and would silently never ingest a
+    /// single report. An option that does nothing is worse than an absent one — the
+    /// operator has no way to tell it apart from a mailbox with no mail in it.
+    /// </para>
+    /// <para>
+    /// Rows created before this stay as they are and keep not syncing, which is what they
+    /// already did. Add a value back only when something reads it.
+    /// </para>
+    /// </summary>
+    private static readonly string[] SupportedProtocols = ["imap"];
 
     public async Task<IReadOnlyList<ReportSourceDto>> ListAsync(CancellationToken ct)
     {
@@ -26,7 +40,7 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
         var protocol = request.Protocol.Trim().ToLowerInvariant();
         if (!SupportedProtocols.Contains(protocol))
         {
-            return ServiceResult<ReportSourceDto>.Failure("protocol must be imap or pop3", 400);
+            return ServiceResult<ReportSourceDto>.Failure("protocol must be imap", 400);
         }
 
         if (string.IsNullOrWhiteSpace(request.Name) ||
@@ -79,9 +93,16 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
         if (request.Protocol is not null)
         {
             var protocol = request.Protocol.Trim().ToLowerInvariant();
-            if (!SupportedProtocols.Contains(protocol))
+
+            // Unchanged is always allowed, even when the value is no longer one that can
+            // be created. A row predating the removal of pop3 would otherwise be
+            // uneditable: every save resends its own protocol and would be refused, so an
+            // operator could not even rename the source, let alone point it at IMAP.
+            // Only a *change* has to land on something supported.
+            var unchanged = string.Equals(protocol, source.Protocol, StringComparison.Ordinal);
+            if (!unchanged && !SupportedProtocols.Contains(protocol))
             {
-                return ServiceResult<ReportSourceDto>.Failure("protocol must be imap or pop3", 400);
+                return ServiceResult<ReportSourceDto>.Failure("protocol must be imap", 400);
             }
 
             source.Protocol = protocol;

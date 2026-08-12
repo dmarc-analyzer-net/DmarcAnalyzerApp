@@ -34,6 +34,10 @@ design system.) See the categorized lists below for the full inventory.
 - [x] (done) Integrate `DmarcRua` serializer and validate parsing against sample RUA XML fixtures.
 - [x] (done) Design PostgreSQL schema for agency, clients, domains, report sources, reports, records, and retention policies.
 - [ ] (todo) Add POP3 support to mailbox ingestion (IMAP via MailKit is implemented).
+      Note that `pop3` is no longer an accepted `protocol` value: it validated but never
+      worked — the worker polls `Protocol == "imap"` and manual sync refuses anything
+      else — so a POP3 source could be created and would silently never ingest. Whoever
+      builds this puts the value back at the same time as the code that reads it.
 - [x] (done) Implement tenant-aware data access model with strict client isolation for agency operators (client_viewer scoping via per-request user context).
 - [x] (done) Implement single-database tenant-keyed architecture (direct or transitive ClientId on all client-scoped entities, enforced in query services).
 - [x] (done) Define RBAC with agency_admin/agency_analyst/client_viewer roles (deny-by-default endpoint enforcement; in-app client grants).

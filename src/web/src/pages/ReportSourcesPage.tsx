@@ -613,7 +613,10 @@ export function ReportSourcesPage() {
                   }
                 >
                   <option value="imap">IMAP</option>
-                  <option value="pop3">POP3</option>
+                  {/* Only shown for a source that already is one. POP3 cannot be
+                      chosen: it was never implemented, and a source set to it would
+                      silently never ingest. */}
+                  {mailboxForm.protocol === 'pop3' && <option value="pop3">POP3 (not supported)</option>}
                 </Select>
               </label>
               <label className="grid gap-1.5 text-sm font-medium text-body">
