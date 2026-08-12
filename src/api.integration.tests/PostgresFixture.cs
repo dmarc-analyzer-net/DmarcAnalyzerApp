@@ -63,6 +63,10 @@ public sealed class PostgresFixture : IAsyncLifetime
                 dmarc_report_record,
                 dmarc_report,
                 dmarc_report_ingest,
+                smtp_tls_failure_detail,
+                smtp_tls_report_policy,
+                smtp_tls_report,
+                tls_report_ingest,
                 domain,
                 report_source,
                 client

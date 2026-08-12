@@ -171,12 +171,19 @@ Sequenced; each step is independently shippable.
       would skip the chain operators actually run). Kept out of `src/api.tests` so that
       suite stays at ~1s and needs no Docker.
 
-      Six tests: atomic report+records+auth-results+ledger, duplicate detection, domain
-      survival across a failed report, policy-domain normalisation, and a different
-      reporting window not counting as a duplicate. The regression test was checked by
-      reintroducing the original bug — moving the report insert back outside the
-      transaction — and watching it fail with the orphaned report (expected 0, actual 1)
-      before restoring the fix.
+      Fourteen tests across all three raw-SQL services, none of which had any database
+      coverage before: the DMARC ingestor (atomic report+records+auth-results+ledger,
+      duplicate detection, domain survival across a failed report, policy-domain
+      normalisation, a different reporting window not being a duplicate), the TLS
+      ingestor (its own class comment conceded "InMemory tests cannot exercise it"), and
+      `DomainIngestResolver`, whose `ON CONFLICT` + re-query race was described in a
+      comment and verified by nothing.
+
+      Two of them were checked by breaking the code rather than trusting the assertion.
+      Moving the report insert back outside the transaction reproduces the orphaned
+      report (expected 0, actual 1). Making the resolver trust its own generated id
+      instead of re-querying yields nine distinct ids from ten concurrent callers —
+      nine dangling foreign keys, which is what the re-query exists to prevent.
 
 - [ ] (todo) Implement API endpoints for report upload, mailbox sync trigger, and report/query retrieval.
 - [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, report sources).
