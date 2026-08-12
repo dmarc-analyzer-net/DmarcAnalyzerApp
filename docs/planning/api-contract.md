@@ -59,6 +59,10 @@ staff (`agency_admin` or `agency_analyst`).
 | POST | `/report-sources` | admin |
 | PATCH | `/report-sources/{id}` | admin |
 | POST | `/report-sources/{id}/sync` | staff — manual trigger |
+| GET | `/api-credentials` | admin |
+| POST | `/api-credentials` | admin — issues, returns the token once |
+| POST | `/api-credentials/{id}/revoke` | admin |
+| POST | `/reports` | **machine credential only** (`report_ingest`) |
 | GET | `/mailbox-health` | staff |
 | GET | `/mailbox-sync-runs` | staff |
 
@@ -688,3 +692,43 @@ Operational status for queues, workers, and key dependencies.
 - `409` conflict (unique/domain ownership/dedup constraints)
 - `429` rate/size limits
 - `500` internal error
+
+
+## Machine ingestion
+
+### POST `/reports`
+
+Accepts raw DMARC or SMTP TLS report bytes pushed by an external system. See
+[ADR 0010](adr/0010-machine-credentials.md).
+
+Authenticated with `Authorization: Bearer <token>` and **nothing else** — a cookie
+session is refused with 403, because the endpoint resolves its report source, and
+therefore its client, from the credential. There is deliberately no source id in the
+path: request data cannot choose where the report lands.
+
+Body is the raw payload — XML, JSON, gzip or zip, detected by magic bytes exactly as a
+mailbox attachment is. `Content-Type` and the filename in `Content-Disposition` are hints
+only.
+
+```
+200  { "payloadSha256": "…", "replay": false, "inserted": 1, "duplicate": 0,
+       "failed": 0, "payloads": [ { "sourceName": "…", "kind": "dmarc", "result": "inserted" } ] }
+```
+
+- **`replay: true`** — these exact bytes were already accepted from this source. Nothing
+  was re-parsed and the payload list is empty. This is what a retrying caller sees when
+  its earlier response was lost.
+- **`duplicate`** — the payload was new but the reports inside it were already stored,
+  caught by the same report-level dedup the mailbox path uses.
+- `400` — empty body, or nothing recognisable inside it.
+- `413` — over `Worker:MaxPushedReportRequestBytes`, or expanding past the decompression
+  limits. The message names the limit.
+- `401` — missing, malformed, revoked or expired credential.
+
+A payload that fails entirely records no receipt, so the caller can retry it.
+
+### GET/POST `/api-credentials`
+
+Admin only. `POST` returns the token **once**, in the creation response; no endpoint can
+return it again. `POST /{id}/revoke` is idempotent and keeps the original revocation
+timestamp.

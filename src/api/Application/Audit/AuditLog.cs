@@ -27,6 +27,9 @@ public static class AuditEvents
     public const string ReportSourceUpdated = "mailbox_source.updated";
     public const string MailboxSyncTriggered = "mailbox_source.sync.triggered";
 
+    public const string ApiCredentialIssued = "api_credential.issued";
+    public const string ApiCredentialRevoked = "api_credential.revoked";
+
     public const string UserCreated = "user.created";
     public const string UserUpdated = "user.updated";
     public const string UserGrantsChanged = "user.grants.changed";

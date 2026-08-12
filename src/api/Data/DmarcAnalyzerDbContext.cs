@@ -29,6 +29,8 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<SmtpTlsReportPolicy> SmtpTlsReportPolicies => Set<SmtpTlsReportPolicy>();
     public DbSet<SmtpTlsFailureDetail> SmtpTlsFailureDetails => Set<SmtpTlsFailureDetail>();
     public DbSet<TlsReportIngest> TlsReportIngests => Set<TlsReportIngest>();
+    public DbSet<ApiCredential> ApiCredentials => Set<ApiCredential>();
+    public DbSet<ReportIngestReceipt> ReportIngestReceipts => Set<ReportIngestReceipt>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -153,6 +155,46 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                 .WithMany()
                 .HasForeignKey(x => x.DefaultClientId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ApiCredential>(entity =>
+        {
+            entity.ToTable("api_credential");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(200).IsRequired();
+            entity.Property(x => x.Kind).HasMaxLength(32).IsRequired();
+            entity.Property(x => x.TokenId).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.TokenHash).HasMaxLength(128).IsRequired();
+
+            // Unique because it is the lookup key, and indexed because every authenticated
+            // machine request resolves through it — one seek rather than a scan that would
+            // have to hash the presented secret against every row.
+            entity.HasIndex(x => x.TokenId).IsUnique();
+            entity.HasIndex(x => x.ReportSourceId);
+
+            // Restrict, not cascade: deleting a source out from under a live credential
+            // should be a decision an operator is made to confront, not a silent revocation.
+            entity.HasOne(x => x.ReportSource)
+                .WithMany()
+                .HasForeignKey(x => x.ReportSourceId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<ReportIngestReceipt>(entity =>
+        {
+            entity.ToTable("report_ingest_receipt");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PayloadSha256).HasMaxLength(64).IsRequired();
+
+            // Unique per source, not globally: two sources legitimately receiving the same
+            // forwarded report are two ingests, and collapsing them would silently drop one.
+            entity.HasIndex(x => new { x.ReportSourceId, x.PayloadSha256 }).IsUnique();
+            entity.HasIndex(x => x.ReceivedAtUtc);
+
+            entity.HasOne(x => x.ReportSource)
+                .WithMany()
+                .HasForeignKey(x => x.ReportSourceId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<DmarcReportIngest>(entity =>

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 
+import { ApiCredentialsCard } from '@/components/ApiCredentialsCard'
 import { Notice } from '@/components/Notice'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -33,7 +34,7 @@ type MailboxOpsFilter = 'all' | 'failed' | 'parse-failures' | 'stale-success'
 
 const initialMailboxForm = {
   name: '',
-  protocol: 'imap' as 'imap' | 'pop3',
+  protocol: 'imap' as 'imap' | 'api' | 'pop3',
   host: '',
   port: 993,
   useTls: true,
@@ -90,8 +91,12 @@ export function ReportSourcesPage() {
   const [syncingId, setSyncingId] = useState<string | null>(null)
 
   const [dialogOpen, setDialogOpen] = useState(false)
+
   const [editingMailboxId, setEditingMailboxId] = useState<string | null>(null)
   const [mailboxForm, setMailboxForm] = useState(initialMailboxForm)
+  // A pushed source has no mailbox to describe, so the transport fields are neither
+  // shown nor required — and the API refuses them outright.
+  const isPushedSource = mailboxForm.protocol === 'api'
 
   const loadData = useCallback(async () => {
     setBusy(true)
@@ -240,6 +245,17 @@ export function ReportSourcesPage() {
       const payload = { ...mailboxForm }
       if (editingMailboxId && !payload.password) {
         delete (payload as { password?: string }).password
+      }
+
+      // A pushed source takes no transport settings, and the API refuses them rather than
+      // storing a password nothing will ever use. Send the fields the form still carries
+      // from a previous protocol choice and the request is rejected.
+      if (isPushedSource) {
+        const pushed = payload as Partial<typeof mailboxForm>
+        delete pushed.host
+        delete pushed.username
+        delete pushed.password
+        delete pushed.port
       }
 
       if (editingMailboxId) {
@@ -507,6 +523,8 @@ export function ReportSourcesPage() {
             ) : null}
           </Card>
 
+          <ApiCredentialsCard sources={reportSources} />
+
           <Card pad={false} className="mt-3.5">
             <div className="px-5 pt-4 pb-2">
               <CardHeader title="Recent sync runs" description="Last three runs per report source." />
@@ -609,17 +627,22 @@ export function ReportSourcesPage() {
                 <Select
                   value={mailboxForm.protocol}
                   onChange={(e) =>
-                    setMailboxForm((x) => ({ ...x, protocol: e.target.value as 'imap' | 'pop3' }))
+                    setMailboxForm((x) => ({ ...x, protocol: e.target.value as 'imap' | 'api' }))
                   }
                 >
-                  <option value="imap">IMAP</option>
-                  {/* Only shown for a source that already is one. POP3 cannot be
-                      chosen: it was never implemented, and a source set to it would
-                      silently never ingest. */}
-                  {mailboxForm.protocol === 'pop3' && <option value="pop3">POP3 (not supported)</option>}
+                  <option value="imap">IMAP (polled)</option>
+                  <option value="api">API (pushed)</option>
+                  {/* Shown only for a row that already is one: pop3 validated but was
+                      never implemented, so it can no longer be chosen. */}
+                  {mailboxForm.protocol === 'pop3' ? (
+                    <option value="pop3">POP3 (not supported)</option>
+                  ) : null}
                 </Select>
               </label>
-              <label className="grid gap-1.5 text-sm font-medium text-body">
+              <label
+                className="grid gap-1.5 text-sm font-medium text-body"
+                hidden={isPushedSource}
+              >
                 Port
                 <Input
                   type="number"
@@ -629,34 +652,34 @@ export function ReportSourcesPage() {
                   onChange={(e) =>
                     setMailboxForm((x) => ({ ...x, port: Number(e.target.value || 993) }))
                   }
-                  required
+                  required={!isPushedSource}
                 />
               </label>
             </div>
-            <label className="grid gap-1.5 text-sm font-medium text-body">
+            <label className="grid gap-1.5 text-sm font-medium text-body" hidden={isPushedSource}>
               Host
               <Input
                 mono
                 value={mailboxForm.host}
                 onChange={(e) => setMailboxForm((x) => ({ ...x, host: e.target.value }))}
-                required
+                required={!isPushedSource}
               />
             </label>
-            <label className="grid gap-1.5 text-sm font-medium text-body">
+            <label className="grid gap-1.5 text-sm font-medium text-body" hidden={isPushedSource}>
               Username
               <Input
                 value={mailboxForm.username}
                 onChange={(e) => setMailboxForm((x) => ({ ...x, username: e.target.value }))}
-                required
+                required={!isPushedSource}
               />
             </label>
-            <label className="grid gap-1.5 text-sm font-medium text-body">
+            <label className="grid gap-1.5 text-sm font-medium text-body" hidden={isPushedSource}>
               {editingMailboxId ? 'New password (optional)' : 'Password'}
               <Input
                 type="password"
                 value={mailboxForm.password}
                 onChange={(e) => setMailboxForm((x) => ({ ...x, password: e.target.value }))}
-                required={!editingMailboxId}
+                required={!editingMailboxId && !isPushedSource}
               />
             </label>
             <label className="grid gap-1.5 text-sm font-medium text-body">

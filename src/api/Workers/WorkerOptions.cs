@@ -68,6 +68,17 @@ public sealed class WorkerOptions
     /// </summary>
     public int MaxReportArchiveEntries { get; set; } = 512;
 
+    /// <summary>
+    /// Ceiling on a single POST to the ingestion endpoint, before decompression.
+    /// <para>
+    /// The mailbox path never needed this: a mail server already caps message size, so the
+    /// compressed input arrived bounded by somebody else's rule. An HTTP endpoint has no
+    /// such upstream, so the request itself needs a limit of its own, separate from the
+    /// expansion limits above.
+    /// </para>
+    /// </summary>
+    public long MaxPushedReportRequestBytes { get; set; } = 32L * 1024 * 1024;
+
     public int MaxRetryAttempts { get; set; } = 3;
     public int RetryBaseDelaySeconds { get; set; } = 2;
     public int StaleRunTimeoutMinutes { get; set; } = 30;

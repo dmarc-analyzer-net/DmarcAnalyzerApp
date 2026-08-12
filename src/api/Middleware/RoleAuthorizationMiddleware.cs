@@ -10,12 +10,48 @@ namespace DmarcAnalyzer.Api.Middleware;
 /// </summary>
 public sealed class RoleAuthorizationMiddleware(RequestDelegate next)
 {
-    public async Task InvokeAsync(HttpContext context, ICurrentUserContext currentUser)
+    public async Task InvokeAsync(
+        HttpContext context, ICurrentUserContext currentUser, IMachineCallerContext machineCaller)
     {
         var path = context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
 
-        // Public and non-API paths were already passed through by SessionAuthMiddleware.
-        if (!path.StartsWith("/api/v1/") || !currentUser.IsAuthenticated)
+        if (!path.StartsWith("/api/v1/"))
+        {
+            await next(context);
+            return;
+        }
+
+        // Machine endpoints are a closed door, not a wider one: they require a credential of
+        // the named kind, and a session — even an admin's — does not substitute. These
+        // endpoints resolve their tenant from the credential, so a session has nothing to
+        // resolve.
+        var machineRequirement = context.GetEndpoint()?.Metadata
+            .GetMetadata<MachineCredentialRequirementMetadata>();
+
+        if (machineRequirement is not null)
+        {
+            if (!machineCaller.IsAuthenticated || machineCaller.Kind != machineRequirement.Kind)
+            {
+                context.Response.StatusCode = 403;
+                await context.Response.WriteAsJsonAsync(new { error = "forbidden" });
+                return;
+            }
+
+            await next(context);
+            return;
+        }
+
+        // Everything else is for people. A credential that authenticated is refused here,
+        // which is what keeps a report-ingest token out of the console API.
+        if (machineCaller.IsAuthenticated)
+        {
+            context.Response.StatusCode = 403;
+            await context.Response.WriteAsJsonAsync(new { error = "forbidden" });
+            return;
+        }
+
+        // Public paths were already passed through by SessionAuthMiddleware.
+        if (!currentUser.IsAuthenticated)
         {
             await next(context);
             return;

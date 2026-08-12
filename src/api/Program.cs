@@ -1,3 +1,4 @@
+using DmarcAnalyzer.Api.Application.ApiCredentials;
 using Carter;
 using DmarcAnalyzer.Api.Application.Analytics;
 using DmarcAnalyzer.Api.Application.Auth;
@@ -242,6 +243,10 @@ builder.Services.AddScoped<ITlsRptReportParser, TlsRptReportParser>();
 builder.Services.AddScoped<IDomainIngestResolver, DomainIngestResolver>();
 builder.Services.AddScoped<ITlsReportIngestor, TlsReportIngestor>();
 builder.Services.AddScoped<IDmarcReportIngestor, DmarcReportIngestor>();
+builder.Services.AddScoped<IApiCredentialService, ApiCredentialService>();
+builder.Services.AddScoped<IPushedReportIngestService, PushedReportIngestService>();
+builder.Services.AddScoped<MachineCallerContext>();
+builder.Services.AddScoped<IMachineCallerContext>(sp => sp.GetRequiredService<MachineCallerContext>());
 builder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
 builder.Services.AddScoped<IMailboxSyncRunQueryService, MailboxSyncRunQueryService>();
 builder.Services.AddScoped<IMailboxHealthQueryService, MailboxHealthQueryService>();
@@ -365,6 +370,10 @@ if (app.Configuration.GetValue<bool>("Auth:Oidc:Enabled"))
     app.UseAuthentication();
 }
 
+// Bearer credentials resolve before the cookie session, so a machine request never
+// reaches the session middleware's cookie check. Authorisation for both is decided
+// afterwards, in one place.
+app.UseMiddleware<MachineAuthMiddleware>();
 app.UseMiddleware<SessionAuthMiddleware>();
 app.UseMiddleware<RoleAuthorizationMiddleware>();
 

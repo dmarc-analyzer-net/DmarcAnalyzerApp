@@ -49,8 +49,8 @@ export type Domain = {
 export type ReportSource = {
   id: string
   name: string
-  /** Only 'imap' can be created; rows predating that removal may still say 'pop3'. */
-  protocol: 'imap' | 'pop3'
+  /** 'api' is pushed to; 'pop3' only appears on rows predating its removal. */
+  protocol: 'imap' | 'api' | 'pop3'
   host: string
   port: number
   useTls: boolean
@@ -340,4 +340,29 @@ export type MtaStsPolicyApplyOutcome = {
 
 export type MtaStsPolicyBulkApplyResponse = {
   results: MtaStsPolicyApplyOutcome[]
+}
+
+/**
+ * A machine credential. The token itself appears exactly once, in the response to
+ * creating one — see IssuedApiCredential — and is never returned again by any endpoint.
+ */
+export type ApiCredential = {
+  id: string
+  name: string
+  kind: string
+  reportSourceId: string | null
+  reportSourceName: string | null
+  /** The non-secret half, shown so a credential in a log can be matched to a row here. */
+  tokenId: string
+  createdAtUtc: string
+  lastUsedAtUtc: string | null
+  expiresAtUtc: string | null
+  revokedAtUtc: string | null
+  isUsable: boolean
+}
+
+export type IssuedApiCredential = {
+  credential: ApiCredential
+  /** Shown once and not stored anywhere. Losing it means issuing a new credential. */
+  token: string
 }

@@ -21,9 +21,22 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
     // external-temp scheme, not an app session.
     private const string OidcPathPrefix = "/api/v1/auth/oidc/";
 
-    public async Task InvokeAsync(HttpContext context, IAuthService authService, CurrentUserContext currentUserContext)
+    public async Task InvokeAsync(
+        HttpContext context,
+        IAuthService authService,
+        CurrentUserContext currentUserContext,
+        IMachineCallerContext machineCaller)
     {
         var path = context.Request.Path.Value?.ToLowerInvariant() ?? string.Empty;
+
+        // A machine caller already authenticated upstream and has no cookie by design.
+        // Passing it through here is not a second way in: RoleAuthorizationMiddleware still
+        // refuses it on every endpoint that has not asked for a credential of its kind.
+        if (machineCaller.IsAuthenticated)
+        {
+            await next(context);
+            return;
+        }
 
         if (!path.StartsWith("/api/v1/") || PublicPaths.Contains(path) || path.StartsWith(OidcPathPrefix))
         {

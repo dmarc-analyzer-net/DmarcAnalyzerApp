@@ -53,20 +53,16 @@ design system.) See the categorized lists below for the full inventory.
       Per ADR 0010 this stays a separate mechanism from machine credentials — a
       human, one client, read-only, short-lived — but must reuse the same token
       minting and constant-time verification helper rather than growing a second one.
-- [ ] (todo) **Implement machine credentials** ([ADR 0010](adr/0010-machine-credentials.md),
-      decided and unbuilt). `api_credential` as a first-class row so rotation can
-      overlap, split `dmarcanalyzer_<id>_<secret>` token with SHA-256 over the
-      secret half (not the password PBKDF2 — a 256-bit random token has no
-      guessing attack to slow down), reveal-once, `Authorization: Bearer`, and
-      deny-by-default per endpoint the way `client_viewer` already is. Gates the
-      HTTP ingestion endpoint proposed in #156; the seam and bounds work in that
-      issue's steps 1–2 does not depend on it and can land first.
-
-## Medium Priority
-
-### Deployment topologies (ADR 0008)
-
-Sequenced; each step is independently shippable.
+- [x] (done) **Machine credentials and pushed ingestion**
+      ([ADR 0010](adr/0010-machine-credentials.md)). `api_credential` as a first-class row
+      so rotation can overlap; split `dmarcanalyzer_<id>_<secret>` token with SHA-256 over
+      the secret half; reveal-once; `Authorization: Bearer`; deny-by-default per endpoint,
+      in both directions — a credential is refused on every console endpoint, and a session
+      is refused on the machine one. `POST /api/v1/reports` takes raw bytes through the same
+      extractor, parsers and ingestors the mailbox worker uses, with SHA-256 transport
+      idempotency in `report_ingest_receipt` and a request-size ceiling of its own. The
+      `api` protocol is accepted on a report source, which takes no host, username or
+      password. Console screen for issuing and revoking.
 
 - [ ] (step 1) **`APP_MODE=all` — combined runtime mode.** One container running
       the API and the worker loop in-process. The web host already registers every

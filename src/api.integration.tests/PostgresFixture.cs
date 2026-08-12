@@ -58,6 +58,8 @@ public sealed class PostgresFixture : IAsyncLifetime
         await db.Database.ExecuteSqlRawAsync(
             """
             TRUNCATE TABLE
+                api_credential,
+                report_ingest_receipt,
                 dmarc_report_record_dkim_auth_result,
                 dmarc_report_record_spf_auth_result,
                 dmarc_report_record,

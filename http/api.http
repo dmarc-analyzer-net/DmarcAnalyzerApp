@@ -175,3 +175,23 @@ GET {{baseUrl}}/api/v1/mailbox-sync-runs?reportSourceId={{reportSourceId}}&limit
 
 ### Mailbox health summary (optional reportSourceId)
 GET {{baseUrl}}/api/v1/mailbox-health?reportSourceId={{reportSourceId}}
+
+
+### Issue a machine credential (admin; token is returned once)
+POST {{baseUrl}}/api/v1/api-credentials
+Content-Type: application/json
+
+{ "reportSourceId": "{{reportSourceId}}", "name": "bifrost-production" }
+
+### List machine credentials (never returns a token)
+GET {{baseUrl}}/api/v1/api-credentials
+
+### Revoke a machine credential
+POST {{baseUrl}}/api/v1/api-credentials/00000000-0000-0000-0000-000000000000/revoke
+
+### Push a report (machine credential only; a session is refused)
+POST {{baseUrl}}/api/v1/reports
+Authorization: Bearer dmarcanalyzer_REPLACE_ME
+Content-Type: application/gzip
+
+< ./report.xml.gz

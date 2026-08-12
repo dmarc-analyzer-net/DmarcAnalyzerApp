@@ -10,7 +10,9 @@ namespace DmarcAnalyzer.Api.Application.ReportSources;
 public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialProtector credentialProtector) : IReportSourceService
 {
     /// <summary>
-    /// What a source may actually be, not what it might one day be.
+    /// What a source may actually be, not what it might one day be. Every value here is
+    /// read by something: <c>imap</c> by the polling worker, <c>api</c> by the ingestion
+    /// endpoint.
     /// <para>
     /// <c>pop3</c> was accepted here for a long time and never worked: the worker polls
     /// <c>Protocol == "imap"</c> and manual sync refuses anything else, so a POP3 source
@@ -19,11 +21,18 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
     /// operator has no way to tell it apart from a mailbox with no mail in it.
     /// </para>
     /// <para>
-    /// Rows created before this stay as they are and keep not syncing, which is what they
-    /// already did. Add a value back only when something reads it.
+    /// Rows created before that removal stay as they are and keep not syncing, which is
+    /// what they already did. Add a value back only when something reads it.
     /// </para>
     /// </summary>
-    private static readonly string[] SupportedProtocols = ["imap"];
+    private static readonly string[] SupportedProtocols = ["imap", "api"];
+
+    /// <summary>
+    /// An API source is pushed to, so it has no host, port, mailbox or password. Those
+    /// columns stay NOT NULL and hold empty values rather than becoming nullable across
+    /// every reader — the trade is recorded in the create path below.
+    /// </summary>
+    private static bool IsPushed(string protocol) => protocol == "api";
 
     public async Task<IReadOnlyList<ReportSourceDto>> ListAsync(CancellationToken ct)
     {
@@ -40,17 +49,33 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
         var protocol = request.Protocol.Trim().ToLowerInvariant();
         if (!SupportedProtocols.Contains(protocol))
         {
-            return ServiceResult<ReportSourceDto>.Failure("protocol must be imap", 400);
+            return ServiceResult<ReportSourceDto>.Failure("protocol must be imap or api", 400);
         }
 
-        if (string.IsNullOrWhiteSpace(request.Name) ||
-            string.IsNullOrWhiteSpace(request.Host) ||
+        var pushed = IsPushed(protocol);
+
+        if (string.IsNullOrWhiteSpace(request.Name) || request.DefaultClientId == Guid.Empty)
+        {
+            return ServiceResult<ReportSourceDto>.Failure("name and defaultClientId are required", 400);
+        }
+
+        if (!pushed && (string.IsNullOrWhiteSpace(request.Host) ||
             string.IsNullOrWhiteSpace(request.Username) ||
             string.IsNullOrWhiteSpace(request.Password) ||
-            request.Port <= 0 ||
-            request.DefaultClientId == Guid.Empty)
+            request.Port <= 0))
         {
             return ServiceResult<ReportSourceDto>.Failure("name, host, port, username, password, and defaultClientId are required", 400);
+        }
+
+        // Refused rather than ignored. Accepting mailbox settings on a source that will
+        // never connect to a mailbox would leave a password sitting in the database that
+        // nothing will ever use and nobody will remember is there.
+        if (pushed && (!string.IsNullOrWhiteSpace(request.Host) ||
+            !string.IsNullOrWhiteSpace(request.Username) ||
+            !string.IsNullOrWhiteSpace(request.Password)))
+        {
+            return ServiceResult<ReportSourceDto>.Failure(
+                "an api source is pushed to and takes no host, username or password", 400);
         }
 
         var clientExists = await db.Clients.AnyAsync(x => x.Id == request.DefaultClientId, ct);
@@ -64,11 +89,14 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
         {
             Name = request.Name.Trim(),
             Protocol = protocol,
-            Host = request.Host.Trim().ToLowerInvariant(),
-            Port = request.Port,
-            UseTls = request.UseTls,
-            Username = request.Username.Trim(),
-            PasswordEncrypted = credentialProtector.Protect(request.Password),
+            // Empty rather than null for a pushed source: the columns are NOT NULL and
+            // making them nullable would mean a migration plus a null check at every reader
+            // and display site. Empty means not applicable, and Protocol is what says so.
+            Host = pushed ? string.Empty : request.Host.Trim().ToLowerInvariant(),
+            Port = pushed ? 0 : request.Port,
+            UseTls = !pushed && request.UseTls,
+            Username = pushed ? string.Empty : request.Username.Trim(),
+            PasswordEncrypted = pushed ? string.Empty : credentialProtector.Protect(request.Password),
             DefaultClientId = request.DefaultClientId,
             IsActive = request.IsActive,
             DeleteAfterRetention = request.DeleteAfterRetention,
@@ -102,7 +130,7 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
             var unchanged = string.Equals(protocol, source.Protocol, StringComparison.Ordinal);
             if (!unchanged && !SupportedProtocols.Contains(protocol))
             {
-                return ServiceResult<ReportSourceDto>.Failure("protocol must be imap", 400);
+                return ServiceResult<ReportSourceDto>.Failure("protocol must be imap or api", 400);
             }
 
             source.Protocol = protocol;
