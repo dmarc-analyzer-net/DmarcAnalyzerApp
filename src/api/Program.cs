@@ -97,6 +97,7 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddScoped<IDomainIngestResolver, DomainIngestResolver>();
     workerBuilder.Services.AddScoped<ITlsReportIngestor, TlsReportIngestor>();
     workerBuilder.Services.AddScoped<IDmarcReportIngestor, DmarcReportIngestor>();
+    workerBuilder.Services.AddScoped<IReportPayloadIngestor, ReportPayloadIngestor>();
     workerBuilder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
     workerBuilder.Services.AddHttpContextAccessor();
     workerBuilder.Services.AddScoped<ICurrentUserContext, SystemUserContext>();
@@ -243,6 +244,7 @@ builder.Services.AddScoped<ITlsRptReportParser, TlsRptReportParser>();
 builder.Services.AddScoped<IDomainIngestResolver, DomainIngestResolver>();
 builder.Services.AddScoped<ITlsReportIngestor, TlsReportIngestor>();
 builder.Services.AddScoped<IDmarcReportIngestor, DmarcReportIngestor>();
+builder.Services.AddScoped<IReportPayloadIngestor, ReportPayloadIngestor>();
 builder.Services.AddScoped<IApiCredentialService, ApiCredentialService>();
 builder.Services.AddScoped<IPushedReportIngestService, PushedReportIngestService>();
 builder.Services.AddReportIngestRateLimiter();

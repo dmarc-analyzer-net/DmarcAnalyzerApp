@@ -169,10 +169,11 @@ public sealed class PushedReportIngestTests(PostgresFixture postgres) : IAsyncLi
         await using var db = postgres.CreateContext();
         var service = new PushedReportIngestService(
             db,
-            new DmarcRuaReportParser(),
-            new TlsRptReportParser(),
-            new DmarcReportIngestor(db, new DomainIngestResolver(db)),
-            new TlsReportIngestor(db, new DomainIngestResolver(db)),
+            new ReportPayloadIngestor(
+                new DmarcRuaReportParser(),
+                new TlsRptReportParser(),
+                new DmarcReportIngestor(db, new DomainIngestResolver(db)),
+                new TlsReportIngestor(db, new DomainIngestResolver(db))),
             Options.Create(new WorkerOptions()),
             NullLogger<PushedReportIngestService>.Instance);
 

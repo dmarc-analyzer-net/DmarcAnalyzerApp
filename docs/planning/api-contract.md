@@ -720,7 +720,12 @@ only.
   its earlier response was lost.
 - **`duplicate`** — the payload was new but the reports inside it were already stored,
   caught by the same report-level dedup the mailbox path uses.
-- `400` — empty body, or nothing recognisable inside it.
+- `400` — empty body, nothing recognisable inside it, or every report in it was refused.
+  A payload is only a 200 if something was stored or already held; a wholly rejected
+  upload must not look delivered to a caller that checks the status code alone.
+  Truncated payloads land here: a half-transferred gzip decompresses without error into
+  a partial document, and storing that would let it permanently shadow the complete
+  report through deduplication.
 - `413` — over `Worker:MaxPushedReportRequestBytes`, or expanding past the decompression
   limits. The message names the limit.
 - `401` — missing, malformed, revoked or expired credential.

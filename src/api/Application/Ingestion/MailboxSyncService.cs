@@ -18,10 +18,7 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 
 public sealed class MailboxSyncService(
     DmarcAnalyzerDbContext db,
-    IDmarcReportParser parser,
-    ITlsRptReportParser tlsParser,
-    ITlsReportIngestor tlsIngestor,
-    IDmarcReportIngestor dmarcIngestor,
+    IReportPayloadIngestor payloadIngestor,
     Security.ICredentialProtector credentialProtector,
     Backup.IReportMailArchive reportMailArchive,
     IOptions<WorkerOptions> options,
@@ -222,59 +219,31 @@ public sealed class MailboxSyncService(
                         {
                             attachmentsProcessed++;
 
-                            if (payload.Kind == ReportPayloadKind.SmtpTlsReportJson)
-                            {
-                                try
-                                {
-                                    var tlsResult = tlsParser.Parse(payload.Stream);
-                                    var outcome = await tlsIngestor.IngestAsync(
-                                        tlsResult, reportSource, operationToken);
-
-                                    if (outcome == TlsReportIngestOutcome.Inserted)
-                                    {
-                                        tlsReportsInserted++;
-                                    }
-                                    else
-                                    {
-                                        tlsReportsSkippedAsDuplicate++;
-                                    }
-                                }
-                                catch (Exception ex) when (ex is not OperationCanceledException)
-                                {
-                                    // Folded into the same counter as DMARC failures: a
-                                    // report that arrived and could not be stored is the
-                                    // same operator signal regardless of format, and the
-                                    // log line names which one it was.
-                                    parseFailures++;
-                                    logger.LogWarning(ex,
-                                        "Failed to parse TLS report attachment {AttachmentName} for report source {ReportSourceId}",
-                                        payload.SourceName, reportSource.Id);
-                                }
-
-                                continue;
-                            }
-
-                            var xmlStream = payload.Stream;
-
                             try
                             {
-                                var result = parser.Parse(xmlStream);
-                                var outcome = await dmarcIngestor.IngestAsync(
-                                    result, reportSource, operationToken);
+                                var outcome = await payloadIngestor.IngestAsync(
+                                    payload, reportSource, operationToken);
 
-                                if (outcome == DmarcReportIngestOutcome.Inserted)
+                                if (outcome.Format == ReportPayloadIngestResult.Tls)
                                 {
-                                    reportsInserted++;
+                                    if (outcome.Inserted) tlsReportsInserted++;
+                                    else tlsReportsSkippedAsDuplicate++;
                                 }
                                 else
                                 {
-                                    reportsSkippedAsDuplicate++;
+                                    if (outcome.Inserted) reportsInserted++;
+                                    else reportsSkippedAsDuplicate++;
                                 }
                             }
-                            catch (Exception ex)
+                            catch (Exception ex) when (ex is not OperationCanceledException)
                             {
+                                // One counter for both formats: a report that arrived and
+                                // could not be stored is the same operator signal whichever
+                                // it was, and the log line names it.
                                 parseFailures++;
-                                logger.LogWarning(ex, "Failed to parse DMARC attachment for report source {ReportSourceId}", reportSource.Id);
+                                logger.LogWarning(ex,
+                                    "Failed to ingest attachment {AttachmentName} for report source {ReportSourceId}",
+                                    payload.SourceName, reportSource.Id);
                             }
                         }
                     }

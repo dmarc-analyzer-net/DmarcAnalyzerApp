@@ -37,10 +37,7 @@ public interface IPushedReportIngestService
 /// </summary>
 public sealed class PushedReportIngestService(
     DmarcAnalyzerDbContext db,
-    IDmarcReportParser parser,
-    ITlsRptReportParser tlsParser,
-    IDmarcReportIngestor dmarcIngestor,
-    ITlsReportIngestor tlsIngestor,
+    IReportPayloadIngestor payloadIngestor,
     IOptions<WorkerOptions> options,
     ILogger<PushedReportIngestService> logger) : IPushedReportIngestService
 {
@@ -108,18 +105,16 @@ public sealed class PushedReportIngestService(
             {
                 try
                 {
-                    if (payload.Kind == ReportPayloadKind.SmtpTlsReportJson)
-                    {
-                        var parsed = tlsParser.Parse(payload.Stream);
-                        var outcome = await tlsIngestor.IngestAsync(parsed, source, ct);
-                        Record(payload.SourceName, "tls", outcome == TlsReportIngestOutcome.Inserted);
-                    }
-                    else
-                    {
-                        var parsed = parser.Parse(payload.Stream);
-                        var outcome = await dmarcIngestor.IngestAsync(parsed, source, ct);
-                        Record(payload.SourceName, "dmarc", outcome == DmarcReportIngestOutcome.Inserted);
-                    }
+                    var outcome = await payloadIngestor.IngestAsync(payload, source, ct);
+                    Record(payload.SourceName, outcome.Format, outcome.Inserted);
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    failed++;
+                    outcomes.Add(new PushedReportOutcome(payload.SourceName, "unknown", "failed"));
+                    logger.LogWarning(ex,
+                        "Failed to ingest pushed payload {PayloadName} for report source {ReportSourceId}",
+                        payload.SourceName, source.Id);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -144,6 +139,16 @@ public sealed class PushedReportIngestService(
             }
 
             outcomes.Add(new PushedReportOutcome(name, kind, wasInserted ? "inserted" : "duplicate"));
+        }
+
+        // Nothing landed and something was refused: that is a failed request, not a
+        // successful one carrying a failure count. A caller checking only the status code
+        // would otherwise treat a wholly rejected upload as delivered, which is exactly
+        // the mistake a retrying pipeline cannot afford to make.
+        if (inserted == 0 && duplicate == 0 && failed > 0)
+        {
+            return ServiceResult<PushedReportResult>.Failure(
+                $"no report in this payload could be stored ({failed} failed)", 400);
         }
 
         // Written only when something was stored. A payload that failed entirely must stay
