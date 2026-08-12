@@ -21,7 +21,7 @@ public sealed class MailboxSyncService(
     IDmarcReportParser parser,
     ITlsRptReportParser tlsParser,
     ITlsReportIngestor tlsIngestor,
-    Domains.IDomainIngestResolver domainResolver,
+    IDmarcReportIngestor dmarcIngestor,
     Security.ICredentialProtector credentialProtector,
     Backup.IReportMailArchive reportMailArchive,
     IOptions<WorkerOptions> options,
@@ -259,67 +259,17 @@ public sealed class MailboxSyncService(
                             try
                             {
                                 var result = parser.Parse(xmlStream);
+                                var outcome = await dmarcIngestor.IngestAsync(
+                                    result, reportSource, operationToken);
 
-                                var normalizedPolicyDomain = result.PolicyDomain.Trim().ToLowerInvariant();
-                                var normalizedReportId = result.ReportId.Trim();
-
-                                // Left outside the transaction below on purpose: a domain
-                                // is shared by every report for it, not owned by this
-                                // one, so rolling it back with a failed report would be
-                                // wrong. A domain with no reports yet is a state the
-                                // console already handles.
-                                var domainId = await domainResolver.ResolveOrCreateAsync(
-                                    reportSource.DefaultClientId,
-                                    normalizedPolicyDomain,
-                                    operationToken);
-
-                                // The report row and its records must commit together.
-                                // Inserted before this transaction opened, the report
-                                // auto-committed on its own; if the records insert then
-                                // failed, the report survived with no children — and
-                                // because deduplication keys on that row, every later
-                                // sync saw a duplicate and skipped it, so the records
-                                // were never backfilled. A single bad record left a
-                                // report permanently empty and silently wrong.
-                                await using var transaction = await db.Database.BeginTransactionAsync(operationToken);
-
-                                var reportId = await TryInsertDmarcReportAsync(
-                                    domainId,
-                                    reportSource.Id,
-                                    result.OrganizationName.Trim(),
-                                    normalizedReportId,
-                                    result.RangeBeginUtc,
-                                    result.RangeEndUtc,
-                                    result.RecordCount,
-                                    result,
-                                    operationToken);
-
-                                if (!reportId.HasValue)
+                                if (outcome == DmarcReportIngestOutcome.Inserted)
                                 {
-                                    // Already ingested. Disposing the transaction on the
-                                    // way out rolls back the no-op insert.
-                                    reportsSkippedAsDuplicate++;
-                                    continue;
+                                    reportsInserted++;
                                 }
-
-                                var reportEntityId = reportId.Value;
-                                await InsertDmarcReportRecordsAsync(
-                                    reportEntityId, result.RangeBeginUtc, result.Records, operationToken);
-
-                                await TryInsertReportIngestAsync(
-                                    reportSource.DefaultClientId,
-                                    reportSource.Id,
-                                    normalizedPolicyDomain,
-                                    normalizedReportId,
-                                    result.RangeBeginUtc,
-                                    result.RangeEndUtc,
-                                    result.OrganizationName.Trim(),
-                                    result.RecordCount,
-                                    operationToken);
-
-                                await transaction.CommitAsync(operationToken);
-
-                                reportsInserted++;
+                                else
+                                {
+                                    reportsSkippedAsDuplicate++;
+                                }
                             }
                             catch (Exception ex)
                             {
@@ -481,89 +431,6 @@ public sealed class MailboxSyncService(
     /// </summary>
     public static string ResolveUnsuccessfulRunStatus(Exception ex, long? highestProcessedUid)
         => IsTimeout(ex) && highestProcessedUid.HasValue ? "partial" : "failed";
-
-    private async Task<bool> TryInsertReportIngestAsync(
-        Guid clientId,
-        Guid reportSourceId,
-        string policyDomain,
-        string reportId,
-        DateTime reportRangeBeginUtc,
-        DateTime reportRangeEndUtc,
-        string organizationName,
-        int recordCount,
-        CancellationToken ct)
-    {
-        var rows = await db.Database.ExecuteSqlInterpolatedAsync($@"
-            INSERT INTO dmarc_report_ingest
-                (""Id"", ""ClientId"", ""ReportSourceId"", ""PolicyDomain"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"", ""OrganizationName"", ""RecordCount"", ""IngestedAtUtc"")
-            VALUES
-                ({Guid.NewGuid()}, {clientId}, {reportSourceId}, {policyDomain}, {reportId}, {reportRangeBeginUtc}, {reportRangeEndUtc}, {organizationName}, {recordCount}, {DateTime.UtcNow})
-            ON CONFLICT (""ClientId"", ""PolicyDomain"", ""ReportId"", ""ReportRangeBeginUtc"", ""ReportRangeEndUtc"") DO NOTHING;
-            ", ct);
-
-        return rows > 0;
-    }
-
-    private async Task<Guid?> TryInsertDmarcReportAsync(
-        Guid domainId,
-        Guid reportSourceId,
-        string organizationName,
-        string reportId,
-        DateTime rangeBeginUtc,
-        DateTime rangeEndUtc,
-        int recordCount,
-        DmarcReportParseResult parsed,
-        CancellationToken ct)
-    {
-        var id = Guid.NewGuid();
-        var rows = await db.Database.ExecuteSqlInterpolatedAsync($@"
-            INSERT INTO dmarc_report
-                (""Id"", ""DomainId"", ""ReportSourceId"", ""OrganizationName"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"", ""RecordCount"", ""IngestedAtUtc"", ""PublishedPolicy"", ""SubdomainPolicy"", ""PublishedPct"", ""DkimAlignment"", ""SpfAlignment"")
-            VALUES
-                ({id}, {domainId}, {reportSourceId}, {organizationName}, {reportId}, {rangeBeginUtc}, {rangeEndUtc}, {recordCount}, {DateTime.UtcNow}, {parsed.PublishedPolicy}, {parsed.SubdomainPolicy}, {parsed.PublishedPct}, {parsed.DkimAlignment}, {parsed.SpfAlignment})
-            ON CONFLICT (""DomainId"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"") DO NOTHING;
-            ", ct);
-
-        return rows > 0 ? id : null;
-    }
-
-    private async Task InsertDmarcReportRecordsAsync(
-        Guid dmarcReportId,
-        DateTime reportRangeBeginUtc,
-        IReadOnlyList<DmarcReportRecordParseResult> records,
-        CancellationToken ct)
-    {
-        foreach (var record in records)
-        {
-            var recordId = Guid.NewGuid();
-            await db.Database.ExecuteSqlInterpolatedAsync($@"
-                INSERT INTO dmarc_report_record
-                    (""Id"", ""DmarcReportId"", ""SourceIp"", ""MessageCount"", ""Disposition"", ""DkimResult"", ""SpfResult"", ""HeaderFrom"", ""EnvelopeFrom"", ""EnvelopeTo"", ""ReportRangeBeginUtc"")
-                VALUES
-                    ({recordId}, {dmarcReportId}, {record.SourceIp}, {record.MessageCount}, {record.Disposition}, {record.DkimResult}, {record.SpfResult}, {record.HeaderFrom}, {record.EnvelopeFrom}, {record.EnvelopeTo}, {reportRangeBeginUtc});
-                ", ct);
-
-            foreach (var dkim in record.DkimAuthResults)
-            {
-                await db.Database.ExecuteSqlInterpolatedAsync($@"
-                    INSERT INTO dmarc_report_record_dkim_auth_result
-                        (""Id"", ""DmarcReportRecordId"", ""Domain"", ""Selector"", ""Result"", ""HumanResult"")
-                    VALUES
-                        ({Guid.NewGuid()}, {recordId}, {dkim.Domain}, {dkim.Selector}, {dkim.Result}, {dkim.HumanResult});
-                    ", ct);
-            }
-
-            foreach (var spf in record.SpfAuthResults)
-            {
-                await db.Database.ExecuteSqlInterpolatedAsync($@"
-                    INSERT INTO dmarc_report_record_spf_auth_result
-                        (""Id"", ""DmarcReportRecordId"", ""Domain"", ""Scope"", ""Result"", ""HumanResult"")
-                    VALUES
-                        ({Guid.NewGuid()}, {recordId}, {spf.Domain}, {spf.Scope}, {spf.Result}, {spf.HumanResult});
-                    ", ct);
-            }
-        }
-    }
 
     private async Task TryPersistRunStateAsync(Guid reportSourceId)
     {

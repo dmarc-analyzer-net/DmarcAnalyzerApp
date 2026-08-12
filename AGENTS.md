@@ -18,6 +18,7 @@ One agency workspace monitors DMARC aggregate (RUA) reports for many clients acr
   - `Middleware/` — `SessionAuthMiddleware` (cookie session → `ICurrentUserContext`) then `RoleAuthorizationMiddleware` (endpoint role enforcement).
 - `src/web` — React 19 + Vite + TypeScript + Tailwind v3. Pages in `src/pages`, primitives in `src/components/ui` + `src/components/data`, shared helpers in `src/lib`. Frontend notes: [`src/web/README.md`](src/web/README.md).
 - `src/api.tests` — xUnit tests (EF Core InMemory provider; note raw-SQL paths can't run under InMemory).
+- `src/api.integration.tests` — the tests that need a real database: raw SQL, `ON CONFLICT` dedup, transaction boundaries. Starts a PostgreSQL container via Testcontainers, so it needs Docker and takes seconds rather than milliseconds. Kept separate so `dotnet test src/api.tests` stays instant and runs with no daemon.
 - `http/api.http` — REST Client request collection for manual API calls.
 - `docs/` — see the doc map below.
 
@@ -26,7 +27,8 @@ One agency workspace monitors DMARC aggregate (RUA) reports for many clients acr
 ```bash
 # Backend build + tests (from repo root)
 dotnet build DmarcAnalyzerApp.slnx       # or: dotnet build src/api/DmarcAnalyzer.Api.csproj
-dotnet test src/api.tests
+dotnet test src/api.tests                 # fast; InMemory provider
+dotnet test src/api.integration.tests     # needs Docker; starts PostgreSQL
 
 # Frontend (from src/web)
 npm install

@@ -62,6 +62,14 @@ jobs:
       - name: API tests
         run: dotnet test src/api.tests/DmarcAnalyzer.Api.Tests.csproj --nologo
 
+      # Separate from the suite above because these start a PostgreSQL container and
+      # take seconds rather than milliseconds. They are the only tests that can reach the
+      # raw SQL, the ON CONFLICT dedup and the transaction boundary in the ingestion
+      # path — the InMemory provider executes none of that, which is how two real bugs
+      # in that code shipped past a green run. Docker is already present on this runner.
+      - name: Ingestion integration tests (PostgreSQL via Testcontainers)
+        run: dotnet test src/api.integration.tests/DmarcAnalyzer.Api.IntegrationTests.csproj --nologo
+
       - name: Set up Node
         uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:

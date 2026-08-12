@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Separate from src/api.tests on purpose. That suite runs in about a second on the EF
+    InMemory provider and every developer runs it constantly; these tests start a
+    PostgreSQL container and need Docker. Keeping them apart means the fast suite stays
+    fast and stays runnable with no daemon, and CI can report the two independently.
+
+    What lives here: anything whose correctness depends on the real database — raw SQL,
+    ON CONFLICT, transaction boundaries, unique indexes. InMemory supports none of those,
+    which is why two real bugs in the ingestion path shipped past a green test run.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../api/DmarcAnalyzer.Api.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -157,15 +157,26 @@ Sequenced; each step is independently shippable.
       inserts nothing; the new order leaves 0 / 0, so a retry can succeed. Happy
       path and duplicate path both re-verified.
 
-- [ ] (todo) **An integration-test harness for the ingestion path.** This is the
-      second real bug in `MailboxSyncService` that the current test suite cannot
-      reach, and the reason is structural: every test uses `UseInMemoryDatabase`,
-      which supports neither the raw SQL nor the transactions this code depends on,
-      and the service needs an IMAP connection. Both fixes were verified by hand
-      against real Postgres, which is honest but not repeatable. Options are
-      Testcontainers for Postgres plus an `IMailStore` seam over MailKit, or a
-      narrower seam that lets the report-and-records write be driven directly.
-      Worth doing before the next change to this file.
+- [x] (done) **An integration-test harness for the ingestion path.** The gap was
+      structural: every test used `UseInMemoryDatabase`, which executes neither the raw
+      SQL nor the transactions this code depends on, and `MailboxSyncService` needs an
+      IMAP connection before it does anything at all. Both of the real bugs found here
+      were verified by hand against Postgres — honest, but it happens once.
+
+      Solved with the narrower seam rather than an `IMailStore` over MailKit. DMARC
+      persistence moved to `IDmarcReportIngestor`, mirroring the `ITlsReportIngestor`
+      that already existed, which lets the report-and-records write be driven directly
+      without a mailbox. A new `src/api.integration.tests` project starts PostgreSQL 18
+      via Testcontainers and applies the real migration chain (not `EnsureCreated`, which
+      would skip the chain operators actually run). Kept out of `src/api.tests` so that
+      suite stays at ~1s and needs no Docker.
+
+      Six tests: atomic report+records+auth-results+ledger, duplicate detection, domain
+      survival across a failed report, policy-domain normalisation, and a different
+      reporting window not counting as a duplicate. The regression test was checked by
+      reintroducing the original bug — moving the report insert back outside the
+      transaction — and watching it fail with the orphaned report (expected 0, actual 1)
+      before restoring the fix.
 
 - [ ] (todo) Implement API endpoints for report upload, mailbox sync trigger, and report/query retrieval.
 - [x] (done) Add initial EF Core migration and indexes for core entities (clients, domains, report sources).
