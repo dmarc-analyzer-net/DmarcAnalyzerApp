@@ -10,6 +10,12 @@ public enum TlsReportIngestOutcome
 {
     Inserted,
     Duplicate,
+
+    /// <summary>
+    /// At least one policy domain in this report belongs to another client and this source
+    /// is not allowed to ingest for domains it does not own. Nothing was stored.
+    /// </summary>
+    ForeignDomainRefused,
 }
 
 public interface ITlsReportIngestor
@@ -49,8 +55,18 @@ public sealed class TlsReportIngestor(
         var domainIds = new Dictionary<string, Guid>(StringComparer.Ordinal);
         foreach (var policyDomain in parsed.Policies.Select(p => p.PolicyDomain).Distinct(StringComparer.Ordinal))
         {
-            domainIds[policyDomain] = await domainResolver.ResolveOrCreateAsync(
+            var domain = await domainResolver.ResolveOrCreateAsync(
                 source.DefaultClientId, policyDomain, ct);
+
+            // All or nothing. A TLS report covers several policy domains at once and its
+            // counts are summed across them, so storing the permitted subset would produce
+            // a report whose totals describe policies it does not contain.
+            if (!source.AllowForeignDomains && domain.OwnerClientId != source.DefaultClientId)
+            {
+                return TlsReportIngestOutcome.ForeignDomainRefused;
+            }
+
+            domainIds[policyDomain] = domain.DomainId;
         }
 
         var totalSuccessful = parsed.Policies.Sum(p => p.SuccessfulSessionCount);

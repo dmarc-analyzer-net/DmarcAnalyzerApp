@@ -161,7 +161,7 @@ public sealed class IngestionTenancyAndMalformedInputTests(PostgresFixture postg
     }
 
     private async Task<Application.Common.ServiceResult<PushedReportResult>> PushAsync(
-        byte[] body, string fileName, string contentType)
+        byte[] body, string fileName, string contentType, string? provenance = null)
     {
         await using var db = postgres.CreateContext();
         var service = new PushedReportIngestService(
@@ -174,7 +174,7 @@ public sealed class IngestionTenancyAndMalformedInputTests(PostgresFixture postg
             Options.Create(new WorkerOptions()),
             NullLogger<PushedReportIngestService>.Instance);
 
-        return await service.IngestAsync(SourceOfA, body, fileName, contentType, CancellationToken.None);
+        return await service.IngestAsync(SourceOfA, body, fileName, contentType, provenance, CancellationToken.None);
     }
 
     private static Client Client(Guid id, string name, string slug) => new()

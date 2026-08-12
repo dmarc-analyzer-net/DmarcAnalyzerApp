@@ -157,6 +157,7 @@ already written rather than references to the table.
 | `IsActive` | bool |
 | `LastSuccessSyncAtUtc` | nullable |
 | `LastProcessedUid`, `LastProcessedUidValidity` | bigint, nullable — **the resumable backfill checkpoint** |
+| `AllowForeignDomains` | May ingest reports for domains another client owns. Default **true**, which is how every source behaved before it existed — routing by policy domain is what makes one shared mailbox usable for many clients. |
 | `DeleteAfterRetention` | default false — opt-in per source; the worker expunges report mail past the *widest* retention window among the clients this source serves, suspended entirely if any of them is under legal hold |
 | `OldestMessageAtUtc` | nullable — internal date of the oldest message still in the polled folder, refreshed each sync; the evidence for how far back the mailbox can still archive-replay from |
 | `CreatedAtUtc`, `UpdatedAtUtc` | |

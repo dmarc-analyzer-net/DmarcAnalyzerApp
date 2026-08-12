@@ -56,6 +56,7 @@ public sealed class ReportIngestionModule : ICarterModule
                 body,
                 http.Headers.ContentDisposition.ToString() is { Length: > 0 } cd ? FileNameFrom(cd) : null,
                 http.ContentType,
+                http.Headers["X-Report-Provenance"].ToString() is { Length: > 0 } p ? p : null,
                 ct);
 
             return result.IsSuccess

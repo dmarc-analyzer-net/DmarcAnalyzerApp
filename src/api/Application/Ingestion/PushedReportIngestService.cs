@@ -1,4 +1,6 @@
 using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Application.Reports;
 using DmarcAnalyzer.Api.Data;
@@ -23,7 +25,8 @@ public sealed record PushedReportResult(
 public interface IPushedReportIngestService
 {
     Task<ServiceResult<PushedReportResult>> IngestAsync(
-        Guid reportSourceId, byte[] body, string? fileName, string? contentType, CancellationToken ct);
+        Guid reportSourceId, byte[] body, string? fileName, string? contentType,
+        string? provenance, CancellationToken ct);
 }
 
 /// <summary>
@@ -43,12 +46,21 @@ public sealed class PushedReportIngestService(
 {
     private readonly WorkerOptions _options = options.Value;
 
+    /// <summary>Cap on the provenance document. It is a label, not a payload.</summary>
+    private const int MaxProvenanceBytes = 4096;
+
     public async Task<ServiceResult<PushedReportResult>> IngestAsync(
-        Guid reportSourceId, byte[] body, string? fileName, string? contentType, CancellationToken ct)
+        Guid reportSourceId, byte[] body, string? fileName, string? contentType,
+        string? provenance, CancellationToken ct)
     {
         if (body.Length == 0)
         {
             return ServiceResult<PushedReportResult>.Failure("empty body", 400);
+        }
+
+        if (!TryReadProvenance(provenance, out var provenanceVersion, out var provenanceError))
+        {
+            return ServiceResult<PushedReportResult>.Failure(provenanceError!, 400);
         }
 
         var source = await db.ReportSources.SingleOrDefaultAsync(x => x.Id == reportSourceId, ct);
@@ -106,7 +118,7 @@ public sealed class PushedReportIngestService(
                 try
                 {
                     var outcome = await payloadIngestor.IngestAsync(payload, source, ct);
-                    Record(payload.SourceName, outcome.Format, outcome.Inserted);
+                    Record(payload.SourceName, outcome.Format, outcome.Outcome);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
@@ -127,18 +139,30 @@ public sealed class PushedReportIngestService(
             }
         }
 
-        void Record(string name, string kind, bool wasInserted)
+        void Record(string name, string kind, ReportPayloadOutcome outcome)
         {
-            if (wasInserted)
+            switch (outcome)
             {
-                inserted++;
-            }
-            else
-            {
-                duplicate++;
+                case ReportPayloadOutcome.Inserted:
+                    inserted++;
+                    break;
+                case ReportPayloadOutcome.ForeignDomainRefused:
+                    // A refusal is a failure from the caller's side: nothing was stored and
+                    // resending the same bytes will not change that, so it must not look
+                    // like a duplicate, which means "already held".
+                    failed++;
+                    break;
+                default:
+                    duplicate++;
+                    break;
             }
 
-            outcomes.Add(new PushedReportOutcome(name, kind, wasInserted ? "inserted" : "duplicate"));
+            outcomes.Add(new PushedReportOutcome(name, kind, outcome switch
+            {
+                ReportPayloadOutcome.Inserted => "inserted",
+                ReportPayloadOutcome.ForeignDomainRefused => "refused-foreign-domain",
+                _ => "duplicate",
+            }));
         }
 
         // Nothing landed and something was refused: that is a failed request, not a
@@ -161,12 +185,70 @@ public sealed class PushedReportIngestService(
                 ReportSourceId = source.Id,
                 PayloadSha256 = sha,
                 PayloadCount = payloads.Count,
+                Provenance = provenance,
+                ProvenanceVersion = provenanceVersion,
             });
             await db.SaveChangesAsync(ct);
         }
 
         return ServiceResult<PushedReportResult>.Success(new PushedReportResult(
             sha, Replay: false, inserted, duplicate, failed, outcomes));
+    }
+
+    /// <summary>
+    /// Validates the caller's provenance document: valid JSON, within the size cap, and
+    /// carrying an integer <c>v</c>.
+    /// <para>
+    /// Refused rather than ignored when malformed. Silently dropping it would leave the
+    /// caller believing the origin was recorded, and the whole point of provenance is to
+    /// be there when someone asks months later — a field that is quietly absent is worse
+    /// than one that was never promised.
+    /// </para>
+    /// </summary>
+    private static bool TryReadProvenance(string? provenance, out int? version, out string? error)
+    {
+        version = null;
+        error = null;
+
+        if (string.IsNullOrWhiteSpace(provenance))
+        {
+            return true;
+        }
+
+        if (Encoding.UTF8.GetByteCount(provenance) > MaxProvenanceBytes)
+        {
+            error = $"provenance exceeds {MaxProvenanceBytes} bytes; it is a label, not a payload";
+            return false;
+        }
+
+        try
+        {
+            using var document = JsonDocument.Parse(provenance);
+            if (document.RootElement.ValueKind != JsonValueKind.Object)
+            {
+                error = "provenance must be a JSON object";
+                return false;
+            }
+
+            // ValueKind is checked first because TryGetInt32 throws rather than returning
+            // false when the element is not a number — so {"v":"one"} would escape a guard
+            // that only asked whether the parse succeeded.
+            if (!document.RootElement.TryGetProperty("v", out var v)
+                || v.ValueKind != JsonValueKind.Number
+                || !v.TryGetInt32(out var parsed))
+            {
+                error = "provenance must carry an integer \"v\" declaring its shape";
+                return false;
+            }
+
+            version = parsed;
+            return true;
+        }
+        catch (JsonException)
+        {
+            error = "provenance is not valid JSON";
+            return false;
+        }
     }
 
     /// <summary>

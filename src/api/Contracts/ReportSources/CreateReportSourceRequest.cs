@@ -18,4 +18,10 @@ public sealed class CreateReportSourceRequest
     /// somebody left a field out of the request.
     /// </summary>
     public bool DeleteAfterRetention { get; set; }
+
+    /// <summary>
+    /// Whether this source may ingest reports for domains another client owns. Defaults
+    /// to true, which is how every source behaved before the switch existed.
+    /// </summary>
+    public bool AllowForeignDomains { get; set; } = true;
 }

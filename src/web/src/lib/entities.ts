@@ -64,6 +64,8 @@ export type ReportSource = {
    * application, and the mailbox is what a report replay reads from.
    */
   deleteAfterRetention: boolean
+  /** Whether this source may ingest reports for domains another client owns. */
+  allowForeignDomains: boolean
   /**
    * Internal date of the oldest message still in the polled folder. The evidence for how
    * far back a replay could actually reach, and where the last deletion pass cut.

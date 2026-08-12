@@ -17,4 +17,10 @@ public sealed class UpdateReportSourceRequest
     /// Irreversible and off by default — see <c>ReportSource.DeleteAfterRetention</c>.
     /// </summary>
     public bool? DeleteAfterRetention { get; set; }
+
+    /// <summary>
+    /// Whether this source may ingest reports for domains another client owns. Defaults
+    /// to true, which is how every source behaved before the switch existed.
+    /// </summary>
+    public bool? AllowForeignDomains { get; set; }
 }

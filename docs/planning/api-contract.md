@@ -706,6 +706,14 @@ session is refused with 403, because the endpoint resolves its report source, an
 therefore its client, from the credential. There is deliberately no source id in the
 path: request data cannot choose where the report lands.
 
+`X-Report-Provenance` is optional: a JSON object under 4 KB carrying an integer `v` that
+declares its shape. It is stored verbatim on the ingest receipt and never interpreted —
+the sending system knows things this one cannot (which tenant and mailbox a report was
+retrieved from, which message carried it), and discarding that makes "where did this
+actually come from" unanswerable during an incident. Malformed provenance is a `400`
+rather than being dropped: silently ignoring it would leave the caller believing the
+origin was recorded.
+
 Body is the raw payload — XML, JSON, gzip or zip, detected by magic bytes exactly as a
 mailbox attachment is. `Content-Type` and the filename in `Content-Disposition` are hints
 only.
@@ -729,6 +737,9 @@ only.
 - `413` — over `Worker:MaxPushedReportRequestBytes`, or expanding past the decompression
   limits. The message names the limit.
 - `401` — missing, malformed, revoked or expired credential.
+- A payload for a domain another client owns is refused when the source has
+  `allowForeignDomains` off, reported per payload as `refused-foreign-domain` and counted
+  as a failure — it is not a duplicate, because nothing is held.
 - `429` — too many requests for this credential, with `Retry-After` in seconds. The
   bucket is per credential, not per address, so one caller cannot starve another.
 

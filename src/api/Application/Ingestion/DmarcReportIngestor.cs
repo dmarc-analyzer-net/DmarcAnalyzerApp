@@ -10,6 +10,12 @@ public enum DmarcReportIngestOutcome
 {
     Inserted,
     Duplicate,
+
+    /// <summary>
+    /// The report's policy domain belongs to another client and this source is not allowed
+    /// to ingest for domains it does not own. Nothing was stored.
+    /// </summary>
+    ForeignDomainRefused,
 }
 
 public interface IDmarcReportIngestor
@@ -56,8 +62,16 @@ public sealed class DmarcReportIngestor(
         // Left outside the transaction on purpose: a domain is shared by every report for
         // it, not owned by this one, so rolling it back with a failed report would be
         // wrong. A domain with no reports yet is a state the console already handles.
-        var domainId = await domainResolver.ResolveOrCreateAsync(
+        var domain = await domainResolver.ResolveOrCreateAsync(
             source.DefaultClientId, policyDomain, ct);
+
+        // Refused before the transaction opens, so nothing is written and no ledger row
+        // claims it. The domain itself stays — it was already there, owned by someone else,
+        // and this source's opinion does not change that.
+        if (!source.AllowForeignDomains && domain.OwnerClientId != source.DefaultClientId)
+        {
+            return DmarcReportIngestOutcome.ForeignDomainRefused;
+        }
 
         // The report row and its records must commit together. When the report was
         // inserted before a transaction opened it auto-committed on its own, and if the
@@ -68,7 +82,7 @@ public sealed class DmarcReportIngestor(
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
 
         var reportEntityId = await TryInsertReportAsync(
-            domainId, source.Id, organizationName, reportId, parsed, ct);
+            domain.DomainId, source.Id, organizationName, reportId, parsed, ct);
 
         if (!reportEntityId.HasValue)
         {

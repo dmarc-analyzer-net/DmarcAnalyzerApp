@@ -224,14 +224,26 @@ public sealed class MailboxSyncService(
                                 var outcome = await payloadIngestor.IngestAsync(
                                     payload, reportSource, operationToken);
 
-                                if (outcome.Format == ReportPayloadIngestResult.Tls)
+                                if (outcome.Outcome == ReportPayloadOutcome.ForeignDomainRefused)
                                 {
-                                    if (outcome.Inserted) tlsReportsInserted++;
+                                    // Counted with the failures rather than the duplicates:
+                                    // a report that arrived and was not stored is the same
+                                    // operator signal, and calling it a duplicate would
+                                    // suggest the data is already held when it is not.
+                                    parseFailures++;
+                                    logger.LogWarning(
+                                        "Refused {AttachmentName} for report source {ReportSourceId}: it is for a " +
+                                        "domain another client owns and this source may not ingest for foreign domains",
+                                        payload.SourceName, reportSource.Id);
+                                }
+                                else if (outcome.Format == ReportPayloadIngestResult.Tls)
+                                {
+                                    if (outcome.Outcome == ReportPayloadOutcome.Inserted) tlsReportsInserted++;
                                     else tlsReportsSkippedAsDuplicate++;
                                 }
                                 else
                                 {
-                                    if (outcome.Inserted) reportsInserted++;
+                                    if (outcome.Outcome == ReportPayloadOutcome.Inserted) reportsInserted++;
                                     else reportsSkippedAsDuplicate++;
                                 }
                             }

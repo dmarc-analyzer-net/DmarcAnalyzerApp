@@ -164,7 +164,7 @@ public sealed class PushedReportIngestTests(PostgresFixture postgres) : IAsyncLi
     }
 
     private async Task<Application.Common.ServiceResult<PushedReportResult>> IngestAsync(
-        byte[] body, string fileName, string contentType, Guid? sourceId = null)
+        byte[] body, string fileName, string contentType, Guid? sourceId = null, string? provenance = null)
     {
         await using var db = postgres.CreateContext();
         var service = new PushedReportIngestService(
@@ -177,7 +177,7 @@ public sealed class PushedReportIngestTests(PostgresFixture postgres) : IAsyncLi
             Options.Create(new WorkerOptions()),
             NullLogger<PushedReportIngestService>.Instance);
 
-        return await service.IngestAsync(sourceId ?? SourceId, body, fileName, contentType, CancellationToken.None);
+        return await service.IngestAsync(sourceId ?? SourceId, body, fileName, contentType, provenance, CancellationToken.None);
     }
 
     private static byte[] Gzip(byte[] content)

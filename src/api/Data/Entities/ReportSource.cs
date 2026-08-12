@@ -24,6 +24,24 @@ public sealed class ReportSource
     public bool IsActive { get; set; } = true;
 
     /// <summary>
+    /// Whether this source may ingest reports for domains another client owns.
+    /// <para>
+    /// Domains are globally unique and routing is by policy domain, so a report arriving
+    /// here for a domain owned by a different client is stored against that client — which
+    /// is exactly what lets an agency poll one shared mailbox for many clients, and why
+    /// this defaults to true.
+    /// </para>
+    /// <para>
+    /// It is worth being able to turn off for a source whose reports should only ever
+    /// concern its own client — a pushed source in particular, where a leaked credential
+    /// could otherwise cause reports to appear under a client the credential has no other
+    /// relationship with. Reads are unaffected either way: a credential never grants sight
+    /// of another client's data.
+    /// </para>
+    /// </summary>
+    public bool AllowForeignDomains { get; set; } = true;
+
+    /// <summary>
     /// Delete report mail from this mailbox once it is older than the retention window the
     /// app enforces on itself.
     /// <para>

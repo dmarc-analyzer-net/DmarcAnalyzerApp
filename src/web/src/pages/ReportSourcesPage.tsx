@@ -43,6 +43,7 @@ const initialMailboxForm = {
   defaultClientId: '',
   isActive: true,
   deleteAfterRetention: false,
+  allowForeignDomains: true,
 }
 
 /** Status pill in the sources table: healthy/running/failing (health-driven). */
@@ -228,6 +229,7 @@ export function ReportSourcesPage() {
         defaultClientId: source.defaultClientId,
         isActive: source.isActive,
         deleteAfterRetention: source.deleteAfterRetention,
+        allowForeignDomains: source.allowForeignDomains,
       })
     } else {
       setEditingMailboxId(null)
@@ -713,6 +715,27 @@ export function ReportSourcesPage() {
               />
               Active
             </label>
+            <label className="flex items-center gap-2 text-sm text-secondary">
+              <input
+                type="checkbox"
+                checked={mailboxForm.allowForeignDomains}
+                onChange={(e) =>
+                  setMailboxForm((x) => ({ ...x, allowForeignDomains: e.target.checked }))
+                }
+              />
+              Accept reports for other clients' domains
+            </label>
+            {!mailboxForm.allowForeignDomains ? (
+              <Notice tone="warn" title="This source will only accept its own client's domains.">
+                Domains are globally unique and reports are routed by policy domain, so a
+                shared mailbox normally delivers to whichever client owns the domain — which
+                is what makes one mailbox usable for many clients. With this off, a report
+                for a domain another client owns is refused and counted as a failure rather
+                than stored. Worth doing for a pushed source whose reports should only ever
+                concern one client, so a leaked credential cannot put reports under a client
+                it has no other relationship with.
+              </Notice>
+            ) : null}
             <label className="flex items-center gap-2 text-sm text-secondary">
               <input
                 type="checkbox"

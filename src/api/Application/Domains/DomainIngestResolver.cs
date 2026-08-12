@@ -10,7 +10,7 @@ public interface IDomainIngestResolver
     /// default client when it does not exist yet. Takes a normalized (trimmed,
     /// lowercased) name and does not care which report format produced it.
     /// </summary>
-    Task<Guid> ResolveOrCreateAsync(Guid defaultClientId, string normalizedDomain, CancellationToken ct);
+    Task<ResolvedDomain> ResolveOrCreateAsync(Guid defaultClientId, string normalizedDomain, CancellationToken ct);
 }
 
 /// <summary>
@@ -22,20 +22,31 @@ public interface IDomainIngestResolver
 /// shared by every report for it, so rolling it back with one failed report
 /// would be wrong.
 /// </summary>
+/// <summary>
+/// A resolved domain and the client that owns it.
+/// <para>
+/// The owner is returned rather than assumed because it is not always the client that
+/// asked. Domains are globally unique, so a source belonging to one client can resolve a
+/// domain another client already owns — and the caller needs to know that happened before
+/// it decides whether to store the report.
+/// </para>
+/// </summary>
+public sealed record ResolvedDomain(Guid DomainId, Guid OwnerClientId);
+
 public sealed class DomainIngestResolver(DmarcAnalyzerDbContext db) : IDomainIngestResolver
 {
-    public async Task<Guid> ResolveOrCreateAsync(
+    public async Task<ResolvedDomain> ResolveOrCreateAsync(
         Guid defaultClientId, string normalizedDomain, CancellationToken ct)
     {
         var existing = await db.Domains
             .AsNoTracking()
             .Where(x => x.Name == normalizedDomain)
-            .Select(x => new { x.Id })
+            .Select(x => new { x.Id, x.ClientId })
             .SingleOrDefaultAsync(ct);
 
         if (existing is not null)
         {
-            return existing.Id;
+            return new ResolvedDomain(existing.Id, existing.ClientId);
         }
 
         var createdId = Guid.NewGuid();
@@ -52,9 +63,9 @@ public sealed class DomainIngestResolver(DmarcAnalyzerDbContext db) : IDomainIng
         var resolved = await db.Domains
             .AsNoTracking()
             .Where(x => x.Name == normalizedDomain)
-            .Select(x => new { x.Id })
+            .Select(x => new { x.Id, x.ClientId })
             .SingleAsync(ct);
 
-        return resolved.Id;
+        return new ResolvedDomain(resolved.Id, resolved.ClientId);
     }
 }

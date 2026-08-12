@@ -100,6 +100,7 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
             DefaultClientId = request.DefaultClientId,
             IsActive = request.IsActive,
             DeleteAfterRetention = request.DeleteAfterRetention,
+            AllowForeignDomains = request.AllowForeignDomains,
             CreatedAtUtc = now,
             UpdatedAtUtc = now,
         };
@@ -116,6 +117,11 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
         if (source is null)
         {
             return ServiceResult<ReportSourceDto>.Failure("not found", 404);
+        }
+
+        if (request.AllowForeignDomains is not null)
+        {
+            source.AllowForeignDomains = request.AllowForeignDomains.Value;
         }
 
         if (request.Protocol is not null)
@@ -236,6 +242,7 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
             defaultClientName,
             x.IsActive,
             x.DeleteAfterRetention,
+            x.AllowForeignDomains,
             x.OldestMessageAtUtc,
             x.LastSuccessSyncAtUtc,
             x.LastProcessedUid,

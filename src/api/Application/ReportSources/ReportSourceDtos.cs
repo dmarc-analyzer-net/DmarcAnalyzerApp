@@ -12,6 +12,7 @@ public sealed record ReportSourceDto(
     string? DefaultClientName,
     bool IsActive,
     bool DeleteAfterRetention,
+    bool AllowForeignDomains,
     DateTime? OldestMessageAtUtc,
     DateTime? LastSuccessSyncAtUtc,
     long? LastProcessedUid,

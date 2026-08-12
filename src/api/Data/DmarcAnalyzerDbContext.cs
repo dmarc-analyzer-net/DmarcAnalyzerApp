@@ -149,6 +149,12 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.LastProcessedUid);
             entity.Property(x => x.LastProcessedUidValidity);
             entity.Property(x => x.DeleteAfterRetention).HasDefaultValue(false);
+
+            // Defaulted true in the database, not just on the CLR property. Without this
+            // the migration takes bool's own default and writes false, which would silently
+            // restrict every source that already exists — the opposite of preserving
+            // today's routing, where a shared mailbox legitimately serves many clients.
+            entity.Property(x => x.AllowForeignDomains).HasDefaultValue(true);
             entity.HasIndex(x => x.DefaultClientId);
 
             entity.HasOne(x => x.DefaultClient)
@@ -185,6 +191,10 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.ToTable("report_ingest_receipt");
             entity.HasKey(x => x.Id);
             entity.Property(x => x.PayloadSha256).HasMaxLength(64).IsRequired();
+
+            // jsonb rather than text: it is JSON, the database can say so, and a future
+            // question about a provenance field can be asked in SQL rather than in code.
+            entity.Property(x => x.Provenance).HasColumnType("jsonb");
 
             // Unique per source, not globally: two sources legitimately receiving the same
             // forwarded report are two ingests, and collapsing them would silently drop one.

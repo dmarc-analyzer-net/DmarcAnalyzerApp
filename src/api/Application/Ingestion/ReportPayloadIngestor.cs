@@ -9,7 +9,16 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 /// What became of one extracted payload. <see cref="Format"/> is what the bytes turned out
 /// to be, which is not always what the caller thought it was sending.
 /// </summary>
-public sealed record ReportPayloadIngestResult(string Format, bool Inserted)
+public enum ReportPayloadOutcome
+{
+    Inserted,
+    Duplicate,
+
+    /// <summary>Refused: the report is for a domain this source may not ingest for.</summary>
+    ForeignDomainRefused,
+}
+
+public sealed record ReportPayloadIngestResult(string Format, ReportPayloadOutcome Outcome)
 {
     public const string Dmarc = "dmarc";
     public const string Tls = "tls";
@@ -58,8 +67,12 @@ public sealed class ReportPayloadIngestor(
 
             var parsed = tlsParser.Parse(payload.Stream);
             var outcome = await tlsIngestor.IngestAsync(parsed, source, ct);
-            return new ReportPayloadIngestResult(
-                ReportPayloadIngestResult.Tls, outcome == TlsReportIngestOutcome.Inserted);
+            return new ReportPayloadIngestResult(ReportPayloadIngestResult.Tls, outcome switch
+            {
+                TlsReportIngestOutcome.Inserted => ReportPayloadOutcome.Inserted,
+                TlsReportIngestOutcome.ForeignDomainRefused => ReportPayloadOutcome.ForeignDomainRefused,
+                _ => ReportPayloadOutcome.Duplicate,
+            });
         }
 
         // Everything else goes to the DMARC parser, including a payload whose format could
@@ -71,8 +84,12 @@ public sealed class ReportPayloadIngestor(
 
         var report = dmarcParser.Parse(payload.Stream);
         var dmarcOutcome = await dmarcIngestor.IngestAsync(report, source, ct);
-        return new ReportPayloadIngestResult(
-            ReportPayloadIngestResult.Dmarc, dmarcOutcome == DmarcReportIngestOutcome.Inserted);
+        return new ReportPayloadIngestResult(ReportPayloadIngestResult.Dmarc, dmarcOutcome switch
+        {
+            DmarcReportIngestOutcome.Inserted => ReportPayloadOutcome.Inserted,
+            DmarcReportIngestOutcome.ForeignDomainRefused => ReportPayloadOutcome.ForeignDomainRefused,
+            _ => ReportPayloadOutcome.Duplicate,
+        });
     }
 
     /// <summary>

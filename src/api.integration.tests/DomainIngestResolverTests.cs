@@ -96,14 +96,19 @@ public sealed class DomainIngestResolverTests(PostgresFixture postgres) : IAsync
         var second = await ResolveAsync("shared.test", otherClient);
 
         // Global uniqueness is what makes tenancy derivable through the domain, so the
-        // second client resolves to the first client's row rather than getting its own.
+        // second client resolves to the first client's row rather than getting its own —
+        // and is told whose it is, which is what lets a caller refuse it.
         Assert.Equal(first, second);
+        Assert.Equal(ClientId, (await ResolveFullAsync("shared.test", otherClient)).OwnerClientId);
 
         await using var check = postgres.CreateContext();
         Assert.Equal(ClientId, (await check.Domains.SingleAsync(x => x.Name == "shared.test")).ClientId);
     }
 
     private async Task<Guid> ResolveAsync(string domain, Guid? clientId = null)
+        => (await ResolveFullAsync(domain, clientId)).DomainId;
+
+    private async Task<ResolvedDomain> ResolveFullAsync(string domain, Guid? clientId = null)
     {
         await using var db = postgres.CreateContext();
         return await new DomainIngestResolver(db)
