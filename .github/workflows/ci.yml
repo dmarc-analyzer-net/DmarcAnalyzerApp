@@ -36,8 +36,17 @@ on:
   push:
     branches: [main]
     tags: ['v*.*.*']
+  # No branch filter, deliberately. Restricted to `main` this ran nothing at all on a
+  # pull request stacked on another branch, and "no checks reported" is indistinguishable
+  # from "checks passed" at a glance — a stacked branch could be reviewed and merged
+  # having never been built. It is also what makes a merge conflict silent: GitHub does
+  # not run checks on an unmergeable pull request either, so the absence of a run is the
+  # only signal.
+  #
+  # Safe because publishing is gated separately: every registry login and the image push
+  # itself test `github.event_name != 'pull_request'`, so a pull-request run builds and
+  # verifies but releases nothing, whatever branch it targets.
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 env:

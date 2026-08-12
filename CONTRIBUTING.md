@@ -57,9 +57,10 @@ docker compose up -d --build
 
 - `main` is protected. Branch, implement, verify, open a pull request.
 - **Merges are squash merges**, and branches are not auto-deleted afterwards.
-- CI runs on pull requests **targeting `main`**. If you stack a pull request on
-  another branch it will get no checks at all until it is retargeted — worth
-  knowing before you wonder where your test run went.
+- CI runs on every pull request, whatever branch it targets, so a stacked pull
+  request is built and tested like any other. If you see *no* checks at all,
+  the usual cause is a merge conflict: GitHub does not run checks on a pull
+  request it cannot merge.
 - Reference issues with `Refs #123` rather than `Closes #123`. Merging is not the
   same as shipping, and closing an issue is the maintainer's call.
 
