@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Data;
+using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Ingestion;
@@ -7,8 +8,14 @@ public sealed class MailboxHealthQueryService(DmarcAnalyzerDbContext db) : IMail
 {
     public async Task<IReadOnlyList<ReportSourceHealthDto>> ListAsync(Guid? reportSourceId, CancellationToken ct)
     {
+        // Mailbox health, and only a polled source has a mailbox. A pushed source has no
+        // sync run, no checkpoint and no UIDVALIDITY, so including it would put a row in
+        // this list that is permanently "never synced" — and the console's stale-success
+        // filter treats a missing last success as a problem, so it would sit there looking
+        // broken forever while working perfectly.
         var reportSources = db.ReportSources
             .AsNoTracking()
+            .Where(x => x.Protocol == ReportSourceProtocols.Imap)
             .AsQueryable();
 
         if (reportSourceId.HasValue)

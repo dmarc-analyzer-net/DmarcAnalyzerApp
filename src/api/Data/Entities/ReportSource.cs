@@ -1,5 +1,15 @@
 namespace DmarcAnalyzer.Api.Data.Entities;
 
+/// <summary>
+/// The protocol values that mean something to code, named once. Three separate places ask
+/// "is this a mailbox we poll", and a string literal in each is how they drift apart.
+/// </summary>
+public static class ReportSourceProtocols
+{
+    /// <summary>Polled over IMAP by the worker. The only protocol with a mailbox behind it.</summary>
+    public const string Imap = "imap";
+}
+
 public sealed class ReportSource
 {
     public Guid Id { get; set; } = Guid.NewGuid();

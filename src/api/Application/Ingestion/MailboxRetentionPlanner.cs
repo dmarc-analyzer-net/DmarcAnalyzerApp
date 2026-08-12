@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Data;
+using DmarcAnalyzer.Api.Data.Entities;
 using DmarcAnalyzer.Api.Workers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -60,7 +61,15 @@ public sealed class MailboxRetentionPlanner(
     public async Task<IReadOnlyList<MailboxRetentionPlan>> PlanAsync(CancellationToken ct)
     {
         var graceDays = Math.Max(0, _options.MailboxRetentionGraceDays);
-        var sources = await db.ReportSources.AsNoTracking().OrderBy(x => x.Name).ToListAsync(ct);
+        // Only a polled source has a mailbox to expunge. This is not merely tidy: the
+        // retention service connects over IMAP per plan, so a plan for a source that is
+        // not IMAP is an attempt to connect to a mailbox that does not exist — which a
+        // legacy pop3 row with deletion enabled would already have triggered today.
+        var sources = await db.ReportSources
+            .AsNoTracking()
+            .Where(x => x.Protocol == ReportSourceProtocols.Imap)
+            .OrderBy(x => x.Name)
+            .ToListAsync(ct);
         var plans = new List<MailboxRetentionPlan>(sources.Count);
 
         foreach (var source in sources)
