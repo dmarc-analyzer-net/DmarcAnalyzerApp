@@ -121,12 +121,16 @@ authoritative endpoint list.
 
 ### Worker Mode (same image, hosted service enabled)
 
-- Poll scheduler processes report sources sequentially (one source at a time per worker pass).
-- Implemented per-pass work:
+- Poll scheduler processes report sources sequentially (one source at a time per worker
+  pass), and only those with `protocol = imap` — an `api` source is written to by its
+  caller, not polled.
+- Implemented per-pass work, each on its own interval and skipped when not due:
   - Auto-close stale `running` sync runs.
   - Mailbox sync: fetch, extract attachments, parse, dedup, persist.
-- Planned processors (not built): alert evaluation, digest generation, retention
-  purge, export generation. Aggregate refresh is not planned — metrics are
+  - Alert evaluation, digest generation, retention purge.
+  - DNS refresh and the MTA-STS pass.
+  - Backup offload, and the opt-in mailbox retention deletion.
+- Not built: export generation. Aggregate refresh is not planned — metrics are
   computed on demand (see the analytics layer above).
 - Uses persisted sync run history and checkpoints for safe retry and operational visibility.
 - The pass loop catches and logs its own failures, backing off from 5s up to
@@ -386,24 +390,29 @@ anchored to the newest report rather than wall-clock time:
 
 ### PDF and Digest
 
-> **Not implemented** — planned; Playwright Chromium is already a dependency.
+> **Digest is implemented; the PDF is not.**
 
-- Branded PDF generated server-side via Playwright Chromium.
-- Monthly digest job composes summary and sends via SMTP.
-- Sender identity is deployment-level configured.
+- Digest job composes a summary and sends it via SMTP, with a preview endpoint
+  (`GET /api/v1/admin/digest/preview`) and a manual send
+  (`POST /api/v1/admin/digest/send`). Deliveries are recorded in `digest_delivery`.
+- Sender identity is deployment-level configured (`Email:*`).
+- **Not implemented**: the branded server-side PDF. This page used to say "Playwright
+  Chromium is already a dependency"; it is not one of the backend's, so that work still
+  starts by adding it and a browser to the image.
 
 ### Alerting
 
-> **Not implemented** — planned. Problems currently surface reactively through the
-> dashboards, the threat feed, and mailbox health.
+> **Implemented.** Evaluated on the worker loop, on its own interval.
 
-- Alert types:
-  - failure spikes
-  - policy regression
-- Thresholds:
-  - per-client overrides + global defaults.
-- Delivery:
-  - SMTP email to global and per-client recipient lists.
+- Alert types: failure spike, policy regression, and three MTA-STS conditions
+  (policy change, broken policy, MX mismatch).
+- Thresholds: per-client overrides (`alertsEnabled`, compliance-drop percent, minimum
+  messages) over global defaults.
+- Delivery: SMTP email to global and per-client recipient lists
+  (`notification_recipient`), with a test send
+  (`POST /api/v1/admin/notifications/test`) and a manual evaluation
+  (`POST /api/v1/admin/alerts/evaluate`).
+- Events are persisted in `alert_event` and surfaced on the console's Alerts screen.
 
 ## 10) Observability and Operations
 

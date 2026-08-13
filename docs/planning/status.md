@@ -49,12 +49,16 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - `client`
   - `domain`
   - `report_source`
+  - `api_credential`
+  - `report_ingest_receipt`
 - API vertical slice endpoints:
   - clients: list/get/create/patch. `slug` is immutable after creation. Every
     install is bootstrapped with a `default` client, because a domain and a
     report source both require one
   - domains: list/get/create/patch
   - report sources: list/create/patch/sync
+  - machine credentials: list/issue/revoke (admin only)
+  - report ingestion: `POST /api/v1/reports`, machine credential only
   - mailbox health: list
   - mailbox sync runs: list
   - admin migrate endpoint
@@ -71,6 +75,48 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - checkpointed sync (`LastProcessedUid`, `LastProcessedUidValidity`)
   - retry/backoff and run timeout controls
 - Sync operational history persisted in `mailbox_sync_run`.
+- **Pushed ingestion** (ADR 0010). A report source carries a `protocol` that says who
+  reads it: `imap` is polled by the worker, `api` is written to by an external system
+  posting raw report bytes to `POST /api/v1/reports`. Both land through the same
+  extractor, the same parsers and the same ingestors, so the two paths cannot drift on
+  deduplication.
+  - **Machine credentials** are bearer tokens scoped to one report source, and the
+    source decides which client the data lands under — there is no source id in the
+    path to disagree with the credential. Issued and revoked from the console by an
+    admin; the token is shown once and stored only as a SHA-256 hash. Optional expiry.
+  - **Transport idempotency**: a SHA-256 of the request body is recorded per source in
+    `report_ingest_receipt`, so a retry after a lost response is answered `replay`
+    rather than ingested a second time.
+  - **Per-credential rate limiting** on the endpoint
+    (`Worker:ReportIngestRateLimitPermits` per `Worker:ReportIngestRateLimitWindowSeconds`),
+    and a request-size ceiling before decompression
+    (`Worker:MaxPushedReportRequestBytes`) on top of the expansion limits both paths
+    share.
+  - Optional `X-Report-Provenance`: a JSON object carrying an integer `v`, recorded as
+    `jsonb` beside the receipt so "where did this come from" is a SQL question.
+  - **`allowForeignDomains`** per source. Off refuses a report for a domain already
+    owned by a *different* client, before anything is written. It is not a domain
+    allow-list: a domain nobody owns yet is created under this source's own client and
+    is therefore never foreign. Existing sources default to on, preserving today's
+    routing.
+  - `pop3` is no longer accepted as a protocol. It validated for a long time and never
+    ingested anything — the worker has always polled `imap` only. Existing rows are
+    untouched and stay editable; only a *change* to `pop3` is refused.
+  - Not built: any view of when a pushed source last received something. `mailbox-health`
+    deliberately excludes `api` sources, because a pushed source has no mailbox, no sync
+    run and no checkpoint, so it would sit in that list permanently "never synced".
+- **Bounded decompression** on both ingestion paths. A `rua=` address is published in
+  DNS, so the address of this decompressor is advertised to strangers by design, and
+  there is exactly one worker per database — exhausting it stops ingestion for every
+  client at once. Three absolute caps, each named in the message when it trips:
+  `Worker:MaxReportEntryBytes` per decompressed payload,
+  `Worker:MaxReportAttachmentBytes` across everything one attachment expands to, and
+  `Worker:MaxReportArchiveEntries` on the walk itself. Defaults sit far above any real
+  reporting pipeline.
+- A **truncated compressed payload** is refused rather than ingested. Half a gzip
+  decompresses without error, and the report built from it carried the real report id
+  and window with zero records — which then permanently shadowed the complete report
+  through dedup. Reachable from the mailbox path, not only the endpoint.
 - Domain-resolved report persistence:
   - global unique domain resolution with auto-create when missing
   - full-fidelity DMARC storage in:
@@ -81,7 +127,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
 - Console visual redesign (new "ink-green/teal" design system):
   - design tokens as CSS vars + Tailwind theme; self-hosted fonts (Space Grotesk / Public Sans / JetBrains Mono) via Fontsource, no CDN
   - primitives ported from the design handoff (Button/Badge/Card/Input/Select/Dialog/Table/Icon/StatCard/PolicyBadge/ComplianceBar/DaysSelector/TrendChart)
-  - new sidebar shell; all six screens rebuilt (Dashboard, Domains, Domain Detail, Clients, Users, Mailbox Sources) + Login
+  - new sidebar shell; all six screens rebuilt (Dashboard, Domains, Domain Detail, Clients, Users, Report sources) + Login
   - Domains/Detail surface published policy (PolicyBadge p=…) and enforcement status (Enforced/Ramping/Spoofing/Monitoring)
 - Responsive console (single `lg` breakpoint at 1024px; desktop layout unchanged):
   - below `lg` the sidebar is an off-canvas drawer behind a top bar — backdrop, Escape, body scroll lock, focus moved in on open and returned to the trigger on close, and `invisible` while closed so the hidden menu is not in the tab order
