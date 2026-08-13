@@ -46,6 +46,28 @@ const initialMailboxForm = {
   allowForeignDomains: true,
 }
 
+/**
+ * Whether this source is polled, and therefore has a mailbox behind it. `api` sources are
+ * written to by their caller: no host, no port, no sync run, no checkpoint. Everything
+ * mailbox-shaped on this page keys off this rather than off the row simply existing.
+ */
+const sourceHasMailbox = (source: Pick<ReportSource, 'protocol'>) => source.protocol === 'imap'
+
+/**
+ * Status pill for a source that is never polled, where sync health cannot say anything.
+ * <p>
+ * Two very different cases share that shape and must not share a label. `api` is working
+ * as designed and simply has nothing to sync. Anything else here is a `pop3` row predating
+ * the removal of that protocol — it is not pushed, it is inert: it validated for a long
+ * time and never ingested a byte, because the worker has only ever selected `imap`.
+ */
+const getUnpolledBadge = (
+  protocol: string,
+): { label: string; variant: 'success' | 'warning' | 'danger' | 'neutral' } =>
+  protocol === 'api'
+    ? { label: 'Pushed', variant: 'neutral' }
+    : { label: 'Not polled', variant: 'warning' }
+
 /** Status pill in the sources table: healthy/running/failing (health-driven). */
 const getHealthBadge = (
   status: SyncRunStatus | null | undefined,
@@ -162,6 +184,15 @@ export function ReportSourcesPage() {
   const healthyCount = useMemo(
     () => mailboxHealth.filter((health) => health.lastRunStatus === 'success').length,
     [mailboxHealth],
+  )
+
+  // Only a polled source has a mailbox, so only a polled source can be counted against
+  // mailbox health. Counting every source made an install with nothing but pushed
+  // sources read "0/N healthy" forever, while the health card below it — which filters
+  // on the same thing the API does — correctly showed nothing at all.
+  const mailboxSourceCount = useMemo(
+    () => reportSources.filter((source) => sourceHasMailbox(source)).length,
+    [reportSources],
   )
 
   const filteredMailboxHealth = useMemo(() => {
@@ -300,7 +331,14 @@ export function ReportSourcesPage() {
   }
 
   const count = reportSources.length
-  const subtitle = `${count} ${count === 1 ? 'mailbox' : 'mailboxes'} · ${healthyCount}/${count} healthy`
+  const subtitle = [
+    `${count} ${count === 1 ? 'source' : 'sources'}`,
+    mailboxSourceCount > 0
+      ? `${healthyCount}/${mailboxSourceCount} ${mailboxSourceCount === 1 ? 'mailbox' : 'mailboxes'} healthy`
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ')
 
   return (
     <>
@@ -312,14 +350,14 @@ export function ReportSourcesPage() {
         <div className="flex flex-wrap items-center gap-2.5 sm:flex-nowrap sm:shrink-0">
           <Input
             icon="search"
-            placeholder="Search mailboxes"
+            placeholder="Search sources"
             className="w-full sm:w-56"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
           {canManage && (
             <Button icon="plus" onClick={() => openMailboxDialog()}>
-              Add mailbox
+              Add source
             </Button>
           )}
         </div>
@@ -342,7 +380,7 @@ export function ReportSourcesPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Mailbox</TableHead>
+                    <TableHead>Source</TableHead>
                     <TableHead>Protocol</TableHead>
                     <TableHead>Host</TableHead>
                     <TableHead>Last sync</TableHead>
@@ -355,19 +393,26 @@ export function ReportSourcesPage() {
                 <TableBody>
                   {filteredReportSources.map((source, index) => {
                     const health = healthBySourceId.get(source.id)
-                    const badge = source.isActive
-                      ? getHealthBadge(health?.lastRunStatus)
-                      : { label: 'Inactive', variant: 'neutral' as const }
+                    const hasMailbox = sourceHasMailbox(source)
+                    const badge = !source.isActive
+                      ? { label: 'Inactive', variant: 'neutral' as const }
+                      : hasMailbox
+                        ? getHealthBadge(health?.lastRunStatus)
+                        : getUnpolledBadge(source.protocol)
                     const isSyncing = syncingId === source.id
                     return (
                       <TableRow key={source.id} last={index === filteredReportSources.length - 1}>
                         <TableCell mono>{source.name}</TableCell>
                         <TableCell mono>
-                          {source.protocol}:{source.port}
+                          {/* Port is a mailbox fact. A pushed source stores 0 for it, and
+                              rendering that verbatim produced "api:0". */}
+                          {hasMailbox ? `${source.protocol}:${source.port}` : source.protocol}
                         </TableCell>
-                        <TableCell mono>{source.host}</TableCell>
+                        <TableCell mono>{source.host || '—'}</TableCell>
                         <TableCell>
-                          <span className="text-sm text-secondary">{lastSyncLabel(health)}</span>
+                          <span className="text-sm text-secondary">
+                            {hasMailbox ? lastSyncLabel(health) : '—'}
+                          </span>
                         </TableCell>
                         <TableCell mono align="right">
                           {numOrDash(health?.lastRunMessagesScanned)}
@@ -392,19 +437,23 @@ export function ReportSourcesPage() {
                                 Edit
                               </Button>
                             )}
-                            <Button
-                              variant="secondary"
-                              size="sm"
-                              disabled={isSyncing}
-                              onClick={() => void syncNow(source.id)}
-                            >
-                              <Icon
-                                name="refresh-cw"
-                                size={14}
-                                className={isSyncing ? 'animate-spin' : undefined}
-                              />
-                              {isSyncing ? 'Syncing' : 'Sync now'}
-                            </Button>
+                            {/* Manual sync refuses anything but IMAP, so offering the
+                                button on a pushed source only ever produced an error. */}
+                            {hasMailbox && (
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                disabled={isSyncing}
+                                onClick={() => void syncNow(source.id)}
+                              >
+                                <Icon
+                                  name="refresh-cw"
+                                  size={14}
+                                  className={isSyncing ? 'animate-spin' : undefined}
+                                />
+                                {isSyncing ? 'Syncing' : 'Sync now'}
+                              </Button>
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -520,7 +569,9 @@ export function ReportSourcesPage() {
             </div>
             {filteredMailboxHealth.length === 0 ? (
               <p className="px-5 py-10 text-center text-sm text-secondary">
-                No mailboxes match the selected filter.
+                {mailboxSourceCount === 0
+                  ? 'No polled mailboxes. Sources that receive pushed reports have nothing to sync.'
+                  : 'No mailboxes match the selected filter.'}
               </p>
             ) : null}
           </Card>
@@ -612,7 +663,11 @@ export function ReportSourcesPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{editingMailboxId ? 'Edit report source' : 'Add report source'}</DialogTitle>
-            <DialogDescription>Configure mailbox transport and default routing client.</DialogDescription>
+            <DialogDescription>
+              {isPushedSource
+                ? 'Choose the client this source routes to. A pushed source has no mailbox to configure.'
+                : 'Configure mailbox transport and default routing client.'}
+            </DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={createOrUpdateReportSource}>
             <label className="grid gap-1.5 text-sm font-medium text-body">

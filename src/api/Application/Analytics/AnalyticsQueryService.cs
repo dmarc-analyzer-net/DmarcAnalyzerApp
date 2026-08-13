@@ -1,5 +1,6 @@
 using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Data;
+using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Analytics;
@@ -145,8 +146,15 @@ public sealed class AnalyticsQueryService(
         AnalyticsMailboxesDto? mailboxes = null;
         if (currentUser.IsAgencyStaff)
         {
-            var mailboxTotal = await db.ReportSources.CountAsync(ct);
+            // Counted over sources that actually have a mailbox, the same predicate
+            // /mailbox-health uses. Counting every source made a pushed source — which has
+            // no sync run and never will — arrive in the total as silently healthy, so the
+            // dashboard read "1/1 mailboxes healthy" for an install with no mailbox at all.
+            var mailboxTotal = await db.ReportSources
+                .CountAsync(x => x.Protocol == ReportSourceProtocols.Imap, ct);
             var latestRunStatuses = await db.MailboxSyncRuns
+                .Where(x => db.ReportSources.Any(source =>
+                    source.Id == x.ReportSourceId && source.Protocol == ReportSourceProtocols.Imap))
                 .GroupBy(x => x.ReportSourceId)
                 .Select(g => g.OrderByDescending(r => r.StartedAtUtc).First().Status)
                 .ToListAsync(ct);
