@@ -181,7 +181,7 @@ GET {{baseUrl}}/api/v1/mailbox-health?reportSourceId={{reportSourceId}}
 POST {{baseUrl}}/api/v1/api-credentials
 Content-Type: application/json
 
-{ "reportSourceId": "{{reportSourceId}}", "name": "bifrost-production" }
+{ "reportSourceId": "{{reportSourceId}}", "name": "mail-gateway-production" }
 
 ### List machine credentials (never returns a token)
 GET {{baseUrl}}/api/v1/api-credentials

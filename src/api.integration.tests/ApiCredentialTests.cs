@@ -29,7 +29,7 @@ public sealed class ApiCredentialTests(PostgresFixture postgres) : IAsyncLifetim
         });
         db.ReportSources.Add(new ReportSource
         {
-            Id = SourceId, Name = "Bifrost", Protocol = "imap", Host = "imap.example.test",
+            Id = SourceId, Name = "Mail gateway", Protocol = "imap", Host = "imap.example.test",
             Port = 993, UseTls = true, Username = "rua@acme.test", PasswordEncrypted = "x",
             DefaultClientId = ClientId, IsActive = true,
         });
@@ -41,7 +41,7 @@ public sealed class ApiCredentialTests(PostgresFixture postgres) : IAsyncLifetim
     [Fact]
     public async Task IssuingReturnsTheTokenOnceAndStoresOnlyItsHash()
     {
-        var issued = await IssueAsync("bifrost-prod");
+        var issued = await IssueAsync("mail-gateway-prod");
 
         Assert.StartsWith("dmarcanalyzer_", issued.Token);
 
@@ -59,7 +59,7 @@ public sealed class ApiCredentialTests(PostgresFixture postgres) : IAsyncLifetim
     [Fact]
     public async Task ThePresentedTokenVerifiesAgainstTheStoredHashAndAWrongOneDoesNot()
     {
-        var issued = await IssueAsync("bifrost-prod");
+        var issued = await IssueAsync("mail-gateway-prod");
         Assert.True(MachineToken.TryParse(issued.Token, out var tokenId, out var secret));
 
         await using var db = postgres.CreateContext();
@@ -74,8 +74,8 @@ public sealed class ApiCredentialTests(PostgresFixture postgres) : IAsyncLifetim
     {
         // The reason a credential is a row rather than a column on the source (ADR 0010):
         // the replacement has to work before the old one is switched off.
-        var first = await IssueAsync("bifrost-2026");
-        var second = await IssueAsync("bifrost-2027");
+        var first = await IssueAsync("mail-gateway-2026");
+        var second = await IssueAsync("mail-gateway-2027");
 
         await using var db = postgres.CreateContext();
         var live = await db.ApiCredentials.Where(x => x.RevokedAtUtc == null).CountAsync();
@@ -87,7 +87,7 @@ public sealed class ApiCredentialTests(PostgresFixture postgres) : IAsyncLifetim
     [Fact]
     public async Task RevokingIsATimestampNotADeleteAndIsIdempotent()
     {
-        var issued = await IssueAsync("bifrost-prod");
+        var issued = await IssueAsync("mail-gateway-prod");
 
         Assert.NotNull((await RevokeAsync(issued.Credential.Id)).RevokedAtUtc);
         var afterFirst = await StoredRevokedAtAsync();
@@ -109,7 +109,7 @@ public sealed class ApiCredentialTests(PostgresFixture postgres) : IAsyncLifetim
     [Fact]
     public async Task ARevokedOrExpiredCredentialIsNotUsable()
     {
-        var issued = await IssueAsync("bifrost-prod");
+        var issued = await IssueAsync("mail-gateway-prod");
         await RevokeAsync(issued.Credential.Id);
 
         await using var db = postgres.CreateContext();

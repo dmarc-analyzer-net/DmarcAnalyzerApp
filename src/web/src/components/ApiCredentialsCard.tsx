@@ -179,7 +179,7 @@ export function ApiCredentialsCard({ sources }: { sources: ReportSource[] }) {
               <Input
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                placeholder="bifrost-production"
+                placeholder="mail-gateway-production"
                 required
               />
             </label>

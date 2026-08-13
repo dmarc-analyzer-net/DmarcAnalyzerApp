@@ -35,7 +35,7 @@ public sealed class PushedReportIngestTests(PostgresFixture postgres) : IAsyncLi
         });
         db.ReportSources.Add(new ReportSource
         {
-            Id = SourceId, Name = "Bifrost", Protocol = "api",
+            Id = SourceId, Name = "Mail gateway", Protocol = "api",
             Host = string.Empty, Port = 0, UseTls = false,
             Username = string.Empty, PasswordEncrypted = string.Empty,
             DefaultClientId = ClientId, IsActive = true,
