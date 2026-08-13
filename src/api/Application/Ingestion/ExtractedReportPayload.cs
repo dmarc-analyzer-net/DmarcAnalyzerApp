@@ -12,3 +12,18 @@ public sealed record ExtractedReportPayload(
     ReportPayloadKind Kind,
     MemoryStream Stream,
     string SourceName);
+
+/// <summary>
+/// Everything one attachment yielded, plus whether the walk stopped early.
+/// <para>
+/// The entry cap is the one limit that does not refuse the attachment — it takes what it
+/// has and ignores the rest — and the two callers need opposite things from that. Mail
+/// cannot be re-delivered on request, so dropping the excess and logging it is right for
+/// the sync loop. An HTTP client can split its payload and post again, so returning it a
+/// silent partial success is not: <c>{inserted: 5, failed: 0}</c> for a twenty-entry
+/// archive is indistinguishable from complete.
+/// </para>
+/// </summary>
+public sealed record ExtractedPayloadSet(
+    IReadOnlyList<ExtractedReportPayload> Payloads,
+    bool ArchiveTruncated);

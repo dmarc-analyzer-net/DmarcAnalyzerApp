@@ -196,8 +196,12 @@ public sealed class MailboxSyncService(
                     IReadOnlyList<ExtractedReportPayload> payloads;
                     try
                     {
-                        payloads = await ReportPayloadExtractor.ExtractAsync(
-                            attachment, PayloadLimits(), logger, operationToken);
+                        // ArchiveTruncated is deliberately ignored here. Mail cannot be
+                        // re-delivered on request, so taking what the cap allowed and
+                        // logging the rest is the best available outcome; the endpoint,
+                        // whose caller can retry in smaller pieces, refuses instead.
+                        payloads = (await ReportPayloadExtractor.ExtractAsync(
+                            attachment, PayloadLimits(), logger, operationToken)).Payloads;
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {

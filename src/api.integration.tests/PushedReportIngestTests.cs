@@ -122,6 +122,50 @@ public sealed class PushedReportIngestTests(PostgresFixture postgres) : IAsyncLi
         Assert.Equal(0, await db.ReportIngestReceipts.CountAsync());
     }
 
+    /// <summary>
+    /// The entry cap is the only expansion limit that truncates rather than refuses, and
+    /// the endpoint used to answer 200 after taking the first N — <c>inserted: 2,
+    /// failed: 0</c> for a five-entry archive, which no caller could tell apart from
+    /// having sent two. It now refuses whole, like the other three limits, because the
+    /// caller can split the archive and post again.
+    /// </summary>
+    [Fact]
+    public async Task AnArchivePastTheEntryCapIsRefusedRatherThanSilentlyTruncated()
+    {
+        var body = Zip(
+            ("a.xml", ReportXml("zip-a")),
+            ("b.xml", ReportXml("zip-b")),
+            ("c.xml", ReportXml("zip-c")),
+            ("d.xml", ReportXml("zip-d")),
+            ("e.xml", ReportXml("zip-e")));
+
+        var result = await IngestAsync(body, "many.zip", "application/zip",
+            options: new WorkerOptions { MaxReportArchiveEntries = 2 });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(413, result.StatusCode);
+        Assert.Contains("MaxReportArchiveEntries", result.Error);
+
+        // Refused before the ingest loop, so neither the reports the cap did allow
+        // through nor a receipt that would defeat the retry survive.
+        await using var db = postgres.CreateContext();
+        Assert.Equal(0, await db.ReportIngestReceipts.CountAsync());
+        Assert.Equal(0, await db.DmarcReports.CountAsync(x => x.ReportId.StartsWith("zip-")));
+    }
+
+    /// <summary>An archive inside the cap is unaffected — the refusal is the cap, not zip.</summary>
+    [Fact]
+    public async Task AnArchiveWithinTheEntryCapIsIngestedWhole()
+    {
+        var body = Zip(("a.xml", ReportXml("ok-a")), ("b.xml", ReportXml("ok-b")));
+
+        var result = await IngestAsync(body, "few.zip", "application/zip",
+            options: new WorkerOptions { MaxReportArchiveEntries = 2 });
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal(2, result.Value!.Inserted);
+    }
+
     [Fact]
     public async Task TheReceiptIsScopedToTheSourceSoTwoSourcesCanReceiveTheSameBytes()
     {
@@ -164,7 +208,8 @@ public sealed class PushedReportIngestTests(PostgresFixture postgres) : IAsyncLi
     }
 
     private async Task<Application.Common.ServiceResult<PushedReportResult>> IngestAsync(
-        byte[] body, string fileName, string contentType, Guid? sourceId = null, string? provenance = null)
+        byte[] body, string fileName, string contentType, Guid? sourceId = null, string? provenance = null,
+        WorkerOptions? options = null)
     {
         await using var db = postgres.CreateContext();
         var service = new PushedReportIngestService(
@@ -174,10 +219,25 @@ public sealed class PushedReportIngestTests(PostgresFixture postgres) : IAsyncLi
                 new TlsRptReportParser(),
                 new DmarcReportIngestor(db, new DomainIngestResolver(db)),
                 new TlsReportIngestor(db, new DomainIngestResolver(db))),
-            Options.Create(new WorkerOptions()),
+            Options.Create(options ?? new WorkerOptions()),
             NullLogger<PushedReportIngestService>.Instance);
 
         return await service.IngestAsync(sourceId ?? SourceId, body, fileName, contentType, provenance, CancellationToken.None);
+    }
+
+    private static byte[] Zip(params (string Name, string Content)[] entries)
+    {
+        using var output = new MemoryStream();
+        using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (name, content) in entries)
+            {
+                using var writer = new StreamWriter(archive.CreateEntry(name).Open());
+                writer.Write(content);
+            }
+        }
+
+        return output.ToArray();
     }
 
     private static byte[] Gzip(byte[] content)

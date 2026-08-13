@@ -106,7 +106,6 @@ public sealed class WorkerOptions
     /// <summary>How often the retention purge runs. Daily is plenty — retention is measured in months.</summary>
     public int RetentionIntervalHours { get; set; } = 24;
 
-    /// <summary>Reports deleted per transaction, so a large backlog doesn't hold locks across the table.</summary>
     /// <summary>
     /// Refuse to start when another worker already holds the ingestion lock.
     /// <para>
@@ -118,5 +117,6 @@ public sealed class WorkerOptions
     /// </summary>
     public bool EnforceSingleInstance { get; set; } = true;
 
+    /// <summary>Reports deleted per transaction, so a large backlog doesn't hold locks across the table.</summary>
     public int RetentionBatchSize { get; set; } = 500;
 }

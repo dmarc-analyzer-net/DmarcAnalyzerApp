@@ -85,10 +85,10 @@ public sealed class PushedReportIngestService(
 
         var attachment = BuildAttachment(body, fileName, contentType);
 
-        IReadOnlyList<ExtractedReportPayload> payloads;
+        ExtractedPayloadSet extracted;
         try
         {
-            payloads = await ReportPayloadExtractor.ExtractAsync(attachment, PayloadLimits(), logger, ct);
+            extracted = await ReportPayloadExtractor.ExtractAsync(attachment, PayloadLimits(), logger, ct);
         }
         catch (ReportPayloadTooLargeException ex)
         {
@@ -101,6 +101,22 @@ public sealed class PushedReportIngestService(
             logger.LogWarning(ex, "Failed to extract pushed payload for report source {ReportSourceId}", source.Id);
             return ServiceResult<PushedReportResult>.Failure("payload could not be decoded", 400);
         }
+
+        if (extracted.ArchiveTruncated)
+        {
+            // Refused whole, and before anything is stored, so the caller can split the
+            // archive and post it again. The alternative — ingest the first N and answer
+            // 200 — is the failure this exists to close: the response said inserted 5,
+            // failed 0 for a twenty-entry archive, and nothing in it distinguished that
+            // from having sent five. The other three expansion limits already answer 413;
+            // this one used to be the exception, silently.
+            await DisposeAllAsync(extracted.Payloads);
+            return ServiceResult<PushedReportResult>.Failure(
+                $"archive holds more than Worker:MaxReportArchiveEntries ({_options.MaxReportArchiveEntries}) " +
+                "entries; split it or raise the limit", 413);
+        }
+
+        var payloads = extracted.Payloads;
 
         if (payloads.Count == 0)
         {
@@ -205,6 +221,18 @@ public sealed class PushedReportIngestService(
     /// than one that was never promised.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// Releases payloads extracted but never ingested, on a path that returns before the
+    /// ingest loop — which is otherwise the only thing that disposes them.
+    /// </summary>
+    private static async Task DisposeAllAsync(IReadOnlyList<ExtractedReportPayload> payloads)
+    {
+        foreach (var payload in payloads)
+        {
+            await payload.Stream.DisposeAsync();
+        }
+    }
+
     private static bool TryReadProvenance(string? provenance, out int? version, out string? error)
     {
         version = null;

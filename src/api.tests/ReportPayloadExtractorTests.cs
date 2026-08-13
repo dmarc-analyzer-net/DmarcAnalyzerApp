@@ -135,6 +135,10 @@ public class ReportPayloadExtractorTests
 
     private static async Task<IReadOnlyList<ExtractedReportPayload>> ExtractAsync(
         MimeEntity attachment, ReportPayloadLimits limits)
+        => (await ExtractSetAsync(attachment, limits)).Payloads;
+
+    private static async Task<ExtractedPayloadSet> ExtractSetAsync(
+        MimeEntity attachment, ReportPayloadLimits limits)
         => await ReportPayloadExtractor.ExtractAsync(
             attachment, limits, NullLogger.Instance, CancellationToken.None);
 

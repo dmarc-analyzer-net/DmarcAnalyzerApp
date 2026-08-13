@@ -64,13 +64,14 @@ public sealed class ReportPayloadTooLargeException(string limitName, long limitV
 /// </summary>
 public static class ReportPayloadExtractor
 {
-    public static async Task<IReadOnlyList<ExtractedReportPayload>> ExtractAsync(
+    public static async Task<ExtractedPayloadSet> ExtractAsync(
         MimeEntity attachment,
         ReportPayloadLimits limits,
         ILogger logger,
         CancellationToken ct)
     {
         var result = new List<ExtractedReportPayload>();
+        var truncated = false;
 
         await using var raw = new MemoryStream();
 
@@ -88,7 +89,7 @@ public static class ReportPayloadExtractor
         }
         else
         {
-            return result;
+            return new ExtractedPayloadSet(result, ArchiveTruncated: false);
         }
 
         var fileName = GetAttachmentFileName(attachment);
@@ -98,14 +99,14 @@ public static class ReportPayloadExtractor
         // frequently misname attachments (.zip holding gzip data and vice versa).
         if (IsZip(payload))
         {
-            await ExtractZipAsync(payload, fileName, limits, result, logger, ct);
-            return result;
+            truncated = await ExtractZipAsync(payload, fileName, limits, result, logger, ct);
+            return new ExtractedPayloadSet(result, truncated);
         }
 
         if (IsGzip(payload))
         {
             await ExtractGzipAsync(payload, fileName, limits, result, ct);
-            return result;
+            return new ExtractedPayloadSet(result, ArchiveTruncated: false);
         }
 
         var mimeType = attachment.ContentType?.MimeType ?? string.Empty;
@@ -116,10 +117,16 @@ public static class ReportPayloadExtractor
                 bareKind, new MemoryStream(payload, writable: false), fileName));
         }
 
-        return result;
+        return new ExtractedPayloadSet(result, ArchiveTruncated: false);
     }
 
-    private static async Task ExtractZipAsync(
+    /// <summary>
+    /// Walks the archive into <paramref name="result"/>. Returns whether the entry cap
+    /// stopped the walk early, so a caller that can act on that — the HTTP endpoint, whose
+    /// client can split the payload and post again — is able to, rather than being handed
+    /// a partial extraction that looks complete.
+    /// </summary>
+    private static async Task<bool> ExtractZipAsync(
         byte[] payload,
         string fileName,
         ReportPayloadLimits limits,
@@ -150,7 +157,7 @@ public static class ReportPayloadExtractor
                     "Stopped reading {AttachmentName} at {MaxEntries} entries; the rest were ignored. " +
                     "Raise Worker:MaxReportArchiveEntries if a real sender legitimately packs more.",
                     fileName, limits.MaxEntries);
-                return;
+                return true;
             }
 
             // The suffix pre-filter keeps skipping junk; the extracted bytes
@@ -207,6 +214,8 @@ public static class ReportPayloadExtractor
 
             result.Add(new ExtractedReportPayload(entryKind, extracted, entry.Key));
         }
+
+        return false;
     }
 
     private static async Task ExtractGzipAsync(
