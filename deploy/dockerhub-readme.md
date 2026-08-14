@@ -61,7 +61,7 @@ The two that matter on day one:
 
 ## Tags
 
-`latest` tracks releases. Pin a version (`0.10.0`) for anything you depend on —
+`latest` tracks releases. Pin a version (`0.11.1`) for anything you depend on —
 it makes upgrades explicit and rollbacks unambiguous. `edge` tracks `main` and is
 unreleased.
 
