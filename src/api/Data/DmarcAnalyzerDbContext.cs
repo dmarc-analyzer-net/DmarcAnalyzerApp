@@ -153,6 +153,17 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             // at the schema rather than left as unlimited text so a server that ignores the
             // limit is refused at the insert instead of silently redefining the checkpoint.
             entity.Property(x => x.LastProcessedUidl).HasMaxLength(70);
+
+            // 1024 on both, which is S3's own limit on a key. Bucket and region are far
+            // shorter in practice but are bounded for the same reason every other string
+            // here is: an unbounded text column is a column nobody has thought about.
+            entity.Property(x => x.S3Bucket).HasMaxLength(255);
+            entity.Property(x => x.S3Prefix).HasMaxLength(1024);
+            entity.Property(x => x.S3Region).HasMaxLength(64);
+            entity.Property(x => x.S3Endpoint).HasMaxLength(255);
+            entity.Property(x => x.S3ForcePathStyle).HasDefaultValue(true);
+            entity.Property(x => x.LastProcessedObjectAtUtc);
+            entity.Property(x => x.LastProcessedObjectKey).HasMaxLength(1024);
             entity.Property(x => x.DeleteAfterRetention).HasDefaultValue(false);
 
             // Defaulted true in the database, not just on the CLR property. Without this

@@ -11,8 +11,8 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
 {
     /// <summary>
     /// What a source may actually be, not what it might one day be. Every value here is
-    /// read by something: <c>imap</c> and <c>pop3</c> by the polling worker, <c>api</c> by
-    /// the ingestion endpoint.
+    /// read by something: <c>imap</c>, <c>pop3</c> and <c>s3</c> by the polling worker,
+    /// <c>api</c> by the ingestion endpoint.
     /// <para>
     /// <c>pop3</c> is here on its second attempt. It was accepted for a long time and never
     /// worked — the worker polled <c>Protocol == "imap"</c> and manual sync refused anything
@@ -29,9 +29,14 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
     /// </para>
     /// </summary>
     private static readonly string[] SupportedProtocols =
-        [ReportSourceProtocols.Imap, ReportSourceProtocols.Pop3, ReportSourceProtocols.Api];
+    [
+        ReportSourceProtocols.Imap,
+        ReportSourceProtocols.Pop3,
+        ReportSourceProtocols.S3,
+        ReportSourceProtocols.Api,
+    ];
 
-    private const string ProtocolError = "protocol must be imap, pop3 or api";
+    private const string ProtocolError = "protocol must be imap, pop3, s3 or api";
 
     /// <summary>
     /// An API source is pushed to, so it has no host, port, mailbox or password. Those
@@ -39,6 +44,13 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
     /// every reader — the trade is recorded in the create path below.
     /// </summary>
     private static bool IsPushed(string protocol) => protocol == ReportSourceProtocols.Api;
+
+    /// <summary>
+    /// An S3 source is polled, but not over a mailbox: it has a bucket and a region where the
+    /// mail protocols have a host and a port, and it may legitimately carry no credential at
+    /// all when the ambient chain supplies one.
+    /// </summary>
+    private static bool IsBucket(string protocol) => protocol == ReportSourceProtocols.S3;
 
     public async Task<IReadOnlyList<ReportSourceDto>> ListAsync(CancellationToken ct)
     {
@@ -59,13 +71,15 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
         }
 
         var pushed = IsPushed(protocol);
+        var bucket = IsBucket(protocol);
+        var mailbox = ReportSourceProtocols.IsMailbox(protocol);
 
         if (string.IsNullOrWhiteSpace(request.Name) || request.DefaultClientId == Guid.Empty)
         {
             return ServiceResult<ReportSourceDto>.Failure("name and defaultClientId are required", 400);
         }
 
-        if (!pushed && (string.IsNullOrWhiteSpace(request.Host) ||
+        if (mailbox && (string.IsNullOrWhiteSpace(request.Host) ||
             string.IsNullOrWhiteSpace(request.Username) ||
             string.IsNullOrWhiteSpace(request.Password) ||
             request.Port <= 0))
@@ -76,12 +90,40 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
         // Refused rather than ignored. Accepting mailbox settings on a source that will
         // never connect to a mailbox would leave a password sitting in the database that
         // nothing will ever use and nobody will remember is there.
-        if (pushed && (!string.IsNullOrWhiteSpace(request.Host) ||
-            !string.IsNullOrWhiteSpace(request.Username) ||
+        if (!mailbox && (!string.IsNullOrWhiteSpace(request.Host) || request.Port > 0))
+        {
+            return ServiceResult<ReportSourceDto>.Failure(
+                $"a source with protocol '{protocol}' has no mailbox and takes no host or port", 400);
+        }
+
+        if (pushed && (!string.IsNullOrWhiteSpace(request.Username) ||
             !string.IsNullOrWhiteSpace(request.Password)))
         {
             return ServiceResult<ReportSourceDto>.Failure(
                 "an api source is pushed to and takes no host, username or password", 400);
+        }
+
+        if (bucket && string.IsNullOrWhiteSpace(request.S3Bucket))
+        {
+            return ServiceResult<ReportSourceDto>.Failure("an s3 source requires s3Bucket", 400);
+        }
+
+        // Half a credential is the dangerous shape: it looks configured and authenticates as
+        // nobody. Either both halves, or neither and the ambient chain — never one.
+        if (bucket && string.IsNullOrWhiteSpace(request.Username) != string.IsNullOrWhiteSpace(request.Password))
+        {
+            return ServiceResult<ReportSourceDto>.Failure(
+                "an s3 source needs both username (access key id) and password (secret access key), " +
+                "or neither to use the ambient credential chain", 400);
+        }
+
+        if (!bucket && (!string.IsNullOrWhiteSpace(request.S3Bucket) ||
+            !string.IsNullOrWhiteSpace(request.S3Prefix) ||
+            !string.IsNullOrWhiteSpace(request.S3Region) ||
+            !string.IsNullOrWhiteSpace(request.S3Endpoint)))
+        {
+            return ServiceResult<ReportSourceDto>.Failure(
+                $"a source with protocol '{protocol}' takes no s3 settings", 400);
         }
 
         var clientExists = await db.Clients.AnyAsync(x => x.Id == request.DefaultClientId, ct);
@@ -98,11 +140,23 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
             // Empty rather than null for a pushed source: the columns are NOT NULL and
             // making them nullable would mean a migration plus a null check at every reader
             // and display site. Empty means not applicable, and Protocol is what says so.
-            Host = pushed ? string.Empty : request.Host.Trim().ToLowerInvariant(),
-            Port = pushed ? 0 : request.Port,
-            UseTls = !pushed && request.UseTls,
-            Username = pushed ? string.Empty : request.Username.Trim(),
-            PasswordEncrypted = pushed ? string.Empty : credentialProtector.Protect(request.Password),
+            Host = mailbox ? request.Host.Trim().ToLowerInvariant() : string.Empty,
+            Port = mailbox ? request.Port : 0,
+
+            // TLS is not a choice on a bucket: the SDK speaks HTTPS to AWS, and to a custom
+            // endpoint it does whatever that endpoint's scheme says. Recorded as true so the
+            // console does not display an S3 source as if it were sending a password in the
+            // clear.
+            UseTls = mailbox ? request.UseTls : bucket,
+            Username = pushed ? string.Empty : (request.Username ?? string.Empty).Trim(),
+            PasswordEncrypted = pushed || string.IsNullOrEmpty(request.Password)
+                ? string.Empty
+                : credentialProtector.Protect(request.Password),
+            S3Bucket = bucket ? request.S3Bucket!.Trim() : null,
+            S3Prefix = bucket ? NullIfBlank(request.S3Prefix) : null,
+            S3Region = bucket ? NullIfBlank(request.S3Region) : null,
+            S3Endpoint = bucket ? NullIfBlank(request.S3Endpoint) : null,
+            S3ForcePathStyle = !bucket || request.S3ForcePathStyle,
             DefaultClientId = request.DefaultClientId,
             IsActive = request.IsActive,
             DeleteAfterRetention = request.DeleteAfterRetention,
@@ -230,11 +284,60 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
             source.DeleteAfterRetention = request.DeleteAfterRetention.Value;
         }
 
+        if (request.S3Bucket is not null)
+        {
+            if (string.IsNullOrWhiteSpace(request.S3Bucket))
+            {
+                return ServiceResult<ReportSourceDto>.Failure("s3Bucket cannot be empty", 400);
+            }
+
+            source.S3Bucket = request.S3Bucket.Trim();
+        }
+
+        // Blank clears rather than being refused, unlike the bucket: an empty prefix is a
+        // meaningful setting — poll the whole bucket — and so is dropping a custom endpoint
+        // to go back to AWS.
+        if (request.S3Prefix is not null)
+        {
+            source.S3Prefix = NullIfBlank(request.S3Prefix);
+        }
+
+        if (request.S3Region is not null)
+        {
+            source.S3Region = NullIfBlank(request.S3Region);
+        }
+
+        if (request.S3Endpoint is not null)
+        {
+            source.S3Endpoint = NullIfBlank(request.S3Endpoint);
+        }
+
+        if (request.S3ForcePathStyle.HasValue)
+        {
+            source.S3ForcePathStyle = request.S3ForcePathStyle.Value;
+        }
+
+        // Checked at the end, on the row as it will be saved, rather than per field: the
+        // protocol and the bucket can arrive in the same request in either order, so no
+        // single field's handler can tell whether the result is coherent.
+        if (source.Protocol == ReportSourceProtocols.S3 && string.IsNullOrWhiteSpace(source.S3Bucket))
+        {
+            return ServiceResult<ReportSourceDto>.Failure("an s3 source requires s3Bucket", 400);
+        }
+
         source.UpdatedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync(ct);
 
         return ServiceResult<ReportSourceDto>.Success(ToDto(source, null));
     }
+
+    /// <summary>
+    /// Blank is stored as null, so "not set" has one representation rather than two. Every
+    /// reader of these columns treats null as absent, and a column that can also hold an
+    /// empty string is one every reader has to check twice.
+    /// </summary>
+    private static string? NullIfBlank(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
     private static ReportSourceDto ToDto(ReportSource x, string? defaultClientName) =>
         new(
@@ -255,6 +358,13 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
             x.LastProcessedUid,
             x.LastProcessedUidValidity,
             x.LastProcessedUidl,
+            x.S3Bucket,
+            x.S3Prefix,
+            x.S3Region,
+            x.S3Endpoint,
+            x.S3ForcePathStyle,
+            x.LastProcessedObjectAtUtc,
+            x.LastProcessedObjectKey,
             x.CreatedAtUtc,
             x.UpdatedAtUtc);
 }

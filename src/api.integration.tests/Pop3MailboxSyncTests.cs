@@ -239,7 +239,7 @@ public sealed class Pop3MailboxSyncTests(PostgresFixture postgres) : IAsyncLifet
                 new TlsReportIngestor(db, new DomainIngestResolver(db))),
             new NullCredentialProtector(),
             new ArchiveOff(),
-            new MailboxTransportFactory(
+            new PolledSourceTransportFactory(
             [
                 new ImapMailboxTransport(NullLogger<ImapMailboxTransport>.Instance),
                 new Pop3MailboxTransport(NullLogger<Pop3MailboxTransport>.Instance),

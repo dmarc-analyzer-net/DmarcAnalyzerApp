@@ -16,7 +16,7 @@ public sealed class MailboxSyncRunStatusTests
     /// A stand-in for "the pass got this far". Only its presence matters to the status
     /// rule, not what protocol named it or what it is called.
     /// </summary>
-    private static MailboxMessageRef Handled(uint uid)
+    private static PolledItemRef Handled(uint uid)
         => new(uid, uid.ToString(), ReportMailIdentity.ForImap(uid, 9));
 
     [Fact]

@@ -120,7 +120,7 @@ public sealed class ReportSourceProtocolTests
             Mailbox("jmap", clientId, 443), CancellationToken.None);
 
         Assert.False(result.IsSuccess);
-        Assert.Equal("protocol must be imap, pop3 or api", result.Error);
+        Assert.Equal("protocol must be imap, pop3, s3 or api", result.Error);
     }
 
     /// <summary>

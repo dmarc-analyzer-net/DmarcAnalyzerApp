@@ -38,7 +38,7 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 /// </description></item>
 /// </list>
 /// </summary>
-public sealed class Pop3MailboxTransport(ILogger<Pop3MailboxTransport> logger) : IMailboxTransport
+public sealed class Pop3MailboxTransport(ILogger<Pop3MailboxTransport> logger) : IPolledSourceTransport
 {
     /// <summary>
     /// How many messages' headers to ask for in one call. MailKit pipelines a batch into a
@@ -50,7 +50,7 @@ public sealed class Pop3MailboxTransport(ILogger<Pop3MailboxTransport> logger) :
 
     public string Protocol => ReportSourceProtocols.Pop3;
 
-    public async Task<IMailboxReadSession> OpenForReadAsync(
+    public async Task<IPolledReadSession> OpenForReadAsync(
         ReportSource source, string password, CancellationToken ct)
     {
         var client = new Pop3Client();
@@ -101,7 +101,7 @@ public sealed class Pop3MailboxTransport(ILogger<Pop3MailboxTransport> logger) :
         }
     }
 
-    public async Task<IMailboxPruneSession> OpenForPruneAsync(
+    public async Task<IPolledPruneSession> OpenForPruneAsync(
         ReportSource source, string password, DateTime cutoffUtc, bool dryRun, CancellationToken ct)
     {
         var client = new Pop3Client();
@@ -121,7 +121,7 @@ public sealed class Pop3MailboxTransport(ILogger<Pop3MailboxTransport> logger) :
             }
 
             var uidls = await client.GetMessageUidsAsync(ct);
-            var candidates = new List<MailboxPruneCandidate>();
+            var candidates = new List<PolledPruneCandidate>();
 
             // No DELIVEREDBEFORE in POP3, so every message's headers get read to find the
             // ones past the cutoff. Batched, but still the expensive half of a POP3
@@ -146,7 +146,7 @@ public sealed class Pop3MailboxTransport(ILogger<Pop3MailboxTransport> logger) :
                         continue;
                     }
 
-                    candidates.Add(new MailboxPruneCandidate(
+                    candidates.Add(new PolledPruneCandidate(
                         index, receivedAtUtc, ReportMailIdentity.ForPop3(uidls[index])));
                 }
             }
@@ -223,14 +223,14 @@ public sealed class Pop3MailboxTransport(ILogger<Pop3MailboxTransport> logger) :
 
     private sealed class Pop3ReadSession(
         Pop3Client client,
-        IReadOnlyList<MailboxMessageRef> pending,
-        DateTime? oldestMessageAtUtc) : IMailboxReadSession
+        IReadOnlyList<PolledItemRef> pending,
+        DateTime? oldestMessageAtUtc) : IPolledReadSession
     {
-        public IReadOnlyList<MailboxMessageRef> Pending => pending;
+        public IReadOnlyList<PolledItemRef> Pending => pending;
 
         public DateTime? OldestMessageAtUtc => oldestMessageAtUtc;
 
-        public async Task<MimeMessage> FetchAsync(MailboxMessageRef message, CancellationToken ct)
+        public async Task<MimeMessage> FetchAsync(PolledItemRef message, CancellationToken ct)
             => await client.GetMessageAsync((int)message.Token, ct);
 
         /// <summary>
@@ -242,7 +242,7 @@ public sealed class Pop3MailboxTransport(ILogger<Pop3MailboxTransport> logger) :
         {
         }
 
-        public void ApplyCheckpoint(ReportSource source, MailboxMessageRef handled)
+        public void ApplyCheckpoint(ReportSource source, PolledItemRef handled)
             => source.LastProcessedUidl = handled.Identity;
 
         /// <summary>
@@ -261,16 +261,16 @@ public sealed class Pop3MailboxTransport(ILogger<Pop3MailboxTransport> logger) :
 
     private sealed class Pop3PruneSession(
         Pop3Client client,
-        IReadOnlyList<MailboxPruneCandidate> eligible,
-        bool dryRun) : IMailboxPruneSession
+        IReadOnlyList<PolledPruneCandidate> eligible,
+        bool dryRun) : IPolledPruneSession
     {
         // A set, not a list: the messages this pass deletes are the oldest ones, so the scan
         // below walks past every one of them before it finds a survivor.
         private readonly HashSet<int> _marked = [];
 
-        public IReadOnlyList<MailboxPruneCandidate> Eligible => eligible;
+        public IReadOnlyList<PolledPruneCandidate> Eligible => eligible;
 
-        public async Task DeleteAsync(MailboxPruneCandidate candidate, CancellationToken ct)
+        public async Task DeleteAsync(PolledPruneCandidate candidate, CancellationToken ct)
         {
             if (dryRun)
             {

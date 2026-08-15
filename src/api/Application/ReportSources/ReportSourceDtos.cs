@@ -18,5 +18,12 @@ public sealed record ReportSourceDto(
     long? LastProcessedUid,
     long? LastProcessedUidValidity,
     string? LastProcessedUidl,
+    string? S3Bucket,
+    string? S3Prefix,
+    string? S3Region,
+    string? S3Endpoint,
+    bool S3ForcePathStyle,
+    DateTime? LastProcessedObjectAtUtc,
+    string? LastProcessedObjectKey,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);

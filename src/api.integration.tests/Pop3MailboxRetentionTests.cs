@@ -187,7 +187,7 @@ public sealed class Pop3MailboxRetentionTests(PostgresFixture postgres) : IAsync
             new MailboxRetentionPlanner(db, options),
             new NullCredentialProtector(),
             new ArchiveOff(),
-            new MailboxTransportFactory(
+            new PolledSourceTransportFactory(
             [
                 new ImapMailboxTransport(NullLogger<ImapMailboxTransport>.Instance),
                 new Pop3MailboxTransport(NullLogger<Pop3MailboxTransport>.Instance),

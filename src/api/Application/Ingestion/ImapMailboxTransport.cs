@@ -13,11 +13,11 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 /// <see cref="MailboxSyncService"/> and <see cref="MailboxRetentionService"/>; the behaviour is
 /// unchanged, including the checkpoint filter that a search range alone does not give you.
 /// </summary>
-public sealed class ImapMailboxTransport(ILogger<ImapMailboxTransport> logger) : IMailboxTransport
+public sealed class ImapMailboxTransport(ILogger<ImapMailboxTransport> logger) : IPolledSourceTransport
 {
     public string Protocol => ReportSourceProtocols.Imap;
 
-    public async Task<IMailboxReadSession> OpenForReadAsync(
+    public async Task<IPolledReadSession> OpenForReadAsync(
         ReportSource source, string password, CancellationToken ct)
     {
         var client = new ImapClient();
@@ -60,7 +60,7 @@ public sealed class ImapMailboxTransport(ILogger<ImapMailboxTransport> logger) :
                 await inbox.SearchAsync(query, ct), lastProcessedUid);
 
             var pending = uids
-                .Select(uid => new MailboxMessageRef(
+                .Select(uid => new PolledItemRef(
                     uid.Id,
                     uid.Id.ToString(System.Globalization.CultureInfo.InvariantCulture),
                     ReportMailIdentity.ForImap(uid.Id, uidValidity)))
@@ -75,7 +75,7 @@ public sealed class ImapMailboxTransport(ILogger<ImapMailboxTransport> logger) :
         }
     }
 
-    public async Task<IMailboxPruneSession> OpenForPruneAsync(
+    public async Task<IPolledPruneSession> OpenForPruneAsync(
         ReportSource source, string password, DateTime cutoffUtc, bool dryRun, CancellationToken ct)
     {
         var client = new ImapClient();
@@ -95,7 +95,7 @@ public sealed class ImapMailboxTransport(ILogger<ImapMailboxTransport> logger) :
             // too, or the mailbox accumulates permanent failures for ever.
             var eligible = await inbox.SearchAsync(SearchQuery.DeliveredBefore(cutoffUtc), ct);
 
-            var candidates = Array.Empty<MailboxPruneCandidate>();
+            var candidates = Array.Empty<PolledPruneCandidate>();
             if (eligible.Count > 0)
             {
                 // One FETCH for the whole eligible set rather than one per message. The
@@ -106,7 +106,7 @@ public sealed class ImapMailboxTransport(ILogger<ImapMailboxTransport> logger) :
                     eligible, MessageSummaryItems.UniqueId | MessageSummaryItems.InternalDate |
                               MessageSummaryItems.Envelope, ct);
 
-                candidates = [.. summaries.Select(summary => new MailboxPruneCandidate(
+                candidates = [.. summaries.Select(summary => new PolledPruneCandidate(
                     summary.UniqueId.Id,
                     summary.Envelope?.Date?.UtcDateTime
                         ?? summary.InternalDate?.UtcDateTime
@@ -138,9 +138,9 @@ public sealed class ImapMailboxTransport(ILogger<ImapMailboxTransport> logger) :
         ImapClient client,
         IMailFolder inbox,
         long uidValidity,
-        IReadOnlyList<MailboxMessageRef> pending) : IMailboxReadSession
+        IReadOnlyList<PolledItemRef> pending) : IPolledReadSession
     {
-        public IReadOnlyList<MailboxMessageRef> Pending => pending;
+        public IReadOnlyList<PolledItemRef> Pending => pending;
 
         /// <summary>
         /// Not answered here. The sync pass reads only what is past the checkpoint, so the
@@ -149,13 +149,13 @@ public sealed class ImapMailboxTransport(ILogger<ImapMailboxTransport> logger) :
         /// </summary>
         public DateTime? OldestMessageAtUtc => null;
 
-        public async Task<MimeMessage> FetchAsync(MailboxMessageRef message, CancellationToken ct)
+        public async Task<MimeMessage> FetchAsync(PolledItemRef message, CancellationToken ct)
             => await inbox.GetMessageAsync(new UniqueId((uint)message.Token), ct);
 
         public void ApplyGeneration(ReportSource source)
             => source.LastProcessedUidValidity = uidValidity;
 
-        public void ApplyCheckpoint(ReportSource source, MailboxMessageRef handled)
+        public void ApplyCheckpoint(ReportSource source, PolledItemRef handled)
         {
             source.LastProcessedUid = handled.Token;
             source.LastProcessedUidValidity = uidValidity;
@@ -174,14 +174,14 @@ public sealed class ImapMailboxTransport(ILogger<ImapMailboxTransport> logger) :
     private sealed class ImapPruneSession(
         ImapClient client,
         IMailFolder inbox,
-        IReadOnlyList<MailboxPruneCandidate> eligible,
-        bool dryRun) : IMailboxPruneSession
+        IReadOnlyList<PolledPruneCandidate> eligible,
+        bool dryRun) : IPolledPruneSession
     {
         private int _marked;
 
-        public IReadOnlyList<MailboxPruneCandidate> Eligible => eligible;
+        public IReadOnlyList<PolledPruneCandidate> Eligible => eligible;
 
-        public async Task DeleteAsync(MailboxPruneCandidate candidate, CancellationToken ct)
+        public async Task DeleteAsync(PolledPruneCandidate candidate, CancellationToken ct)
         {
             if (dryRun)
             {

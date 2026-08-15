@@ -32,14 +32,14 @@ import { usePageTitle } from '@/lib/use-page-title'
 
 type MailboxOpsFilter = 'all' | 'failed' | 'parse-failures' | 'stale-success'
 
-type Protocol = 'imap' | 'pop3' | 'api'
+type Protocol = 'imap' | 'pop3' | 's3' | 'api'
 
 /**
  * What each protocol listens on by default, so choosing one does not leave the previous
  * protocol's port behind — 993 on a POP3 mailbox connects to nothing and fails at sync time,
- * which is a long way from where the mistake was made.
+ * which is a long way from where the mistake was made. Zero for the two that have no port.
  */
-const defaultPort: Record<Protocol, number> = { imap: 993, pop3: 995, api: 0 }
+const defaultPort: Record<Protocol, number> = { imap: 993, pop3: 995, s3: 0, api: 0 }
 
 const initialMailboxForm = {
   name: '',
@@ -53,15 +53,38 @@ const initialMailboxForm = {
   isActive: true,
   deleteAfterRetention: false,
   allowForeignDomains: true,
+  s3Bucket: '',
+  s3Prefix: '',
+  s3Region: '',
+  s3Endpoint: '',
+  s3ForcePathStyle: true,
 }
 
 /**
- * Whether this source is polled, and therefore has a mailbox behind it. `api` sources are
- * written to by their caller: no host, no port, no sync run, no checkpoint. Everything
- * mailbox-shaped on this page keys off this rather than off the row simply existing.
+ * Whether the worker goes and fetches from this source, and therefore whether sync health
+ * says anything about it. `api` sources are written to by their caller: no sync run, no
+ * checkpoint, nothing to be healthy or unhealthy about.
+ */
+const sourceIsPolled = (source: Pick<ReportSource, 'protocol'>) => source.protocol !== 'api'
+
+/**
+ * Whether it is a mailbox specifically — reached over a host and a port with a login.
+ * <p>
+ * Narrower than polled since S3 arrived, and the two were one predicate until then. Keeping
+ * them apart is what stops a bucket being rendered as `s3:0` or asked for a hostname: it is
+ * polled like a mailbox and addressed nothing like one.
  */
 const sourceHasMailbox = (source: Pick<ReportSource, 'protocol'>) =>
   source.protocol === 'imap' || source.protocol === 'pop3'
+
+/** Where the reports come from, in the terms that protocol uses. */
+const sourceLocation = (source: ReportSource) => {
+  if (sourceHasMailbox(source)) return source.host || '—'
+  if (source.protocol === 's3') {
+    return source.s3Bucket ? `${source.s3Bucket}/${source.s3Prefix ?? ''}` : '—'
+  }
+  return '—'
+}
 
 /**
  * Status pill for a source that is never polled, where sync health cannot say anything.
@@ -127,9 +150,13 @@ export function ReportSourcesPage() {
 
   const [editingMailboxId, setEditingMailboxId] = useState<string | null>(null)
   const [mailboxForm, setMailboxForm] = useState(initialMailboxForm)
-  // A pushed source has no mailbox to describe, so the transport fields are neither
-  // shown nor required — and the API refuses them outright.
+  // Three shapes, not two, since S3 arrived. A pushed source has nothing to describe; a
+  // bucket has a bucket and a region where a mailbox has a host and a port, and its
+  // credential is optional because an instance role can supply it. The API refuses the
+  // fields that do not belong outright, so the form has to send exactly the right set.
   const isPushedSource = mailboxForm.protocol === 'api'
+  const isBucketSource = mailboxForm.protocol === 's3'
+  const isMailboxSource = !isPushedSource && !isBucketSource
 
   const loadData = useCallback(async () => {
     setBusy(true)
@@ -196,12 +223,11 @@ export function ReportSourcesPage() {
     [mailboxHealth],
   )
 
-  // Only a polled source has a mailbox, so only a polled source can be counted against
-  // mailbox health. Counting every source made an install with nothing but pushed
-  // sources read "0/N healthy" forever, while the health card below it — which filters
-  // on the same thing the API does — correctly showed nothing at all.
+  // Only a polled source can be counted against sync health. Counting every source made an
+  // install with nothing but pushed sources read "0/N healthy" forever, while the health card
+  // below it — which filters on the same thing the API does — correctly showed nothing at all.
   const mailboxSourceCount = useMemo(
-    () => reportSources.filter((source) => sourceHasMailbox(source)).length,
+    () => reportSources.filter((source) => sourceIsPolled(source)).length,
     [reportSources],
   )
 
@@ -271,6 +297,11 @@ export function ReportSourcesPage() {
         isActive: source.isActive,
         deleteAfterRetention: source.deleteAfterRetention,
         allowForeignDomains: source.allowForeignDomains,
+        s3Bucket: source.s3Bucket ?? '',
+        s3Prefix: source.s3Prefix ?? '',
+        s3Region: source.s3Region ?? '',
+        s3Endpoint: source.s3Endpoint ?? '',
+        s3ForcePathStyle: source.s3ForcePathStyle,
       })
     } else {
       setEditingMailboxId(null)
@@ -290,15 +321,33 @@ export function ReportSourcesPage() {
         delete (payload as { password?: string }).password
       }
 
-      // A pushed source takes no transport settings, and the API refuses them rather than
-      // storing a password nothing will ever use. Send the fields the form still carries
-      // from a previous protocol choice and the request is rejected.
+      // The API refuses settings that do not belong to the chosen protocol rather than
+      // storing a password nothing will ever use, so anything the form still carries from a
+      // previous protocol choice has to be dropped before it is sent.
+      const fields = payload as Partial<typeof mailboxForm>
+
+      if (!isMailboxSource) {
+        delete fields.host
+        delete fields.port
+      }
+
       if (isPushedSource) {
-        const pushed = payload as Partial<typeof mailboxForm>
-        delete pushed.host
-        delete pushed.username
-        delete pushed.password
-        delete pushed.port
+        delete fields.username
+        delete fields.password
+      }
+
+      if (!isBucketSource) {
+        delete fields.s3Bucket
+        delete fields.s3Prefix
+        delete fields.s3Region
+        delete fields.s3Endpoint
+        delete fields.s3ForcePathStyle
+      } else if (!fields.username) {
+        // Empty means the ambient credential chain, and the API refuses half a credential.
+        // Sending "" for both is how you ask for that; sending "" for one is the shape it
+        // rejects, which is a confusing error for a field the operator left alone.
+        delete fields.username
+        delete fields.password
       }
 
       if (editingMailboxId) {
@@ -404,9 +453,10 @@ export function ReportSourcesPage() {
                   {filteredReportSources.map((source, index) => {
                     const health = healthBySourceId.get(source.id)
                     const hasMailbox = sourceHasMailbox(source)
+                    const isPolled = sourceIsPolled(source)
                     const badge = !source.isActive
                       ? { label: 'Inactive', variant: 'neutral' as const }
-                      : hasMailbox
+                      : isPolled
                         ? getHealthBadge(health?.lastRunStatus)
                         : getUnpolledBadge(source.protocol)
                     const isSyncing = syncingId === source.id
@@ -415,13 +465,14 @@ export function ReportSourcesPage() {
                         <TableCell mono>{source.name}</TableCell>
                         <TableCell mono>
                           {/* Port is a mailbox fact. A pushed source stores 0 for it, and
-                              rendering that verbatim produced "api:0". */}
+                              rendering that verbatim produced "api:0"; a bucket has no port
+                              either. */}
                           {hasMailbox ? `${source.protocol}:${source.port}` : source.protocol}
                         </TableCell>
-                        <TableCell mono>{source.host || '—'}</TableCell>
+                        <TableCell mono>{sourceLocation(source)}</TableCell>
                         <TableCell>
                           <span className="text-sm text-secondary">
-                            {hasMailbox ? lastSyncLabel(health) : '—'}
+                            {isPolled ? lastSyncLabel(health) : '—'}
                           </span>
                         </TableCell>
                         <TableCell mono align="right">
@@ -447,9 +498,10 @@ export function ReportSourcesPage() {
                                 Edit
                               </Button>
                             )}
-                            {/* Manual sync refuses anything but IMAP, so offering the
-                                button on a pushed source only ever produced an error. */}
-                            {hasMailbox && (
+                            {/* Manual sync refuses a source the worker does not poll, so
+                                offering the button on a pushed source only ever produced an
+                                error. */}
+                            {isPolled && (
                               <Button
                                 variant="secondary"
                                 size="sm"
@@ -551,10 +603,13 @@ export function ReportSourcesPage() {
                         </span>
                       </TableCell>
                       <TableCell mono>
-                        {/* Two protocols, two kinds of checkpoint, one column. Showing the
-                            UID field alone read as "never synced" for every POP3 source,
-                            which is the state this column exists to rule out. */}
-                        {health.lastProcessedUid ?? health.lastProcessedUidl ?? 'n/a'}
+                        {/* Three protocols, three kinds of checkpoint, one column. Showing
+                            the UID field alone read as "never synced" for every POP3 and S3
+                            source, which is the state this column exists to rule out. */}
+                        {health.lastProcessedUid ??
+                          health.lastProcessedUidl ??
+                          health.lastProcessedObjectKey ??
+                          'n/a'}
                       </TableCell>
                       <TableCell>
                         <div className="text-xs leading-5 text-secondary">
@@ -608,7 +663,11 @@ export function ReportSourcesPage() {
                       <div className="mb-2 flex items-center justify-between gap-3">
                         <p className="text-sm font-semibold text-body">{source.name}</p>
                         <p className="font-mono text-xs text-secondary">
-                          {source.host}:{source.port}
+                          {/* Host and port are mailbox facts. A bucket has neither, and
+                              rendering them verbatim produced a bare ":0". */}
+                          {sourceHasMailbox(source)
+                            ? `${source.host}:${source.port}`
+                            : sourceLocation(source)}
                         </p>
                       </div>
                       {runs.length === 0 ? (
@@ -681,7 +740,9 @@ export function ReportSourcesPage() {
             <DialogDescription>
               {isPushedSource
                 ? 'Choose the client this source routes to. A pushed source has no mailbox to configure.'
-                : 'Configure mailbox transport and default routing client.'}
+                : isBucketSource
+                  ? 'Point at a bucket and prefix, and choose the client its reports route to.'
+                  : 'Configure mailbox transport and default routing client.'}
             </DialogDescription>
           </DialogHeader>
           <form className="grid gap-4" onSubmit={createOrUpdateReportSource}>
@@ -713,52 +774,117 @@ export function ReportSourcesPage() {
                 >
                   <option value="imap">IMAP (polled)</option>
                   <option value="pop3">POP3 (polled)</option>
+                  <option value="s3">S3 bucket (polled)</option>
                   <option value="api">API (pushed)</option>
                 </Select>
               </label>
-              <label
-                className="grid gap-1.5 text-sm font-medium text-body"
-                hidden={isPushedSource}
-              >
-                Port
+              {isMailboxSource ? (
+                <label className="grid gap-1.5 text-sm font-medium text-body">
+                  Port
+                  <Input
+                    type="number"
+                    min={1}
+                    mono
+                    value={mailboxForm.port}
+                    onChange={(e) =>
+                      setMailboxForm((x) => ({ ...x, port: Number(e.target.value) || defaultPort[x.protocol] }))
+                    }
+                    required
+                  />
+                </label>
+              ) : null}
+            </div>
+            {isMailboxSource ? (
+              <label className="grid gap-1.5 text-sm font-medium text-body">
+                Host
                 <Input
-                  type="number"
-                  min={1}
                   mono
-                  value={mailboxForm.port}
-                  onChange={(e) =>
-                    setMailboxForm((x) => ({ ...x, port: Number(e.target.value) || defaultPort[x.protocol] }))
-                  }
-                  required={!isPushedSource}
+                  value={mailboxForm.host}
+                  onChange={(e) => setMailboxForm((x) => ({ ...x, host: e.target.value }))}
+                  required
                 />
               </label>
-            </div>
-            <label className="grid gap-1.5 text-sm font-medium text-body" hidden={isPushedSource}>
-              Host
-              <Input
-                mono
-                value={mailboxForm.host}
-                onChange={(e) => setMailboxForm((x) => ({ ...x, host: e.target.value }))}
-                required={!isPushedSource}
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium text-body" hidden={isPushedSource}>
-              Username
-              <Input
-                value={mailboxForm.username}
-                onChange={(e) => setMailboxForm((x) => ({ ...x, username: e.target.value }))}
-                required={!isPushedSource}
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm font-medium text-body" hidden={isPushedSource}>
-              {editingMailboxId ? 'New password (optional)' : 'Password'}
-              <Input
-                type="password"
-                value={mailboxForm.password}
-                onChange={(e) => setMailboxForm((x) => ({ ...x, password: e.target.value }))}
-                required={!editingMailboxId && !isPushedSource}
-              />
-            </label>
+            ) : null}
+            {isBucketSource ? (
+              <>
+                <label className="grid gap-1.5 text-sm font-medium text-body">
+                  Bucket
+                  <Input
+                    mono
+                    value={mailboxForm.s3Bucket}
+                    onChange={(e) => setMailboxForm((x) => ({ ...x, s3Bucket: e.target.value }))}
+                    required
+                  />
+                </label>
+                <label className="grid gap-1.5 text-sm font-medium text-body">
+                  Key prefix (optional)
+                  <Input
+                    mono
+                    value={mailboxForm.s3Prefix}
+                    onChange={(e) => setMailboxForm((x) => ({ ...x, s3Prefix: e.target.value }))}
+                  />
+                  <span className="text-xs font-normal text-secondary">
+                    Every pass lists all keys under the prefix, so this is also what bounds how
+                    much work a poll costs on a bucket that holds more than reports.
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 gap-4">
+                  <label className="grid gap-1.5 text-sm font-medium text-body">
+                    Region
+                    <Input
+                      mono
+                      placeholder="us-east-1"
+                      value={mailboxForm.s3Region}
+                      onChange={(e) => setMailboxForm((x) => ({ ...x, s3Region: e.target.value }))}
+                    />
+                  </label>
+                  <label className="grid gap-1.5 text-sm font-medium text-body">
+                    Endpoint (optional)
+                    <Input
+                      mono
+                      placeholder="https://minio.internal:9000"
+                      value={mailboxForm.s3Endpoint}
+                      onChange={(e) =>
+                        setMailboxForm((x) => ({ ...x, s3Endpoint: e.target.value }))
+                      }
+                    />
+                  </label>
+                </div>
+              </>
+            ) : null}
+            {!isPushedSource ? (
+              <>
+                <label className="grid gap-1.5 text-sm font-medium text-body">
+                  {isBucketSource ? 'Access key ID (optional)' : 'Username'}
+                  <Input
+                    value={mailboxForm.username}
+                    onChange={(e) => setMailboxForm((x) => ({ ...x, username: e.target.value }))}
+                    required={isMailboxSource}
+                  />
+                  {isBucketSource ? (
+                    <span className="text-xs font-normal text-secondary">
+                      Leave both this and the secret empty to use the ambient credential chain
+                      — an instance role or IRSA, which is preferable to a stored key.
+                    </span>
+                  ) : null}
+                </label>
+                <label className="grid gap-1.5 text-sm font-medium text-body">
+                  {isBucketSource
+                    ? editingMailboxId
+                      ? 'New secret access key (optional)'
+                      : 'Secret access key'
+                    : editingMailboxId
+                      ? 'New password (optional)'
+                      : 'Password'}
+                  <Input
+                    type="password"
+                    value={mailboxForm.password}
+                    onChange={(e) => setMailboxForm((x) => ({ ...x, password: e.target.value }))}
+                    required={!editingMailboxId && isMailboxSource}
+                  />
+                </label>
+              </>
+            ) : null}
             <label className="grid gap-1.5 text-sm font-medium text-body">
               Default client
               <Select
@@ -774,14 +900,31 @@ export function ReportSourcesPage() {
                 ))}
               </Select>
             </label>
-            <label className="flex items-center gap-2 text-sm text-secondary">
-              <input
-                type="checkbox"
-                checked={mailboxForm.useTls}
-                onChange={(e) => setMailboxForm((x) => ({ ...x, useTls: e.target.checked }))}
-              />
-              Use TLS
-            </label>
+            {isMailboxSource ? (
+              <label className="flex items-center gap-2 text-sm text-secondary">
+                <input
+                  type="checkbox"
+                  checked={mailboxForm.useTls}
+                  onChange={(e) => setMailboxForm((x) => ({ ...x, useTls: e.target.checked }))}
+                />
+                Use TLS
+              </label>
+            ) : null}
+            {/* No TLS checkbox for a bucket: the SDK speaks HTTPS to AWS, and to a custom
+                endpoint it does whatever that endpoint's scheme says, so it would be a
+                control that changes nothing. Path-style is the setting that does matter. */}
+            {isBucketSource ? (
+              <label className="flex items-center gap-2 text-sm text-secondary">
+                <input
+                  type="checkbox"
+                  checked={mailboxForm.s3ForcePathStyle}
+                  onChange={(e) =>
+                    setMailboxForm((x) => ({ ...x, s3ForcePathStyle: e.target.checked }))
+                  }
+                />
+                Path-style addressing (required by MinIO and most S3-compatible services)
+              </label>
+            ) : null}
             <label className="flex items-center gap-2 text-sm text-secondary">
               <input
                 type="checkbox"

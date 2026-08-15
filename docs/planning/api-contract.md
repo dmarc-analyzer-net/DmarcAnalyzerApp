@@ -275,8 +275,22 @@ List report sources.
 
 ### POST `/report-sources`
 
-Create source. `protocol` is `imap` or `pop3` (both polled by the worker) or `api`
+Create source. `protocol` is `imap`, `pop3` or `s3` (all polled by the worker) or `api`
 (pushed to; takes no `host`, `username` or `password`).
+
+Each protocol takes its own field set and **refuses the others**, rather than storing
+settings nothing will ever read:
+
+| | `imap` / `pop3` | `s3` | `api` |
+|---|---|---|---|
+| Required | `host`, `port`, `username`, `password` | `s3Bucket` | — |
+| Optional | `useTls` | `s3Prefix`, `s3Region`, `s3Endpoint`, `s3ForcePathStyle`, `username` + `password` | — |
+| Refused | `s3*` | `host`, `port` | `host`, `port`, `username`, `password`, `s3*` |
+
+On an `s3` source `username` is the access key id and `password` the secret access key.
+Send **both or neither** — neither means the ambient credential chain (an instance role or
+IRSA), and half a credential is refused because it looks configured and authenticates as
+nobody.
 
 Request:
 
@@ -303,6 +317,9 @@ Notes:
 - A `pop3` mailbox must support UIDL. Without it there is no durable checkpoint, so the
   sync refuses rather than re-reading the whole mailbox on every pass; the refusal lands
   on the source's `mailbox-health` row.
+- An `s3` source polls the whole prefix on every pass, so set `s3Prefix` on a bucket that
+  holds anything besides reports. Objects may be bare report files or whole RFC822
+  messages; each object is classified on its own content.
 
 ### PATCH `/report-sources/{sourceId}`
 ### DELETE `/report-sources/{sourceId}`
@@ -349,8 +366,9 @@ Fields include:
   `parseFailures` counter, with the log line naming the format
 - last success timestamp
 - checkpoint values: `lastProcessedUid` + `lastProcessedUidValidity` on an IMAP source,
-  `lastProcessedUidl` on a POP3 one. A source has one pair or the other, never both —
-  POP3 has no UID space and no UIDVALIDITY, so the columns are not interchangeable
+  `lastProcessedUidl` on a POP3 one, `lastProcessedObjectKey` on an S3 one. A source has
+  exactly one of the three — they are an ordered integer, an opaque string and an object
+  key, so the columns are not interchangeable
 - polled sources only. A pushed (`api`) source has no mailbox, no sync run and no
   checkpoint, so it is excluded rather than listed as permanently never-synced
 

@@ -35,8 +35,27 @@ public readonly record struct ReportMailIdentity(string Generation, string Uid)
     public static ReportMailIdentity ForPop3(string uidl)
         => new("pop3", IsKeySafe(uidl) ? uidl : "h-" + Sha256Hex(uidl));
 
-    private static bool IsKeySafe(string uidl)
-        => uidl.Length is > 0 and <= 70 && uidl.All(c =>
+    /// <summary>
+    /// An object pulled from a bucket, named by its key.
+    /// <para>
+    /// The key is almost always hashed rather than used verbatim, and that is expected: a real
+    /// key has slashes in it, and a slash left alone would push the archived copy into a
+    /// prefix nobody documented — where a lifecycle rule written against the documented layout
+    /// would never expire it. The hash is deterministic, which is all the archive needs.
+    /// </para>
+    /// </summary>
+    public static ReportMailIdentity ForS3(string key)
+        => new("s3", IsKeySafe(key) ? key : "h-" + Sha256Hex(key));
+
+    /// <summary>
+    /// Whether a name can go into an object key as it stands: unambiguous characters only,
+    /// and no longer than RFC 1939 allows a UIDL to be. The length bound is shared rather
+    /// than per-protocol because its purpose is the same either way — keep the key readable
+    /// and keep it bounded — and an S3 key over that length simply gets hashed, which is the
+    /// common case and costs nothing.
+    /// </summary>
+    private static bool IsKeySafe(string value)
+        => value.Length is > 0 and <= 70 && value.All(c =>
             c is >= 'a' and <= 'z' or >= 'A' and <= 'Z' or >= '0' and <= '9' or '.' or '_' or '-');
 
     private static string Sha256Hex(string value)

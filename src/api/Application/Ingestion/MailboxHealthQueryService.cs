@@ -33,6 +33,7 @@ public sealed class MailboxHealthQueryService(DmarcAnalyzerDbContext db) : IMail
                 source.LastProcessedUid,
                 source.LastProcessedUidValidity,
                 source.LastProcessedUidl,
+                source.LastProcessedObjectKey,
                 db.MailboxSyncRuns
                     .Where(run => run.ReportSourceId == source.Id)
                     .OrderByDescending(run => run.StartedAtUtc)

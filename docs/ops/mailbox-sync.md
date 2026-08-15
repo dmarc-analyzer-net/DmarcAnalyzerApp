@@ -29,18 +29,19 @@ Recommended baseline:
 
 ## Protocols
 
-Both polled protocols run the same pass — the same drain budget, batched checkpoints,
-archive-before-parse rule, run rows and retention deletion — behind `IMailboxTransport`.
+All three polled protocols run the same pass — the same drain budget, batched checkpoints,
+archive-before-parse rule, run rows and retention deletion — behind `IPolledSourceTransport`.
 What differs is only what the protocol itself makes possible.
 
-| | IMAP | POP3 |
-|---|---|---|
-| Default TLS port | 993 | 995 |
-| Checkpoint | `LastProcessedUid` + `LastProcessedUidValidity` | `LastProcessedUidl` |
-| Resuming | server-side UID range past the checkpoint | find the UIDL in the listing, take what follows |
-| Retention scan | `SEARCH DELIVEREDBEFORE`, server-side | reads every message's headers, client-side |
-| Arrival time | `INTERNALDATE` | the sender's own `Date` header |
-| Deletion | `\Deleted` + `EXPUNGE` | `DELE`, applied only when the session ends with `QUIT` |
+| | IMAP | POP3 | S3 |
+|---|---|---|---|
+| Addressed by | host + port | host + port | bucket + prefix |
+| Default TLS port | 993 | 995 | n/a |
+| Checkpoint | `LastProcessedUid` + `LastProcessedUidValidity` | `LastProcessedUidl` | `LastProcessedObjectAtUtc` + `LastProcessedObjectKey` |
+| Resuming | server-side UID range past the checkpoint | find the UIDL in the listing, take what follows | list the prefix, take what sorts after the (last-modified, key) pair |
+| Retention scan | `SEARCH DELIVEREDBEFORE`, server-side | reads every message's headers, client-side | the listing already carries every date |
+| Arrival time | `INTERNALDATE` | the sender's own `Date` header | the object's `LastModified` |
+| Deletion | `\Deleted` + `EXPUNGE` | `DELE`, applied only when the session ends with `QUIT` | `DeleteObject`, effective at once |
 
 Three consequences worth knowing before pointing a POP3 source at a large mailbox:
 
@@ -54,6 +55,19 @@ Three consequences worth knowing before pointing a POP3 source at a large mailbo
   like a loop.
 - **Retention deletion is the expensive half.** With no server-side date search, the pass
   reads headers for every message in the mailbox. It logs how many it read.
+
+And three for S3:
+
+- **Set a prefix.** Every pass lists all keys under it. On a bucket that holds only reports
+  that is fine; on a shared bucket it is the difference between a cheap poll and reading a
+  data lake. A pass stops at 100,000 keys and logs that it did.
+- **Objects can be reports or whole messages, and both work.** Each object is classified on
+  its own content: an RFC822 message (raw or gzipped) is parsed as mail and its attachments
+  extracted; anything else goes to the payload extractor as-is. Pointing a source at this
+  application's own report-mail archive prefix therefore replays it.
+- **Credentials are per source.** Access key id in `username`, secret in `password`. Leave
+  both empty to use the ambient credential chain — an instance role or IRSA — which is the
+  better answer where it is available. Half a credential is refused at create time.
 
 ## Mailbox Safety
 
@@ -85,6 +99,15 @@ Three consequences worth knowing before pointing a POP3 source at a large mailbo
 - stale success timestamp
   - Worker not catching up or mailbox has no recent traffic.
   - Action: verify worker logs, mailbox connectivity, and checkpoint movement.
+- `The specified bucket does not exist` / `Access Denied` on an S3 source
+  - The bucket, region or credential is wrong, or the key lacks `s3:ListBucket`.
+  - Action: the run row carries the SDK's own message; a read-only source needs
+    `s3:ListBucket` and `s3:GetObject`, and `deleteAfterRetention` also needs
+    `s3:DeleteObject`.
+- S3 objects scanned stays equal to the object count every pass
+  - The checkpoint is not advancing, or something is rewriting the objects and moving
+    their `LastModified` forward.
+  - Action: check `lastProcessedObjectKey` on `/mailbox-health` against the newest key.
 - `the POP3 server does not support UIDL`
   - No durable checkpoint is possible, so the source is refused rather than run.
   - Action: move the mailbox to IMAP, or use a POP3 server that implements UIDL.
