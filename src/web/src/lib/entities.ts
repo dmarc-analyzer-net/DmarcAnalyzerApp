@@ -49,8 +49,8 @@ export type Domain = {
 export type ReportSource = {
   id: string
   name: string
-  /** 'api' is pushed to; 'pop3' only appears on rows predating its removal. */
-  protocol: 'imap' | 'api' | 'pop3'
+  /** 'imap' and 'pop3' are polled; 'api' is pushed to. */
+  protocol: 'imap' | 'pop3' | 'api'
   host: string
   port: number
   useTls: boolean
@@ -78,8 +78,11 @@ export type MailboxHealth = {
   name: string
   isActive: boolean
   lastSuccessSyncAtUtc: string | null
+  /** IMAP checkpoint. Null on a POP3 source, which checkpoints on a UIDL instead. */
   lastProcessedUid: number | null
   lastProcessedUidValidity: number | null
+  /** POP3 checkpoint: the UIDL of the last message handled. Null on an IMAP source. */
+  lastProcessedUidl: string | null
   lastRunStatus: SyncRunStatus | null
   lastRunStartedAtUtc: string | null
   lastRunFinishedAtUtc: string | null

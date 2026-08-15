@@ -151,10 +151,10 @@ public sealed class AnalyticsQueryService(
             // no sync run and never will — arrive in the total as silently healthy, so the
             // dashboard read "1/1 mailboxes healthy" for an install with no mailbox at all.
             var mailboxTotal = await db.ReportSources
-                .CountAsync(x => x.Protocol == ReportSourceProtocols.Imap, ct);
+                .CountAsync(x => ReportSourceProtocols.Polled.Contains(x.Protocol), ct);
             var latestRunStatuses = await db.MailboxSyncRuns
                 .Where(x => db.ReportSources.Any(source =>
-                    source.Id == x.ReportSourceId && source.Protocol == ReportSourceProtocols.Imap))
+                    source.Id == x.ReportSourceId && ReportSourceProtocols.Polled.Contains(source.Protocol)))
                 .GroupBy(x => x.ReportSourceId)
                 .Select(g => g.OrderByDescending(r => r.StartedAtUtc).First().Status)
                 .ToListAsync(ct);

@@ -4,9 +4,6 @@ using DmarcAnalyzer.Api.Application.Reports;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using MailKit;
-using MailKit.Net.Imap;
-using MailKit.Search;
-using MailKit.Security;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using MimeKit;
@@ -21,6 +18,7 @@ public sealed class MailboxSyncService(
     IReportPayloadIngestor payloadIngestor,
     Security.ICredentialProtector credentialProtector,
     Backup.IReportMailArchive reportMailArchive,
+    IMailboxTransportFactory transportFactory,
     IOptions<WorkerOptions> options,
     ILogger<MailboxSyncService> logger) : IMailboxSyncService
 {
@@ -45,9 +43,13 @@ public sealed class MailboxSyncService(
             return ServiceResult<MailboxSyncResult>.Failure("report source not found", 404);
         }
 
-        if (!string.Equals(reportSource.Protocol, "imap", StringComparison.OrdinalIgnoreCase))
+        // Resolved rather than tested against a list of protocol names: a source is
+        // syncable exactly when a transport exists for it, so the two can never disagree.
+        var transport = transportFactory.For(reportSource.Protocol);
+        if (transport is null)
         {
-            return ServiceResult<MailboxSyncResult>.Failure("manual sync currently supports only IMAP", 400);
+            return ServiceResult<MailboxSyncResult>.Failure(
+                $"sync applies to polled mailboxes only; this source's protocol is '{reportSource.Protocol}'", 400);
         }
 
         var messagesScanned = 0;
@@ -73,45 +75,21 @@ public sealed class MailboxSyncService(
 
         var mailboxPassword = credentialProtector.Unprotect(reportSource.PasswordEncrypted);
 
-        // Declared out here so the failure path can persist them. A run that times
-        // out mid-drain has still read everything up to this UID, and throwing that
-        // away means the next pass re-fetches all of it — safe, because of dedup,
-        // but a straight repeat of work that can take hours on a large backlog.
-        long? highestProcessedUid = null;
-        long? currentUidValidity = null;
+        // Declared out here so the failure path can persist it. A run that times out
+        // mid-drain has still read everything up to this message, and throwing that away
+        // means the next pass re-fetches all of it — safe, because of dedup, but a straight
+        // repeat of work that can take hours on a large backlog.
+        MailboxMessageRef? highestProcessed = null;
+        IMailboxReadSession? session = null;
 
         try
         {
-            using var client = new ImapClient();
-            var secureSocketOptions = reportSource.UseTls ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;
+            // The run timeout covers connecting and authenticating too, not just the drain:
+            // a mailbox host that accepts the TCP connection and then never answers is one
+            // of the ways a sync hangs, and it is the same incident as any other overrun.
+            session = await transport.OpenForReadAsync(reportSource, mailboxPassword, operationToken);
 
-            await client.ConnectAsync(reportSource.Host, reportSource.Port, secureSocketOptions, ct);
-            await client.AuthenticateAsync(reportSource.Username, mailboxPassword, operationToken);
-
-            var inbox = client.Inbox;
-            await inbox.OpenAsync(FolderAccess.ReadOnly, operationToken);
-
-            currentUidValidity = (long)inbox.UidValidity;
-            var lastProcessedUid = reportSource.LastProcessedUid;
-            if (reportSource.LastProcessedUidValidity.HasValue &&
-                reportSource.LastProcessedUidValidity.Value != currentUidValidity)
-            {
-                lastProcessedUid = null;
-            }
-
-            SearchQuery query = SearchQuery.All;
-            if (lastProcessedUid.HasValue && lastProcessedUid.Value > 0 && lastProcessedUid.Value < uint.MaxValue)
-            {
-                var startUid = new UniqueId((uint)lastProcessedUid.Value + 1);
-                query = SearchQuery.Uids(new UniqueIdRange(startUid, UniqueId.MaxValue));
-            }
-
-            // Filtered rather than taken as given. IMAP resolves * to the highest UID that
-            // exists, so {checkpoint+1}:* does not return nothing once a mailbox is caught
-            // up — the range is normalised and the newest message comes back again. See
-            // SelectUidsPastCheckpoint.
-            var uids = SelectUidsPastCheckpoint(
-                await inbox.SearchAsync(query, operationToken), lastProcessedUid);
+            var pending = session.Pending;
             var batchSize = Math.Max(1, _options.MaxMessagesPerSync);
 
             // The budget bounds how long this source may keep drawing batches. The hard
@@ -137,18 +115,17 @@ public sealed class MailboxSyncService(
             // message the pass had already read.
             async Task CommitCheckpointAsync()
             {
-                if (!highestProcessedUid.HasValue)
+                if (highestProcessed is not { } handled)
                 {
                     return;
                 }
 
-                reportSource.LastProcessedUid = highestProcessedUid;
-                reportSource.LastProcessedUidValidity = currentUidValidity;
+                session.ApplyCheckpoint(reportSource, handled);
                 reportSource.UpdatedAtUtc = DateTime.UtcNow;
                 await db.SaveChangesAsync(operationToken);
             }
 
-            foreach (var uid in uids)
+            foreach (var message in pending)
             {
                 if (processedInBatch >= batchSize)
                 {
@@ -169,7 +146,7 @@ public sealed class MailboxSyncService(
                 messagesScanned++;
                 processedInBatch++;
 
-                var message = await inbox.GetMessageAsync(uid, operationToken);
+                var mail = await session.FetchAsync(message, operationToken);
 
                 // Archived before it is parsed, and independently of whether it parses. A
                 // message that fails to parse is exactly the one worth keeping a copy of,
@@ -177,19 +154,19 @@ public sealed class MailboxSyncService(
                 if (reportMailArchive.IsEnabled)
                 {
                     await reportMailArchive.TryArchiveAsync(
-                        message, reportSource.Id, uid.Id, currentUidValidity.Value,
-                        message.Date.UtcDateTime, operationToken);
+                        mail, reportSource.Id, message.ArchiveIdentity,
+                        mail.Date.UtcDateTime, operationToken);
                 }
 
-                if (!message.Attachments.Any())
+                if (!mail.Attachments.Any())
                 {
                     // Nothing to extract, but the message has been dealt with — see the
                     // note at the end of the loop body for why that matters.
-                    highestProcessedUid = uid.Id;
+                    highestProcessed = message;
                     continue;
                 }
 
-                foreach (var attachment in message.Attachments)
+                foreach (var attachment in mail.Attachments)
                 {
                     operationToken.ThrowIfCancellationRequested();
 
@@ -267,9 +244,9 @@ public sealed class MailboxSyncService(
 
                 // Advanced only now that the message is fully handled, never on the way
                 // in. The checkpoint is persisted even when the run is cancelled, so a
-                // UID recorded before its own fetch completed would be skipped for good
+                // message recorded before its own fetch completed would be skipped for good
                 // on the next pass.
-                highestProcessedUid = uid.Id;
+                highestProcessed = message;
             }
 
             if (stoppedOnBudget)
@@ -281,15 +258,24 @@ public sealed class MailboxSyncService(
                     "Drain budget of {Budget} minute(s) reached for report source {ReportSourceId} after " +
                     "{Scanned} message(s) in {Batches} batch(es); {Remaining} still queued for the next pass",
                     drainBudgetMinutes, reportSource.Id, messagesScanned, batchesDrained + 1,
-                    uids.Count - messagesScanned);
+                    pending.Count - messagesScanned);
             }
 
             reportSource.LastSuccessSyncAtUtc = DateTime.UtcNow;
-            reportSource.LastProcessedUidValidity = currentUidValidity;
-            if (highestProcessedUid.HasValue)
+            session.ApplyGeneration(reportSource);
+            if (highestProcessed is { } lastHandled)
             {
-                reportSource.LastProcessedUid = highestProcessedUid;
+                session.ApplyCheckpoint(reportSource, lastHandled);
             }
+
+            // Only where the protocol could answer cheaply. IMAP declines — see the note on
+            // its session — and leaves this to the retention pass, which opens the whole
+            // folder anyway.
+            if (session.OldestMessageAtUtc is { } oldest)
+            {
+                reportSource.OldestMessageAtUtc = oldest;
+            }
+
             reportSource.UpdatedAtUtc = DateTime.UtcNow;
 
             if (operationToken.IsCancellationRequested)
@@ -316,7 +302,7 @@ public sealed class MailboxSyncService(
 
             await db.SaveChangesAsync(operationToken);
 
-            await client.DisconnectAsync(true, operationToken);
+            await session.CloseAsync(operationToken);
 
             return ServiceResult<MailboxSyncResult>.Success(new MailboxSyncResult(
                 reportSource.Id,
@@ -340,24 +326,29 @@ public sealed class MailboxSyncService(
 
             // Clearing the tracker is what lets the run row below save on its own, but
             // it also drops the checkpoint assigned on the success path — so re-apply it
-            // deliberately. Only the two checkpoint columns are marked modified:
+            // deliberately. Only the checkpoint columns are marked modified:
             // LastSuccessSyncAtUtc is deliberately left alone, because this was not a
             // success even when it made progress.
-            if (highestProcessedUid.HasValue)
+            if (highestProcessed is { } handled && session is not null)
             {
-                reportSource.LastProcessedUid = highestProcessedUid;
-                reportSource.LastProcessedUidValidity = currentUidValidity;
+                session.ApplyCheckpoint(reportSource, handled);
                 reportSource.UpdatedAtUtc = DateTime.UtcNow;
 
                 db.ReportSources.Attach(reportSource);
                 var checkpoint = db.Entry(reportSource);
+
+                // All three columns rather than the one this protocol writes. Marking only
+                // the protocol's own would mean naming it here, which is the branch this
+                // service exists without; the other two are re-written with the values they
+                // were loaded with, so the row does not move.
                 checkpoint.Property(x => x.LastProcessedUid).IsModified = true;
                 checkpoint.Property(x => x.LastProcessedUidValidity).IsModified = true;
+                checkpoint.Property(x => x.LastProcessedUidl).IsModified = true;
                 checkpoint.Property(x => x.UpdatedAtUtc).IsModified = true;
             }
 
             var timedOut = IsTimeout(ex);
-            var status = ResolveUnsuccessfulRunStatus(ex, highestProcessedUid);
+            var status = ResolveUnsuccessfulRunStatus(ex, highestProcessed);
 
             db.MailboxSyncRuns.Add(new MailboxSyncRun
             {
@@ -375,7 +366,7 @@ public sealed class MailboxSyncService(
                 TlsReportsSkippedAsDuplicate = tlsReportsSkippedAsDuplicate,
                 Error = timedOut
                     ? $"sync cancelled or timed out after {syncRunTimeoutMinutes} minute(s); " +
-                      $"checkpointed at uid {highestProcessedUid?.ToString() ?? "none"}"
+                      $"checkpointed at {highestProcessed?.Identity ?? "none"}"
                     : ex.Message,
                 CreatedAtUtc = startedAtUtc,
             });
@@ -396,6 +387,13 @@ public sealed class MailboxSyncService(
                 startedAtUtc,
                 DateTime.UtcNow));
         }
+        finally
+        {
+            if (session is not null)
+            {
+                await session.DisposeAsync();
+            }
+        }
     }
 
     /// <summary>
@@ -414,8 +412,8 @@ public sealed class MailboxSyncService(
     /// "nothing happened" and counts the source against the failing-mailbox tally on
     /// the dashboard (<c>AnalyticsQueryService</c> counts only <c>failed</c>).
     /// </summary>
-    public static string ResolveUnsuccessfulRunStatus(Exception ex, long? highestProcessedUid)
-        => IsTimeout(ex) && highestProcessedUid.HasValue ? "partial" : "failed";
+    public static string ResolveUnsuccessfulRunStatus(Exception ex, MailboxMessageRef? highestProcessed)
+        => IsTimeout(ex) && highestProcessed is not null ? "partial" : "failed";
 
     private async Task TryPersistRunStateAsync(Guid reportSourceId)
     {
@@ -464,6 +462,54 @@ public sealed class MailboxSyncService(
         => [.. found
             .Where(x => !lastProcessedUid.HasValue || x.Id > lastProcessedUid.Value)
             .OrderBy(x => x.Id)];
+
+    /// <summary>
+    /// The POP3 equivalent: the messages after the checkpointed UIDL, in listing order.
+    /// <para>
+    /// The shape of the problem is different from IMAP's, because a UIDL is opaque. There is
+    /// no ordering to compare against and no range to ask the server for, so "what is new" is
+    /// only answerable as "what comes after this one in the listing" — POP3 numbers messages
+    /// by arrival and keeps that order stable within the mailbox's lifetime.
+    /// </para>
+    /// <para>
+    /// Two cases are worth naming because they look alike and are not. A checkpoint at the
+    /// <em>last</em> entry selects nothing, which is a caught-up mailbox and the POP3 analogue
+    /// of the bug documented above. A checkpoint that is <em>absent</em> from the listing
+    /// selects everything, because the message it named has been deleted and no position can
+    /// be recovered from a string that is not there; the caller logs that, since a silent full
+    /// re-read is indistinguishable from a loop.
+    /// </para>
+    /// <para>
+    /// Positions, not the UIDLs themselves, are what comes back: the returned
+    /// <see cref="MailboxMessageRef.Token"/> is an index into <paramref name="uidls"/>, which
+    /// is only meaningful for as long as the session that produced the listing stays open.
+    /// </para>
+    /// </summary>
+    public static IReadOnlyList<MailboxMessageRef> SelectUidlsPastCheckpoint(
+        IReadOnlyList<string> uidls, string? lastProcessedUidl)
+    {
+        var start = 0;
+        if (!string.IsNullOrEmpty(lastProcessedUidl))
+        {
+            for (var index = 0; index < uidls.Count; index++)
+            {
+                if (string.Equals(uidls[index], lastProcessedUidl, StringComparison.Ordinal))
+                {
+                    start = index + 1;
+                    break;
+                }
+            }
+        }
+
+        var pending = new List<MailboxMessageRef>(uidls.Count - start);
+        for (var index = start; index < uidls.Count; index++)
+        {
+            pending.Add(new MailboxMessageRef(
+                index, uidls[index], Backup.ReportMailIdentity.ForPop3(uidls[index])));
+        }
+
+        return pending;
+    }
 
     /// <summary>
     /// The decompression budget for one attachment, read fresh from options each time so

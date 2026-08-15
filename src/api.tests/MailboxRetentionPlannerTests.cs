@@ -232,17 +232,17 @@ public sealed class MailboxRetentionPlannerTests
         var sourceId = Guid.Parse("11111111-2222-3333-4444-555555555555");
         var at = new DateTime(2026, 7, 27, 6, 11, 0, DateTimeKind.Utc);
 
-        var key = ReportMailArchive.Key("dmarc", sourceId, 4711, 9, at);
+        var key = ReportMailArchive.Key("dmarc", sourceId, ReportMailIdentity.ForImap(4711, 9), at);
 
         Assert.Equal(
             $"dmarc/reports/2026/07/27/{sourceId}/9-4711.eml.gz",
             key);
 
         // Same inputs, same key — otherwise ExistsAsync can never find what TryArchiveAsync wrote.
-        Assert.Equal(key, ReportMailArchive.Key("dmarc/", sourceId, 4711, 9, at));
+        Assert.Equal(key, ReportMailArchive.Key("dmarc/", sourceId, ReportMailIdentity.ForImap(4711, 9), at));
 
         // UIDVALIDITY is part of the name because a UID only identifies a message within one
         // validity generation.
-        Assert.NotEqual(key, ReportMailArchive.Key("dmarc", sourceId, 4711, 10, at));
+        Assert.NotEqual(key, ReportMailArchive.Key("dmarc", sourceId, ReportMailIdentity.ForImap(4711, 10), at));
     }
 }

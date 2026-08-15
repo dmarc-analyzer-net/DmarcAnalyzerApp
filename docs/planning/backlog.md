@@ -20,9 +20,9 @@ all shipped. The near-term sequence below turns it from "works" into
    and ADR 0008. Bundled-or-external Postgres × combined-or-split × Compose-or-K8s,
    packaged so the combinations stay in step instead of drifting.
 
-Smaller, independent items to slot in opportunistically: **POP3 ingestion**, the
-**report upload/query API endpoints** (which would also make seeding test data
-far easier), and **CSV/JSON export**. Larger, deferred until a deployment calls
+Smaller, independent items to slot in opportunistically: the **report upload/query
+API endpoints** (which would also make seeding test data far easier), and **CSV/JSON
+export**. Larger, deferred until a deployment calls
 for them: **branded PDF reports** and **M365/Google Workspace connectors**.
 (The console **visual redesign** is done — shipped as the new ink-green/teal
 design system.) See the categorized lists below for the full inventory.
@@ -33,11 +33,14 @@ design system.) See the categorized lists below for the full inventory.
 - [x] (done) Scaffold solution in `src/` with C# web app backend and React frontend.
 - [x] (done) Integrate `DmarcRua` serializer and validate parsing against sample RUA XML fixtures.
 - [x] (done) Design PostgreSQL schema for agency, clients, domains, report sources, reports, records, and retention policies.
-- [ ] (todo) Add POP3 support to mailbox ingestion (IMAP via MailKit is implemented).
-      Note that `pop3` is no longer an accepted `protocol` value: it validated but never
-      worked — the worker polls `Protocol == "imap"` and manual sync refuses anything
-      else — so a POP3 source could be created and would silently never ingest. Whoever
-      builds this puts the value back at the same time as the code that reads it.
+- [x] (done) Add POP3 support to mailbox ingestion. `Pop3MailboxTransport` alongside
+      `ImapMailboxTransport` behind `IMailboxTransport`, so the drain budget, batched
+      checkpoints, archive-before-parse, run rows and retention deletion are shared rather
+      than reimplemented per protocol. `pop3` is an accepted `protocol` value again — put
+      back in the same change as the code that reads it, which is the lesson from the first
+      round. Checkpoint is `LastProcessedUidl` (POP3 has no UID space or UIDVALIDITY); a
+      server without UIDL is refused, because no durable checkpoint is possible and every
+      pass would re-read the whole mailbox.
 - [x] (done) Implement tenant-aware data access model with strict client isolation for agency operators (client_viewer scoping via per-request user context).
 - [x] (done) Implement single-database tenant-keyed architecture (direct or transitive ClientId on all client-scoped entities, enforced in query services).
 - [x] (done) Define RBAC with agency_admin/agency_analyst/client_viewer roles (deny-by-default endpoint enforcement; in-app client grants).

@@ -1,3 +1,4 @@
+using DmarcAnalyzer.Api.Application.Backup;
 using DmarcAnalyzer.Api.Application.Ingestion;
 using Xunit;
 
@@ -11,11 +12,18 @@ namespace DmarcAnalyzer.Api.Tests;
 /// </summary>
 public sealed class MailboxSyncRunStatusTests
 {
+    /// <summary>
+    /// A stand-in for "the pass got this far". Only its presence matters to the status
+    /// rule, not what protocol named it or what it is called.
+    /// </summary>
+    private static MailboxMessageRef Handled(uint uid)
+        => new(uid, uid.ToString(), ReportMailIdentity.ForImap(uid, 9));
+
     [Fact]
     public void TimeoutWithProgressIsPartial()
     {
         Assert.Equal("partial",
-            MailboxSyncService.ResolveUnsuccessfulRunStatus(new TimeoutException("budget"), 4711));
+            MailboxSyncService.ResolveUnsuccessfulRunStatus(new TimeoutException("budget"), Handled(4711)));
     }
 
     [Fact]
@@ -24,7 +32,7 @@ public sealed class MailboxSyncRunStatusTests
         // The linked token throws this one; the explicit budget check throws
         // TimeoutException. Both are the same event to an operator.
         Assert.Equal("partial",
-            MailboxSyncService.ResolveUnsuccessfulRunStatus(new OperationCanceledException(), 1));
+            MailboxSyncService.ResolveUnsuccessfulRunStatus(new OperationCanceledException(), Handled(1)));
     }
 
     [Fact]
@@ -37,15 +45,16 @@ public sealed class MailboxSyncRunStatusTests
     }
 
     [Theory]
-    [InlineData(42L)]
+    [InlineData(42u)]
     [InlineData(null)]
-    public void OtherFailuresStayFailedRegardlessOfProgress(long? highestProcessedUid)
+    public void OtherFailuresStayFailedRegardlessOfProgress(uint? highestProcessedUid)
     {
         // An unexpected error is a failure whether or not it happened to get some way
         // in. Only running out of time earns "partial".
         Assert.Equal("failed",
             MailboxSyncService.ResolveUnsuccessfulRunStatus(
-                new InvalidOperationException("broken"), highestProcessedUid));
+                new InvalidOperationException("broken"),
+                highestProcessedUid.HasValue ? Handled(highestProcessedUid.Value) : null));
     }
 
     [Fact]

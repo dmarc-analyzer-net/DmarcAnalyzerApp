@@ -6,6 +6,7 @@ using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Application.Retention;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Data;
+using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -358,13 +359,13 @@ public sealed class QueueWorkerService(
 
         var activeReportSources = await db.ReportSources
             .AsNoTracking()
-            .Where(x => x.IsActive && x.Protocol == "imap")
+            .Where(x => x.IsActive && ReportSourceProtocols.Polled.Contains(x.Protocol))
             .Select(x => x.Id)
             .ToListAsync(ct);
 
         if (activeReportSources.Count == 0)
         {
-            logger.LogDebug("No active report sources with protocol=imap found for scheduled pass");
+            logger.LogDebug("No active polled report sources found for scheduled pass");
             return;
         }
 

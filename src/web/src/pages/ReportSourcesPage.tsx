@@ -32,11 +32,20 @@ import { usePageTitle } from '@/lib/use-page-title'
 
 type MailboxOpsFilter = 'all' | 'failed' | 'parse-failures' | 'stale-success'
 
+type Protocol = 'imap' | 'pop3' | 'api'
+
+/**
+ * What each protocol listens on by default, so choosing one does not leave the previous
+ * protocol's port behind — 993 on a POP3 mailbox connects to nothing and fails at sync time,
+ * which is a long way from where the mistake was made.
+ */
+const defaultPort: Record<Protocol, number> = { imap: 993, pop3: 995, api: 0 }
+
 const initialMailboxForm = {
   name: '',
-  protocol: 'imap' as 'imap' | 'api' | 'pop3',
+  protocol: 'imap' as Protocol,
   host: '',
-  port: 993,
+  port: defaultPort.imap,
   useTls: true,
   username: '',
   password: '',
@@ -51,15 +60,16 @@ const initialMailboxForm = {
  * written to by their caller: no host, no port, no sync run, no checkpoint. Everything
  * mailbox-shaped on this page keys off this rather than off the row simply existing.
  */
-const sourceHasMailbox = (source: Pick<ReportSource, 'protocol'>) => source.protocol === 'imap'
+const sourceHasMailbox = (source: Pick<ReportSource, 'protocol'>) =>
+  source.protocol === 'imap' || source.protocol === 'pop3'
 
 /**
  * Status pill for a source that is never polled, where sync health cannot say anything.
  * <p>
- * Two very different cases share that shape and must not share a label. `api` is working
- * as designed and simply has nothing to sync. Anything else here is a `pop3` row predating
- * the removal of that protocol — it is not pushed, it is inert: it validated for a long
- * time and never ingested a byte, because the worker has only ever selected `imap`.
+ * `api` is working as designed and simply has nothing to sync, so it says so. The fallback
+ * is for a protocol this build does not poll — there is none today, now that `pop3` is
+ * implemented — and it is deliberately alarming rather than neutral, because a source that
+ * is neither pushed nor polled ingests nothing and looks identical to an empty mailbox.
  */
 const getUnpolledBadge = (
   protocol: string,
@@ -518,7 +528,7 @@ export function ReportSourcesPage() {
                     <TableHead>Mailbox</TableHead>
                     <TableHead>Last status</TableHead>
                     <TableHead>Last success</TableHead>
-                    <TableHead>Checkpoint UID</TableHead>
+                    <TableHead>Checkpoint</TableHead>
                     <TableHead>Last run metrics</TableHead>
                     <TableHead>Last error</TableHead>
                   </TableRow>
@@ -540,7 +550,12 @@ export function ReportSourcesPage() {
                           {formatWhen(health.lastSuccessSyncAtUtc)}
                         </span>
                       </TableCell>
-                      <TableCell mono>{health.lastProcessedUid ?? 'n/a'}</TableCell>
+                      <TableCell mono>
+                        {/* Two protocols, two kinds of checkpoint, one column. Showing the
+                            UID field alone read as "never synced" for every POP3 source,
+                            which is the state this column exists to rule out. */}
+                        {health.lastProcessedUid ?? health.lastProcessedUidl ?? 'n/a'}
+                      </TableCell>
                       <TableCell>
                         <div className="text-xs leading-5 text-secondary">
                           <div>Scanned: {health.lastRunMessagesScanned ?? 0}</div>
@@ -683,17 +698,22 @@ export function ReportSourcesPage() {
                 Protocol
                 <Select
                   value={mailboxForm.protocol}
-                  onChange={(e) =>
-                    setMailboxForm((x) => ({ ...x, protocol: e.target.value as 'imap' | 'api' }))
-                  }
+                  onChange={(e) => {
+                    const protocol = e.target.value as Protocol
+                    // The port moves with the protocol, but only while it is still the
+                    // previous protocol's default — an operator who typed 1100 for a
+                    // non-standard POP3 server should not have it overwritten.
+                    setMailboxForm((x) => ({
+                      ...x,
+                      protocol,
+                      port:
+                        x.port === defaultPort[x.protocol] ? defaultPort[protocol] : x.port,
+                    }))
+                  }}
                 >
                   <option value="imap">IMAP (polled)</option>
+                  <option value="pop3">POP3 (polled)</option>
                   <option value="api">API (pushed)</option>
-                  {/* Shown only for a row that already is one: pop3 validated but was
-                      never implemented, so it can no longer be chosen. */}
-                  {mailboxForm.protocol === 'pop3' ? (
-                    <option value="pop3">POP3 (not supported)</option>
-                  ) : null}
                 </Select>
               </label>
               <label
@@ -707,7 +727,7 @@ export function ReportSourcesPage() {
                   mono
                   value={mailboxForm.port}
                   onChange={(e) =>
-                    setMailboxForm((x) => ({ ...x, port: Number(e.target.value || 993) }))
+                    setMailboxForm((x) => ({ ...x, port: Number(e.target.value) || defaultPort[x.protocol] }))
                   }
                   required={!isPushedSource}
                 />

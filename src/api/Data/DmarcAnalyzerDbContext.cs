@@ -148,6 +148,11 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.PasswordEncrypted).HasMaxLength(2048).IsRequired();
             entity.Property(x => x.LastProcessedUid);
             entity.Property(x => x.LastProcessedUidValidity);
+
+            // 70 by RFC 1939, which caps a UIDL at 70 printable ASCII characters. Bounded
+            // at the schema rather than left as unlimited text so a server that ignores the
+            // limit is refused at the insert instead of silently redefining the checkpoint.
+            entity.Property(x => x.LastProcessedUidl).HasMaxLength(70);
             entity.Property(x => x.DeleteAfterRetention).HasDefaultValue(false);
 
             // Defaulted true in the database, not just on the CLR property. Without this

@@ -75,10 +75,33 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - checkpointed sync (`LastProcessedUid`, `LastProcessedUidValidity`)
   - retry/backoff and run timeout controls
 - Sync operational history persisted in `mailbox_sync_run`.
+- **Polled ingestion over IMAP and POP3.** Both protocols run one pass — the drain
+  budget, batched checkpoints, archive-before-parse, the run rows, the
+  partial-versus-failed distinction and the retention deletion are shared — behind
+  `IMailboxTransport`, with `ImapMailboxTransport` and `Pop3MailboxTransport` holding only
+  what the protocols genuinely do differently. Adding a protocol is a transport and a
+  constant, not another branch in the sync service.
+  - **POP3 checkpoints on a UIDL** (`report_source.LastProcessedUidl`), because it has no
+    UID space and no UIDVALIDITY: the next pass finds that string in the listing and takes
+    what follows. A checkpoint that is no longer there — the message was deleted by hand,
+    or by another client on the same mailbox — leaves no position to recover, so the pass
+    re-reads everything and logs that it is doing so; deduplication makes that expensive
+    rather than wrong.
+  - **A POP3 server without UIDL is refused** rather than run. No durable checkpoint is
+    possible, so every pass would re-read the whole mailbox for ever; the refusal is on the
+    source's `mailbox-health` row, which is where an operator will see it.
+  - **Retention deletion works on both**, and costs more on POP3: with no server-side date
+    search the pass reads every message's headers, and with no expunge the deletion only
+    takes effect when the session ends with `QUIT`.
+  - Verified against a real POP3 server (GreenMail) and a real database, not only in
+    unit tests — `Pop3MailboxSyncTests` and `Pop3MailboxRetentionTests`. That is
+    deliberate: the previous attempt at POP3 validated the protocol value while nothing
+    read it, so a source could be created and would silently never ingest a byte. The gap
+    was between the pieces, where no unit test was looking.
 - **Pushed ingestion** (ADR 0010). A report source carries a `protocol` that says who
-  reads it: `imap` is polled by the worker, `api` is written to by an external system
-  posting raw report bytes to `POST /api/v1/reports`. Both land through the same
-  extractor, the same parsers and the same ingestors, so the two paths cannot drift on
+  reads it: `imap` and `pop3` are polled by the worker, `api` is written to by an external
+  system posting raw report bytes to `POST /api/v1/reports`. All of them land through the
+  same extractor, the same parsers and the same ingestors, so the paths cannot drift on
   deduplication.
   - **Machine credentials** are bearer tokens scoped to one report source, and the
     source decides which client the data lands under — there is no source id in the
@@ -99,9 +122,11 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     allow-list: a domain nobody owns yet is created under this source's own client and
     is therefore never foreign. Existing sources default to on, preserving today's
     routing.
-  - `pop3` is no longer accepted as a protocol. It validated for a long time and never
-    ingested anything — the worker has always polled `imap` only. Existing rows are
-    untouched and stay editable; only a *change* to `pop3` is refused.
+  - `pop3` is a polled protocol again, and this time something reads it. It validated
+    for a long time while nothing acted on it — the worker polled `imap` only, so a POP3
+    source could be created and would silently never ingest — was removed on that basis,
+    and is back alongside `Pop3MailboxTransport`. Rows predating the removal start syncing
+    on the next pass.
   - Not built: any view of when a pushed source last received something. `mailbox-health`
     deliberately excludes `api` sources, because a pushed source has no mailbox, no sync
     run and no checkpoint, so it would sit in that list permanently "never synced".

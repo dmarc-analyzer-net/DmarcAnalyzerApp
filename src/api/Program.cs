@@ -98,6 +98,12 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddScoped<ITlsReportIngestor, TlsReportIngestor>();
     workerBuilder.Services.AddScoped<IDmarcReportIngestor, DmarcReportIngestor>();
     workerBuilder.Services.AddScoped<IReportPayloadIngestor, ReportPayloadIngestor>();
+    // One transport per protocol, resolved by name rather than branched on. Both are
+    // registered wherever a sync can be triggered, so a manual sync from the console and
+    // the worker's scheduled pass reach the same code.
+    workerBuilder.Services.AddSingleton<IMailboxTransport, ImapMailboxTransport>();
+    workerBuilder.Services.AddSingleton<IMailboxTransport, Pop3MailboxTransport>();
+    workerBuilder.Services.AddSingleton<IMailboxTransportFactory, MailboxTransportFactory>();
     workerBuilder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
     workerBuilder.Services.AddHttpContextAccessor();
     workerBuilder.Services.AddScoped<ICurrentUserContext, SystemUserContext>();
@@ -250,6 +256,9 @@ builder.Services.AddScoped<IPushedReportIngestService, PushedReportIngestService
 builder.Services.AddReportIngestRateLimiter();
 builder.Services.AddScoped<MachineCallerContext>();
 builder.Services.AddScoped<IMachineCallerContext>(sp => sp.GetRequiredService<MachineCallerContext>());
+builder.Services.AddSingleton<IMailboxTransport, ImapMailboxTransport>();
+builder.Services.AddSingleton<IMailboxTransport, Pop3MailboxTransport>();
+builder.Services.AddSingleton<IMailboxTransportFactory, MailboxTransportFactory>();
 builder.Services.AddScoped<IMailboxSyncService, MailboxSyncService>();
 builder.Services.AddScoped<IMailboxSyncRunQueryService, MailboxSyncRunQueryService>();
 builder.Services.AddScoped<IMailboxHealthQueryService, MailboxHealthQueryService>();

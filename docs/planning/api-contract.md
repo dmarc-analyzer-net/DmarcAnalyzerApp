@@ -275,7 +275,8 @@ List report sources.
 
 ### POST `/report-sources`
 
-Create source (IMAP or POP3).
+Create source. `protocol` is `imap` or `pop3` (both polled by the worker) or `api`
+(pushed to; takes no `host`, `username` or `password`).
 
 Request:
 
@@ -297,6 +298,11 @@ Notes:
 
 - Password is encrypted at rest server-side.
 - One source may serve multiple clients through domain routing.
+- Default ports are 993 for `imap` and 995 for `pop3` over TLS; `useTls=false` falls back
+  to STARTTLS where the server offers it.
+- A `pop3` mailbox must support UIDL. Without it there is no durable checkpoint, so the
+  sync refuses rather than re-reading the whole mailbox on every pass; the refusal lands
+  on the source's `mailbox-health` row.
 
 ### PATCH `/report-sources/{sourceId}`
 ### DELETE `/report-sources/{sourceId}`
@@ -342,7 +348,11 @@ Fields include:
   extracted report payload, TLS included; TLS parse failures fold into the one
   `parseFailures` counter, with the log line naming the format
 - last success timestamp
-- checkpoint values (`lastProcessedUid`, `lastProcessedUidValidity`)
+- checkpoint values: `lastProcessedUid` + `lastProcessedUidValidity` on an IMAP source,
+  `lastProcessedUidl` on a POP3 one. A source has one pair or the other, never both —
+  POP3 has no UID space and no UIDVALIDITY, so the columns are not interchangeable
+- polled sources only. A pushed (`api`) source has no mailbox, no sync run and no
+  checkpoint, so it is excluded rather than listed as permanently never-synced
 
 ### Retention preview/purge response growth
 

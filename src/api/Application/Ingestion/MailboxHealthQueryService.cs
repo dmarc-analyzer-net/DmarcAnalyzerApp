@@ -15,7 +15,7 @@ public sealed class MailboxHealthQueryService(DmarcAnalyzerDbContext db) : IMail
         // broken forever while working perfectly.
         var reportSources = db.ReportSources
             .AsNoTracking()
-            .Where(x => x.Protocol == ReportSourceProtocols.Imap)
+            .Where(x => ReportSourceProtocols.Polled.Contains(x.Protocol))
             .AsQueryable();
 
         if (reportSourceId.HasValue)
@@ -32,6 +32,7 @@ public sealed class MailboxHealthQueryService(DmarcAnalyzerDbContext db) : IMail
                 source.LastSuccessSyncAtUtc,
                 source.LastProcessedUid,
                 source.LastProcessedUidValidity,
+                source.LastProcessedUidl,
                 db.MailboxSyncRuns
                     .Where(run => run.ReportSourceId == source.Id)
                     .OrderByDescending(run => run.StartedAtUtc)
