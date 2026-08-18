@@ -17,5 +17,6 @@ public sealed record ReportSourceDto(
     DateTime? LastSuccessSyncAtUtc,
     long? LastProcessedUid,
     long? LastProcessedUidValidity,
+    string? LastProcessedUidl,
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);

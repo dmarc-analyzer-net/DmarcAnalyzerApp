@@ -7,6 +7,7 @@ public sealed record ReportSourceHealthDto(
     DateTime? LastSuccessSyncAtUtc,
     long? LastProcessedUid,
     long? LastProcessedUidValidity,
+    string? LastProcessedUidl,
     string? LastRunStatus,
     DateTime? LastRunStartedAtUtc,
     DateTime? LastRunFinishedAtUtc,

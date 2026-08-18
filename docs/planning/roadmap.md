@@ -28,7 +28,7 @@ Target: reliably ingest DMARC RUA reports and normalize parsed data.
 
 - [~] Implement manual upload and mailbox ingestion flows. *(mailbox ingestion
       shipped; manual upload endpoint still open — see backlog "report upload".)*
-- [~] Add IMAP and POP3 mailbox readers with MailKit. *(IMAP shipped; POP3 open.)*
+- [x] Add IMAP and POP3 mailbox readers with MailKit. *(Both shipped, behind one transport seam.)*
 - [x] Integrate `DmarcRua` serializer for RUA XML parsing.
 - [x] Add ZIP/GZIP attachment extraction and validation.
 - [x] Persist parsed entities to PostgreSQL with deduplication and basic validation.

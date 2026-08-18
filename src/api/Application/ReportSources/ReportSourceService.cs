@@ -11,28 +11,34 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
 {
     /// <summary>
     /// What a source may actually be, not what it might one day be. Every value here is
-    /// read by something: <c>imap</c> by the polling worker, <c>api</c> by the ingestion
-    /// endpoint.
+    /// read by something: <c>imap</c> and <c>pop3</c> by the polling worker, <c>api</c> by
+    /// the ingestion endpoint.
     /// <para>
-    /// <c>pop3</c> was accepted here for a long time and never worked: the worker polls
-    /// <c>Protocol == "imap"</c> and manual sync refuses anything else, so a POP3 source
-    /// could be created, would appear in the console, and would silently never ingest a
-    /// single report. An option that does nothing is worse than an absent one — the
-    /// operator has no way to tell it apart from a mailbox with no mail in it.
+    /// <c>pop3</c> is here on its second attempt. It was accepted for a long time and never
+    /// worked — the worker polled <c>Protocol == "imap"</c> and manual sync refused anything
+    /// else, so a POP3 source could be created, would appear in the console, and would
+    /// silently never ingest a single report — and was removed on the principle that an
+    /// option that does nothing is worse than an absent one. It is back because the code
+    /// that reads it now exists: <c>Pop3MailboxTransport</c>, the same drain, the same run
+    /// rows and the same retention deletion as IMAP. Rows predating the removal start
+    /// syncing on the next pass, which is what they were always meant to do.
     /// </para>
     /// <para>
-    /// Rows created before that removal stay as they are and keep not syncing, which is
-    /// what they already did. Add a value back only when something reads it.
+    /// The rule the round trip is worth remembering for: add a value here in the same change
+    /// as the code that acts on it, never before.
     /// </para>
     /// </summary>
-    private static readonly string[] SupportedProtocols = ["imap", "api"];
+    private static readonly string[] SupportedProtocols =
+        [ReportSourceProtocols.Imap, ReportSourceProtocols.Pop3, ReportSourceProtocols.Api];
+
+    private const string ProtocolError = "protocol must be imap, pop3 or api";
 
     /// <summary>
     /// An API source is pushed to, so it has no host, port, mailbox or password. Those
     /// columns stay NOT NULL and hold empty values rather than becoming nullable across
     /// every reader — the trade is recorded in the create path below.
     /// </summary>
-    private static bool IsPushed(string protocol) => protocol == "api";
+    private static bool IsPushed(string protocol) => protocol == ReportSourceProtocols.Api;
 
     public async Task<IReadOnlyList<ReportSourceDto>> ListAsync(CancellationToken ct)
     {
@@ -49,7 +55,7 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
         var protocol = request.Protocol.Trim().ToLowerInvariant();
         if (!SupportedProtocols.Contains(protocol))
         {
-            return ServiceResult<ReportSourceDto>.Failure("protocol must be imap or api", 400);
+            return ServiceResult<ReportSourceDto>.Failure(ProtocolError, 400);
         }
 
         var pushed = IsPushed(protocol);
@@ -129,14 +135,15 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
             var protocol = request.Protocol.Trim().ToLowerInvariant();
 
             // Unchanged is always allowed, even when the value is no longer one that can
-            // be created. A row predating the removal of pop3 would otherwise be
-            // uneditable: every save resends its own protocol and would be refused, so an
-            // operator could not even rename the source, let alone point it at IMAP.
-            // Only a *change* has to land on something supported.
+            // be created. Nothing in SupportedProtocols is in that position today — pop3 is
+            // back — but a row holding a retired value would otherwise be uneditable: every
+            // save resends its own protocol and would be refused, so an operator could not
+            // even rename the source, let alone move it to a protocol that works. Only a
+            // *change* has to land on something supported.
             var unchanged = string.Equals(protocol, source.Protocol, StringComparison.Ordinal);
             if (!unchanged && !SupportedProtocols.Contains(protocol))
             {
-                return ServiceResult<ReportSourceDto>.Failure("protocol must be imap or api", 400);
+                return ServiceResult<ReportSourceDto>.Failure(ProtocolError, 400);
             }
 
             source.Protocol = protocol;
@@ -247,6 +254,7 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
             x.LastSuccessSyncAtUtc,
             x.LastProcessedUid,
             x.LastProcessedUidValidity,
+            x.LastProcessedUidl,
             x.CreatedAtUtc,
             x.UpdatedAtUtc);
 }

@@ -67,7 +67,7 @@ public sealed class MailboxRetentionPlanner(
         // legacy pop3 row with deletion enabled would already have triggered today.
         var sources = await db.ReportSources
             .AsNoTracking()
-            .Where(x => x.Protocol == ReportSourceProtocols.Imap)
+            .Where(x => ReportSourceProtocols.Polled.Contains(x.Protocol))
             .OrderBy(x => x.Name)
             .ToListAsync(ct);
         var plans = new List<MailboxRetentionPlan>(sources.Count);

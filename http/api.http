@@ -157,6 +157,24 @@ Content-Type: application/json
   "isActive": true
 }
 
+### Create a POP3 report source (replace defaultClientId)
+# Same pass as IMAP; the server must support UIDL, or the sync refuses rather than
+# re-reading the whole mailbox every time.
+POST {{baseUrl}}/api/v1/report-sources
+Content-Type: application/json
+
+{
+  "name": "Acme DMARC Inbox (POP3)",
+  "protocol": "pop3",
+  "host": "pop3.example.com",
+  "port": 995,
+  "useTls": true,
+  "username": "dmarc@example.com",
+  "password": "replace-me",
+  "defaultClientId": "00000000-0000-0000-0000-000000000000",
+  "isActive": true
+}
+
 ### Patch report source (replace id)
 PATCH {{baseUrl}}/api/v1/report-sources/00000000-0000-0000-0000-000000000000
 Content-Type: application/json
@@ -167,7 +185,7 @@ Content-Type: application/json
   "protocol": "pop3"
 }
 
-### Manual mailbox sync (IMAP only; read-only, does not delete emails)
+### Manual mailbox sync (IMAP and POP3; read-only, does not delete emails)
 POST {{baseUrl}}/api/v1/report-sources/{{reportSourceId}}/sync
 
 ### List mailbox sync runs (optional reportSourceId, optional limit)

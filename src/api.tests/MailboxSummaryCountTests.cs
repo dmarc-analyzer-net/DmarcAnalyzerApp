@@ -43,8 +43,8 @@ public sealed class MailboxSummaryCountTests
         var source = new ReportSource
         {
             Id = Guid.NewGuid(), Name = $"{protocol} source", Protocol = protocol,
-            Host = protocol == ReportSourceProtocols.Imap ? "imap.example" : string.Empty,
-            Port = protocol == ReportSourceProtocols.Imap ? 993 : 0,
+            Host = ReportSourceProtocols.IsPolled(protocol) ? $"{protocol}.example" : string.Empty,
+            Port = ReportSourceProtocols.IsPolled(protocol) ? 993 : 0,
             Username = string.Empty, PasswordEncrypted = string.Empty,
             DefaultClientId = clientId, IsActive = true,
             CreatedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow,
@@ -103,16 +103,19 @@ public sealed class MailboxSummaryCountTests
     }
 
     /// <summary>
-    /// A legacy <c>pop3</c> row is not polled either — the worker has only ever selected
-    /// <c>imap</c> — so it must not inflate the denominator the way it used to.
+    /// A <c>pop3</c> row <em>is</em> a mailbox and belongs in the denominator. It did not
+    /// while POP3 was accepted but unimplemented, and this asserts the count moved with the
+    /// implementation: a source the worker polls but the dashboard does not count is the
+    /// same class of lie as the pushed source that used to be counted, pointing the other
+    /// way.
     /// </summary>
     [Fact]
-    public async Task LegacyPop3RowsAreNotCountedAsMailboxes()
+    public async Task Pop3RowsAreCountedAsMailboxes()
     {
         using var db = NewDb();
         var clientId = SeedClient(db);
         AddSource(db, clientId, ReportSourceProtocols.Imap);
-        AddSource(db, clientId, "pop3");
+        AddSource(db, clientId, ReportSourceProtocols.Pop3);
         await db.SaveChangesAsync();
 
         var summary = await TestAnalytics
@@ -120,6 +123,6 @@ public sealed class MailboxSummaryCountTests
             .GetSummaryAsync(30, CancellationToken.None);
 
         Assert.NotNull(summary.Mailboxes);
-        Assert.Equal(1, summary.Mailboxes!.Total);
+        Assert.Equal(2, summary.Mailboxes!.Total);
     }
 }

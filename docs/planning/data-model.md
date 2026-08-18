@@ -150,16 +150,17 @@ already written rather than references to the table.
 |---|---|
 | `Id` | PK |
 | `Name` (200), `Host` (255), `Port`, `UseTls` | |
-| `Protocol` | max 20 — `imap` (POP3 not implemented) |
+| `Protocol` | max 20 — `imap`, `pop3` (both polled), `api` (pushed) |
 | `Username` | max 255 |
 | `PasswordEncrypted` | max 2048 — AES-256-GCM via `Security:CredentialEncryptionKey` |
 | `DefaultClientId` | FK → `client`, **restrict**, indexed — client assigned to domains auto-created from this mailbox |
 | `IsActive` | bool |
 | `LastSuccessSyncAtUtc` | nullable |
-| `LastProcessedUid`, `LastProcessedUidValidity` | bigint, nullable — **the resumable backfill checkpoint** |
+| `LastProcessedUid`, `LastProcessedUidValidity` | bigint, nullable — **the resumable backfill checkpoint**, IMAP only. Null on a `pop3` source |
+| `LastProcessedUidl` | max 70, nullable — the same checkpoint for `pop3`, which has no UID space: the UIDL of the last message fully handled, and the next pass takes what follows it in the listing. Null on an `imap` source. Two columns rather than one because a UID is an ordered integer and a UIDL is an opaque string, so no reader could tell which it was looking at |
 | `AllowForeignDomains` | May ingest reports for domains another client owns. Default **true**, which is how every source behaved before it existed — routing by policy domain is what makes one shared mailbox usable for many clients. |
 | `DeleteAfterRetention` | default false — opt-in per source; the worker expunges report mail past the *widest* retention window among the clients this source serves, suspended entirely if any of them is under legal hold |
-| `OldestMessageAtUtc` | nullable — internal date of the oldest message still in the polled folder, refreshed each sync; the evidence for how far back the mailbox can still archive-replay from |
+| `OldestMessageAtUtc` | nullable — date of the oldest message still in the polled mailbox; the evidence for how far back the mailbox can still archive-replay from. IMAP fills it on a retention pass, which opens the whole folder anyway; POP3 fills it on every sync, where it costs one header fetch |
 | `CreatedAtUtc`, `UpdatedAtUtc` | |
 
 ### `mailbox_sync_run`
