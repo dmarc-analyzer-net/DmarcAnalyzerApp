@@ -336,7 +336,42 @@ public sealed class S3ReportSourceTests(PostgresFixture postgres) : IAsyncLifeti
         Assert.Empty((await ListAsync()).Keys);
     }
 
-    private async Task<MailboxSyncResult> SyncAsync(IReportMailArchive? archive = null)
+    /// <summary>
+    /// The bug this guards against: a per-pass listing cap that always started from the
+    /// beginning of the prefix would see the same lexicographically-first slice on every
+    /// pass and never discover a key sorting after it — permanently, on a prefix that stays
+    /// over the cap. Shrinking the cap to 2 with three objects makes that reachable without
+    /// uploading 100,000 real ones: the first pass can only see two keys, so the third is
+    /// only found by a second pass, and only a cursor that resumes the listing itself (not
+    /// the arrival-order checkpoint, which is a different mechanism entirely) makes that
+    /// happen at all.
+    /// </summary>
+    [Fact]
+    public async Task ASyncPassOverACappedListingSeesTheWholePrefixAcrossSeveralPasses()
+    {
+        await PutAsync("reports/a.xml.gz", GzipReport("report-a", "acme.test"));
+        await PutAsync("reports/b.xml.gz", GzipReport("report-b", "acme.test"));
+        await PutAsync("reports/c.xml.gz", GzipReport("report-c", "acme.test"));
+
+        var first = await SyncAsync(maxKeysPerPass: 2);
+        var second = await SyncAsync(maxKeysPerPass: 2);
+
+        Assert.Equal(2, first.MessagesScanned);
+        Assert.Equal(1, second.MessagesScanned);
+
+        await using var db = postgres.CreateContext();
+        Assert.Equal(3, await db.DmarcReports.CountAsync());
+
+        // The second pass's listing reached the end of the prefix rather than the cap, so
+        // the cursor resets — the next pass (a third one, were there a fourth object) starts
+        // from the top again rather than staying pointed past the end.
+        var source = await db.ReportSources.SingleAsync(x => x.Id == SourceId);
+        Assert.Null(source.S3ReadListingCursorKey);
+    }
+
+    private async Task<MailboxSyncResult> SyncAsync(
+        IReportMailArchive? archive = null,
+        int maxKeysPerPass = S3ReportSourceTransport.DefaultMaxKeysPerPass)
     {
         await using var db = postgres.CreateContext();
 
@@ -349,7 +384,7 @@ public sealed class S3ReportSourceTests(PostgresFixture postgres) : IAsyncLifeti
                 new TlsReportIngestor(db, new DomainIngestResolver(db))),
             new NullCredentialProtector(),
             archive ?? new ArchiveOff(),
-            Transports(),
+            Transports(maxKeysPerPass),
             Options.Create(new WorkerOptions()),
             NullLogger<MailboxSyncService>.Instance);
 
@@ -382,13 +417,14 @@ public sealed class S3ReportSourceTests(PostgresFixture postgres) : IAsyncLifeti
         return await service.RunAsync(dryRun, CancellationToken.None);
     }
 
-    private static PolledSourceTransportFactory Transports()
+    private static PolledSourceTransportFactory Transports(
+        int maxKeysPerPass = S3ReportSourceTransport.DefaultMaxKeysPerPass)
         => new(
         [
             new ImapMailboxTransport(NullLogger<ImapMailboxTransport>.Instance),
             new Pop3MailboxTransport(NullLogger<Pop3MailboxTransport>.Instance),
             new S3ReportSourceTransport(
-                Options.Create(new WorkerOptions()), NullLogger<S3ReportSourceTransport>.Instance),
+                Options.Create(new WorkerOptions()), NullLogger<S3ReportSourceTransport>.Instance, maxKeysPerPass),
         ]);
 
     private async Task<string?> LatestRunStatusAsync()

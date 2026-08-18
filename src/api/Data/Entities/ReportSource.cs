@@ -198,6 +198,36 @@ public sealed class ReportSource
     public string? LastProcessedObjectKey { get; set; }
 
     /// <summary>
+    /// How far the sync pass's own listing of the prefix has gotten, in key order — not a
+    /// checkpoint of what has arrived, which is <see cref="LastProcessedObjectAtUtc"/>'s job
+    /// and stays last-modified-ordered for the reason documented there.
+    /// <para>
+    /// This exists because a listing is capped per pass (<c>MaxKeysPerPass</c>) so a bucket
+    /// pointed at by mistake costs a bounded read rather than an unbounded one. On a prefix
+    /// under the cap this is always null and does nothing. On one over it, without this a
+    /// pass would always list the same lexicographically-first slice of the prefix and never
+    /// see anything past it — a permanent gap, not the bounded-but-eventually-complete one
+    /// this field turns it into: each pass resumes its <em>listing</em> after the last key it
+    /// saw, and a pass that reaches the end of the prefix resets to null so the next one
+    /// starts a fresh lap from the top, which is what lets a newly written object anywhere in
+    /// the prefix — including before this lap's resume point — be seen.
+    /// </para>
+    /// <para>
+    /// Null on any protocol but S3, and on an S3 source whose prefix has never exceeded the
+    /// cap.
+    /// </para>
+    /// </summary>
+    public string? S3ReadListingCursorKey { get; set; }
+
+    /// <summary>
+    /// The same bounded-listing cursor as <see cref="S3ReadListingCursorKey"/>, kept separate
+    /// because the retention pass lists on its own schedule: sharing one cursor between the
+    /// two would mean whichever pass ran first moved the other's starting point out from under
+    /// it, each seeing a slice the other never intended.
+    /// </summary>
+    public string? S3PruneListingCursorKey { get; set; }
+
+    /// <summary>
     /// POP3 checkpoint: the UIDL of the last message fully handled. Null on an IMAP source.
     /// <para>
     /// A separate column rather than a reuse of <see cref="LastProcessedUid"/>, because the

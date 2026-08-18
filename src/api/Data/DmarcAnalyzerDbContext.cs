@@ -164,6 +164,8 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.S3ForcePathStyle).HasDefaultValue(true);
             entity.Property(x => x.LastProcessedObjectAtUtc);
             entity.Property(x => x.LastProcessedObjectKey).HasMaxLength(1024);
+            entity.Property(x => x.S3ReadListingCursorKey).HasMaxLength(1024);
+            entity.Property(x => x.S3PruneListingCursorKey).HasMaxLength(1024);
             entity.Property(x => x.DeleteAfterRetention).HasDefaultValue(false);
 
             // Defaulted true in the database, not just on the CLR property. Without this
