@@ -109,8 +109,22 @@ public sealed class S3ReportSourceTransport(
                 "found {Eligible} last modified before {Cutoff:yyyy-MM-dd}",
                 source.Id, ordered.Count, eligible.Length, cutoffUtc);
 
+            // What each eligible object archived under, which is not always its last-modified
+            // date: a message-shaped object with its own Date header archives under that Date
+            // (see PolledObjectContent.Parse), and the archive-existence check below has to
+            // agree with it or a real archived copy reads as unarchived for ever and is never
+            // deleted. Only asked for objects already known eligible, the same restraint IMAP
+            // applies by fetching envelopes only for its own eligible set.
+            var archivedAtUtc = new DateTime[eligible.Length];
+            for (var index = 0; index < eligible.Length; index++)
+            {
+                ct.ThrowIfCancellationRequested();
+                archivedAtUtc[index] = await ResolveArchivedAtUtcAsync(
+                    client, source.S3Bucket ?? string.Empty, eligible[index], ct);
+            }
+
             return new S3PruneSession(
-                client, source.S3Bucket ?? string.Empty, eligible, survivors, dryRun, logger);
+                client, source.S3Bucket ?? string.Empty, eligible, archivedAtUtc, survivors, dryRun, logger);
         }
         catch
         {
@@ -229,6 +243,44 @@ public sealed class S3ReportSourceTransport(
     }
 
     /// <summary>
+    /// What one eligible object archived under: its own Date header if it is a message-shaped
+    /// object that has one, otherwise its last-modified date. A ranged fetch of the first
+    /// <see cref="PolledObjectContent.SniffBytes"/>, not the whole object — enough to sniff and
+    /// read a header block, at a fraction of the cost of downloading what may be a large
+    /// attachment.
+    /// </summary>
+    private static async Task<DateTime> ResolveArchivedAtUtcAsync(
+        IAmazonS3 client, string bucket, S3ObjectRef obj, CancellationToken ct)
+    {
+        GetObjectResponse response;
+
+        try
+        {
+            response = await client.GetObjectAsync(new GetObjectRequest
+            {
+                BucketName = bucket,
+                Key = obj.Key,
+                ByteRange = new ByteRange(0, PolledObjectContent.SniffBytes - 1),
+            }, ct);
+        }
+        catch (AmazonS3Exception)
+        {
+            // Deleted or made unreadable between the listing and this request. Falling back
+            // to last-modified is the same answer this object would have gotten before this
+            // lookup existed, not a new failure mode.
+            return obj.LastModifiedUtc;
+        }
+
+        using (response)
+        {
+            using var buffer = new MemoryStream();
+            await response.ResponseStream.CopyToAsync(buffer, ct);
+
+            return PolledObjectContent.TryReadOwnDateUtc(buffer.ToArray()) ?? obj.LastModifiedUtc;
+        }
+    }
+
+    /// <summary>
     /// Builds the client for one source. Not shared with the backup client on purpose: that
     /// one is a singleton over install-wide configuration, and the whole point of these
     /// credentials living on the row is that two sources may be two different accounts.
@@ -314,6 +366,7 @@ public sealed class S3ReportSourceTransport(
         IAmazonS3 client,
         string bucket,
         IReadOnlyList<S3ObjectRef> eligible,
+        IReadOnlyList<DateTime> archivedAtUtc,
         IReadOnlyList<S3ObjectRef> survivors,
         bool dryRun,
         ILogger logger) : IPolledPruneSession
@@ -322,7 +375,7 @@ public sealed class S3ReportSourceTransport(
 
         public IReadOnlyList<PolledPruneCandidate> Eligible { get; } =
             [.. eligible.Select((x, index) => new PolledPruneCandidate(
-                index, x.LastModifiedUtc, ReportMailIdentity.ForS3(x.Key)))];
+                index, archivedAtUtc[index], ReportMailIdentity.ForS3(x.Key)))];
 
         public async Task DeleteAsync(PolledPruneCandidate candidate, CancellationToken ct)
         {

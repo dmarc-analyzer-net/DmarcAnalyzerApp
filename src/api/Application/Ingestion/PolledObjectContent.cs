@@ -39,8 +39,12 @@ public static class PolledObjectContent
     /// very front of a message, so this needs to cover the first few headers and nothing
     /// more — and keeping it small is also what makes the gzip sniff cheap, since deciding
     /// costs only this much decompression rather than all of it.
+    /// <para>
+    /// Not private: the retention pass reads the same number of bytes off the bucket, via
+    /// <see cref="TryReadOwnDateUtc"/>, to answer the same question this sniff answers here.
+    /// </para>
     /// </summary>
-    private const int SniffBytes = 8 * 1024;
+    internal const int SniffBytes = 8 * 1024;
 
     /// <summary>
     /// Headers that mean "this is mail" rather than "this happens to start with a colon".
@@ -107,7 +111,8 @@ public static class PolledObjectContent
 
         // Recorded whatever the message says, because the two answer different questions:
         // the Date header is when the sender claims to have sent it, and this is when the
-        // object landed in the bucket. The retention pass judges age on the latter.
+        // object landed in the bucket. The cutoff comparison judges age on the latter — see
+        // TryReadOwnDateUtc for the other place this distinction matters.
         message.Headers.Add("X-DmarcAnalyzer-Object-Key", key);
 
         if (message.Date == default)
@@ -116,6 +121,51 @@ public static class PolledObjectContent
         }
 
         return message;
+    }
+
+    /// <summary>
+    /// The message's own <c>Date</c> header, if <paramref name="prefix"/> — the first
+    /// <see cref="SniffBytes"/> of an object, raw or gzipped — looks like an RFC822 message
+    /// that has one. Null otherwise, including when the object is not a message at all.
+    /// <para>
+    /// This exists because the sync pass archives a message-shaped object under its own Date
+    /// when it has one (see <see cref="Parse"/>), but the retention pass only ever lists
+    /// objects — it never fetches one — and so has no way to tell the two apart. Reading it
+    /// this way, from a bounded prefix rather than the whole object, is to the retention scan
+    /// what fetching the envelope is to IMAP's: the least that lets the archive-existence
+    /// check use the same date the archive was written under.
+    /// </para>
+    /// </summary>
+    public static DateTime? TryReadOwnDateUtc(byte[] prefix)
+    {
+        if (LooksLikeMessage(prefix))
+        {
+            return HeaderDateUtc(prefix);
+        }
+
+        if (IsGzip(prefix))
+        {
+            var peeked = PeekGzip(prefix, SniffBytes);
+            return LooksLikeMessage(peeked) ? HeaderDateUtc(peeked) : null;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The <c>Date</c> header from a block of bytes that starts with headers — parsed as
+    /// headers only, never a body, so a prefix that got cut off mid-header still parses
+    /// whatever came before the cut rather than throwing.
+    /// </summary>
+    private static DateTime? HeaderDateUtc(byte[] headerBytes)
+    {
+        using var stream = new MemoryStream(headerBytes, writable: false);
+        var headers = HeaderList.Load(stream);
+        var raw = headers[HeaderId.Date];
+
+        return !string.IsNullOrWhiteSpace(raw) && MimeKit.Utils.DateUtils.TryParse(raw, out var parsed)
+            ? parsed.UtcDateTime
+            : null;
     }
 
     /// <summary>

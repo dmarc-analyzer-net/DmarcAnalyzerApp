@@ -294,7 +294,49 @@ public sealed class S3ReportSourceTests(PostgresFixture postgres) : IAsyncLifeti
         Assert.Equal(["reports/new.xml.gz", "reports/old.xml.gz"], (await ListAsync()).Keys.Order());
     }
 
-    private async Task<MailboxSyncResult> SyncAsync()
+    /// <summary>
+    /// The bug this guards against: a whole-message object's own <c>Date</c> header is what
+    /// the sync pass archives it under (<see cref="PolledObjectContent.Parse"/>), which for a
+    /// replayed archive or an SES delivery can be far from the object's S3 <c>LastModified</c>.
+    /// If the retention pass judged the archive-existence check on <c>LastModified</c> instead
+    /// of that same Date, a message that is genuinely archived would read as unarchived and
+    /// never be deleted — see <see cref="MailboxRetentionSourceResult.SkippedUnarchived"/>.
+    /// </summary>
+    [Fact]
+    public async Task RetentionDeletesAnArchivedMessageWhoseOwnDateHeaderPredatesLastModified()
+    {
+        var ownDate = new DateTimeOffset(2020, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var storage = new InMemoryObjectStorage();
+        var archive = new ReportMailArchive(
+            storage,
+            Options.Create(new BackupOptions { ArchiveReportMail = true }),
+            NullLogger<ReportMailArchive>.Instance);
+
+        await PutAsync("ses/old-message", await MessageBytesAsync("report-1", "acme.test", gzip: false, ownDate));
+
+        var syncResult = await SyncAsync(archive);
+        Assert.Equal(1, syncResult.ReportsInserted);
+
+        var archivedKey = ReportMailArchive.Key(
+            "dmarc", SourceId, ReportMailIdentity.ForS3("ses/old-message"), ownDate.UtcDateTime);
+        Assert.True(storage.Objects.ContainsKey(archivedKey));
+
+        // The object's own LastModified is "now" — well past ownDate — so the cutoff only
+        // needs to be a moment after upload to make it eligible. Read back from the bucket
+        // rather than the test host's clock, so container clock skew cannot make it flaky.
+        var cutoff = (await ListAsync())["ses/old-message"].AddSeconds(1);
+
+        var result = await RunRetentionAsync(dryRun: false, cutoffOverrideUtc: cutoff, archive: archive);
+
+        var source = Assert.Single(result.Sources);
+        Assert.Null(source.Error);
+        Assert.Equal(1, source.Eligible);
+        Assert.Equal(0, source.SkippedUnarchived);
+        Assert.Equal(1, source.Deleted);
+        Assert.Empty((await ListAsync()).Keys);
+    }
+
+    private async Task<MailboxSyncResult> SyncAsync(IReportMailArchive? archive = null)
     {
         await using var db = postgres.CreateContext();
 
@@ -306,7 +348,7 @@ public sealed class S3ReportSourceTests(PostgresFixture postgres) : IAsyncLifeti
                 new DmarcReportIngestor(db, new DomainIngestResolver(db)),
                 new TlsReportIngestor(db, new DomainIngestResolver(db))),
             new NullCredentialProtector(),
-            new ArchiveOff(),
+            archive ?? new ArchiveOff(),
             Transports(),
             Options.Create(new WorkerOptions()),
             NullLogger<MailboxSyncService>.Instance);
@@ -323,7 +365,8 @@ public sealed class S3ReportSourceTests(PostgresFixture postgres) : IAsyncLifeti
     /// in the past and unreachable in a test where every object was written seconds ago —
     /// so the plan is built by hand and only the executor is under test.
     /// </summary>
-    private async Task<MailboxRetentionRunResult> RunRetentionAsync(bool dryRun, DateTime cutoffOverrideUtc)
+    private async Task<MailboxRetentionRunResult> RunRetentionAsync(
+        bool dryRun, DateTime cutoffOverrideUtc, IReportMailArchive? archive = null)
     {
         await using var db = postgres.CreateContext();
 
@@ -331,7 +374,7 @@ public sealed class S3ReportSourceTests(PostgresFixture postgres) : IAsyncLifeti
             db,
             new FixedCutoffPlanner(SourceId, "Acme bucket", cutoffOverrideUtc),
             new NullCredentialProtector(),
-            new ArchiveOff(),
+            archive ?? new ArchiveOff(),
             Transports(),
             new AuditToNowhere(),
             NullLogger<MailboxRetentionService>.Instance);
@@ -375,9 +418,13 @@ public sealed class S3ReportSourceTests(PostgresFixture postgres) : IAsyncLifeti
             .ToDictionary(x => x.Key, x => (x.LastModified ?? DateTime.UtcNow).ToUniversalTime());
     }
 
-    private static async Task<byte[]> MessageBytesAsync(string reportId, string policyDomain, bool gzip)
+    private static async Task<byte[]> MessageBytesAsync(
+        string reportId, string policyDomain, bool gzip, DateTimeOffset? date = null)
     {
-        var message = new MimeMessage { Subject = $"Report domain: {policyDomain}", Date = DateTimeOffset.UtcNow };
+        var message = new MimeMessage
+        {
+            Subject = $"Report domain: {policyDomain}", Date = date ?? DateTimeOffset.UtcNow,
+        };
         message.From.Add(new MailboxAddress("noreply", "noreply@google.com"));
         message.To.Add(new MailboxAddress("RUA", "rua@acme.test"));
         message.Body = new Multipart("mixed")
@@ -466,6 +513,42 @@ public sealed class S3ReportSourceTests(PostgresFixture postgres) : IAsyncLifeti
         public Task<bool> ExistsAsync(
             Guid reportSourceId, ReportMailIdentity identity,
             DateTime receivedAtUtc, CancellationToken ct) => Task.FromResult(false);
+    }
+
+    /// <summary>
+    /// An in-process bucket for the real <see cref="ReportMailArchive"/> to write to, so the
+    /// archive-existence check the retention pass relies on is exercised for real rather than
+    /// stubbed out — <see cref="ArchiveOff"/> can't catch a key mismatch between archiving and
+    /// checking, because it never computes either key against real storage.
+    /// </summary>
+    private sealed class InMemoryObjectStorage : IObjectStorage
+    {
+        public Dictionary<string, byte[]> Objects { get; } = [];
+
+        public bool IsConfigured => true;
+
+        public string Describe() => "in-memory";
+
+        public Task PutAsync(string key, byte[] content, string contentType, CancellationToken ct)
+        {
+            Objects[key] = content;
+            return Task.CompletedTask;
+        }
+
+        public Task<long?> GetLengthAsync(string key, CancellationToken ct)
+            => Task.FromResult(Objects.TryGetValue(key, out var value) ? value.Length : (long?)null);
+
+        public Task<byte[]?> GetAsync(string key, CancellationToken ct)
+            => Task.FromResult(Objects.TryGetValue(key, out var value) ? value : null);
+
+        public Task CopyAsync(string sourceKey, string destinationKey, CancellationToken ct)
+        {
+            Objects[destinationKey] = Objects[sourceKey];
+            return Task.CompletedTask;
+        }
+
+        public Task<ObjectStorageVersioning> GetVersioningAsync(CancellationToken ct)
+            => Task.FromResult(ObjectStorageVersioning.Disabled);
     }
 
     private sealed class AuditToNowhere : IAuditLog
