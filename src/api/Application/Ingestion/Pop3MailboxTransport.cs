@@ -177,18 +177,30 @@ public sealed class Pop3MailboxTransport(ILogger<Pop3MailboxTransport> logger) :
     }
 
     /// <summary>
-    /// The date of the message at index 0, which POP3 orders oldest-first. Cheap enough to
-    /// ask on every sync — one header fetch — unlike the IMAP equivalent, which would mean
-    /// searching the whole folder.
+    /// The date of the oldest message with a usable <c>Date</c> header. POP3 orders messages
+    /// oldest-first, so this normally resolves on the first header, but a message at index 0
+    /// with a missing or unparseable date must not be taken as "mailbox has no oldest date" —
+    /// the next message may still have one.
     /// </summary>
     private static async Task<DateTime?> GetOldestMessageAtUtcAsync(Pop3Client client, CancellationToken ct)
     {
-        if (client.Count == 0)
+        for (var start = 0; start < client.Count; start += HeaderBatchSize)
         {
-            return null;
+            ct.ThrowIfCancellationRequested();
+
+            var count = Math.Min(HeaderBatchSize, client.Count - start);
+            var headers = await client.GetMessageHeadersAsync(start, count, ct);
+
+            foreach (var header in headers)
+            {
+                if (HeaderDateUtc(header) is { } date)
+                {
+                    return date;
+                }
+            }
         }
 
-        return HeaderDateUtc(await client.GetMessageHeadersAsync(0, ct));
+        return null;
     }
 
     /// <summary>
