@@ -343,13 +343,16 @@ public sealed class MailboxSyncService(
                 db.ReportSources.Attach(reportSource);
                 var checkpoint = db.Entry(reportSource);
 
-                // All three columns rather than the one this protocol writes. Marking only
-                // the protocol's own would mean naming it here, which is the branch this
-                // service exists without; the other two are re-written with the values they
-                // were loaded with, so the row does not move.
+                // Every protocol's checkpoint columns rather than the one this source
+                // actually writes. Marking only the protocol's own would mean naming it
+                // here, which is the branch this service exists without; the others are
+                // re-written with the values they were loaded with, so the row does not
+                // move for them.
                 checkpoint.Property(x => x.LastProcessedUid).IsModified = true;
                 checkpoint.Property(x => x.LastProcessedUidValidity).IsModified = true;
                 checkpoint.Property(x => x.LastProcessedUidl).IsModified = true;
+                checkpoint.Property(x => x.LastProcessedObjectAtUtc).IsModified = true;
+                checkpoint.Property(x => x.LastProcessedObjectKey).IsModified = true;
                 checkpoint.Property(x => x.UpdatedAtUtc).IsModified = true;
             }
 
