@@ -353,6 +353,7 @@ public sealed class MailboxSyncService(
                 checkpoint.Property(x => x.LastProcessedUidl).IsModified = true;
                 checkpoint.Property(x => x.LastProcessedObjectAtUtc).IsModified = true;
                 checkpoint.Property(x => x.LastProcessedObjectKey).IsModified = true;
+                checkpoint.Property(x => x.S3ReadListingCursorKey).IsModified = true;
                 checkpoint.Property(x => x.UpdatedAtUtc).IsModified = true;
             }
 

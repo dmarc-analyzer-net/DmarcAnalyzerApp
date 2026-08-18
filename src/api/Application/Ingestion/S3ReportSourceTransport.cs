@@ -24,11 +24,16 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 /// </description></item>
 /// <item><description>
 /// <b>The checkpoint is a timestamp, not a key.</b> S3 lists lexicographically and offers
-/// <c>StartAfter</c>, which is the obvious resume and the wrong one: nothing makes a key sort
-/// in arrival order, so a provider using a hashed or random prefix would have every new object
-/// that sorted below the checkpoint skipped for ever. Ordering on last-modified is the only
-/// ordering a bucket gives that relates to arrival at all. The cost is a full listing of the
-/// prefix per pass, which the prefix itself is what bounds.
+/// <c>StartAfter</c>, which is the obvious resume and the wrong one for deciding what has
+/// arrived: nothing makes a key sort in arrival order, so a provider using a hashed or random
+/// prefix would have every new object that sorted below the checkpoint skipped for ever.
+/// Ordering on last-modified is the only ordering a bucket gives that relates to arrival at
+/// all. The cost is a listing of the prefix per pass, which the prefix itself is what bounds —
+/// and where it doesn't, the per-pass key cap does, with its own cursor
+/// (<see cref="ReportSource.S3ReadListingCursorKey"/>) resuming the <em>listing itself</em>
+/// across passes so a prefix bigger than the cap is covered in full over several passes rather
+/// than never past the cap. That cursor answers a different question than the arrival
+/// checkpoint above and the same objection does not apply to it — see its own doc comment.
 /// </description></item>
 /// <item><description>
 /// <b>Credentials are per source, and optional.</b> A bucket named in one row may live in a
@@ -45,18 +50,27 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 /// </summary>
 public sealed class S3ReportSourceTransport(
     IOptions<WorkerOptions> options,
-    ILogger<S3ReportSourceTransport> logger) : IPolledSourceTransport
+    ILogger<S3ReportSourceTransport> logger,
+    int maxKeysPerPass = S3ReportSourceTransport.DefaultMaxKeysPerPass) : IPolledSourceTransport
 {
     private readonly WorkerOptions _options = options.Value;
 
     /// <summary>
     /// S3 returns at most 1000 keys per request and the SDK pages on a continuation token.
     /// Bounded here as well so a bucket somebody points at by mistake — a data lake, an
-    /// unprefixed backup bucket — costs a bounded listing rather than an unbounded one. The
-    /// pass says so in the log when it stops, because a silent cap reads as "that is all
-    /// there is".
+    /// unprefixed backup bucket — costs a bounded listing rather than an unbounded one pass,
+    /// not an unbounded one ever: <see cref="ListAsync"/>'s cursor is what carries a listing
+    /// past this cap over to the next pass rather than dropping it. The pass says so in the
+    /// log when it stops, because a silent cap reads as "that is all there is".
+    /// <para>
+    /// A constructor parameter rather than a plain constant so a test can shrink it far below
+    /// a real bucket's size and exercise the multi-pass cursor without uploading 100,000
+    /// objects. DI never supplies <c>int</c>, so every real caller gets the default.
+    /// </para>
     /// </summary>
-    private const int MaxKeysPerPass = 100_000;
+    public const int DefaultMaxKeysPerPass = 100_000;
+
+    private readonly int _maxKeysPerPass = maxKeysPerPass;
 
     public string Protocol => ReportSourceProtocols.S3;
 
@@ -70,7 +84,16 @@ public sealed class S3ReportSourceTransport(
 
         try
         {
-            var ordered = Order(await ListAsync(client, source, ct));
+            var (listed, nextCursor) = await ListAsync(client, source, source.S3ReadListingCursorKey, ct);
+
+            // Written back straight away rather than through ApplyGeneration: the listing has
+            // already happened by the time this line runs, so there is nothing left to defer,
+            // and every path that persists reportSource afterward — the batched checkpoint
+            // commits, the success save, the exception path's re-attach — picks up whatever is
+            // set on it here the same way it already picks up any other property.
+            source.S3ReadListingCursorKey = nextCursor;
+
+            var ordered = Order(listed);
 
             var pending = SelectObjectsPastCheckpoint(
                 ordered, source.LastProcessedObjectAtUtc, source.LastProcessedObjectKey);
@@ -96,7 +119,10 @@ public sealed class S3ReportSourceTransport(
 
         try
         {
-            var ordered = Order(await ListAsync(client, source, ct));
+            var (listed, nextCursor) = await ListAsync(client, source, source.S3PruneListingCursorKey, ct);
+            source.S3PruneListingCursorKey = nextCursor;
+
+            var ordered = Order(listed);
 
             // Last-modified, not the report's own dates: an object that never parsed has to
             // age out too, or the bucket accumulates permanent failures for ever. Same rule
@@ -195,15 +221,32 @@ public sealed class S3ReportSourceTransport(
         return checkpointKey is null || string.CompareOrdinal(candidate.Key, checkpointKey) <= 0;
     }
 
-    private async Task<IReadOnlyList<S3ObjectRef>> ListAsync(
-        IAmazonS3 client, ReportSource source, CancellationToken ct)
+    /// <returns>
+    /// What this pass saw, and where the next pass's listing should resume — null when this
+    /// pass reached the natural end of the prefix (a lap completed, so the next one starts
+    /// over from the top), non-null when it stopped early on the per-pass cap (there is more
+    /// of the prefix past what this pass saw).
+    /// </returns>
+    private async Task<(IReadOnlyList<S3ObjectRef> Objects, string? NextCursorKey)> ListAsync(
+        IAmazonS3 client, ReportSource source, string? cursorKey, CancellationToken ct)
     {
         var objects = new List<S3ObjectRef>();
         var request = new ListObjectsV2Request
         {
             BucketName = source.S3Bucket,
             Prefix = string.IsNullOrWhiteSpace(source.S3Prefix) ? null : source.S3Prefix,
+
+            // Only takes effect on the request that has no ContinuationToken yet — exactly
+            // the first page below, which is what resuming a lap-in-progress needs.
+            StartAfter = string.IsNullOrEmpty(cursorKey) ? null : cursorKey,
+
+            // Capped to the per-pass budget too (S3's own maximum is 1000 regardless), or a
+            // single page could return more than the cap before the check below ever runs —
+            // the cap would still hold on average but could overshoot it by up to 999 keys.
+            MaxKeys = Math.Min(_maxKeysPerPass, 1000),
         };
+
+        var stoppedOnCap = false;
 
         do
         {
@@ -225,13 +268,14 @@ public sealed class S3ReportSourceTransport(
                     item.Key, (item.LastModified ?? DateTime.UtcNow).ToUniversalTime()));
             }
 
-            if (objects.Count >= MaxKeysPerPass)
+            if (objects.Count >= _maxKeysPerPass)
             {
+                stoppedOnCap = true;
                 logger.LogWarning(
-                    "Stopped listing {Bucket} for report source {ReportSourceId} at {Count} objects; " +
-                    "the rest of the prefix was not examined this pass. Set a narrower prefix if this " +
+                    "Stopped listing {Bucket} for report source {ReportSourceId} at {Count} objects " +
+                    "this pass, resuming after {ResumeKey} next time. Set a narrower prefix if this " +
                     "bucket holds more than reports.",
-                    source.S3Bucket, source.Id, objects.Count);
+                    source.S3Bucket, source.Id, objects.Count, objects[^1].Key);
                 break;
             }
 
@@ -239,7 +283,7 @@ public sealed class S3ReportSourceTransport(
         }
         while (!string.IsNullOrEmpty(request.ContinuationToken));
 
-        return objects;
+        return (objects, stoppedOnCap ? objects[^1].Key : null);
     }
 
     /// <summary>
