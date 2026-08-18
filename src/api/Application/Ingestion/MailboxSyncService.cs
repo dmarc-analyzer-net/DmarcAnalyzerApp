@@ -18,7 +18,7 @@ public sealed class MailboxSyncService(
     IReportPayloadIngestor payloadIngestor,
     Security.ICredentialProtector credentialProtector,
     Backup.IReportMailArchive reportMailArchive,
-    IMailboxTransportFactory transportFactory,
+    IPolledSourceTransportFactory transportFactory,
     IOptions<WorkerOptions> options,
     ILogger<MailboxSyncService> logger) : IMailboxSyncService
 {
@@ -60,8 +60,12 @@ public sealed class MailboxSyncService(
         var tlsReportsInserted = 0;
         var tlsReportsSkippedAsDuplicate = 0;
 
-        // Legacy rows store the password in plaintext; re-protect them on first use.
-        if (!credentialProtector.IsProtected(reportSource.PasswordEncrypted))
+        // Legacy rows store the password in plaintext; re-protect them on first use. An empty
+        // secret is skipped rather than protected: an S3 source using the ambient credential
+        // chain legitimately has none, and encrypting the empty string would turn "no
+        // credential" into a stored blob that reads as one.
+        if (!string.IsNullOrEmpty(reportSource.PasswordEncrypted) &&
+            !credentialProtector.IsProtected(reportSource.PasswordEncrypted))
         {
             var reprotected = credentialProtector.Protect(reportSource.PasswordEncrypted);
             if (reprotected != reportSource.PasswordEncrypted)
@@ -73,21 +77,23 @@ public sealed class MailboxSyncService(
             }
         }
 
-        var mailboxPassword = credentialProtector.Unprotect(reportSource.PasswordEncrypted);
+        var secret = string.IsNullOrEmpty(reportSource.PasswordEncrypted)
+            ? string.Empty
+            : credentialProtector.Unprotect(reportSource.PasswordEncrypted);
 
         // Declared out here so the failure path can persist it. A run that times out
         // mid-drain has still read everything up to this message, and throwing that away
         // means the next pass re-fetches all of it — safe, because of dedup, but a straight
         // repeat of work that can take hours on a large backlog.
-        MailboxMessageRef? highestProcessed = null;
-        IMailboxReadSession? session = null;
+        PolledItemRef? highestProcessed = null;
+        IPolledReadSession? session = null;
 
         try
         {
             // The run timeout covers connecting and authenticating too, not just the drain:
             // a mailbox host that accepts the TCP connection and then never answers is one
             // of the ways a sync hangs, and it is the same incident as any other overrun.
-            session = await transport.OpenForReadAsync(reportSource, mailboxPassword, operationToken);
+            session = await transport.OpenForReadAsync(reportSource, secret, operationToken);
 
             var pending = session.Pending;
             var batchSize = Math.Max(1, _options.MaxMessagesPerSync);
@@ -337,13 +343,16 @@ public sealed class MailboxSyncService(
                 db.ReportSources.Attach(reportSource);
                 var checkpoint = db.Entry(reportSource);
 
-                // All three columns rather than the one this protocol writes. Marking only
-                // the protocol's own would mean naming it here, which is the branch this
-                // service exists without; the other two are re-written with the values they
-                // were loaded with, so the row does not move.
+                // Every protocol's checkpoint columns rather than the one this source
+                // actually writes. Marking only the protocol's own would mean naming it
+                // here, which is the branch this service exists without; the others are
+                // re-written with the values they were loaded with, so the row does not
+                // move for them.
                 checkpoint.Property(x => x.LastProcessedUid).IsModified = true;
                 checkpoint.Property(x => x.LastProcessedUidValidity).IsModified = true;
                 checkpoint.Property(x => x.LastProcessedUidl).IsModified = true;
+                checkpoint.Property(x => x.LastProcessedObjectAtUtc).IsModified = true;
+                checkpoint.Property(x => x.LastProcessedObjectKey).IsModified = true;
                 checkpoint.Property(x => x.UpdatedAtUtc).IsModified = true;
             }
 
@@ -412,7 +421,7 @@ public sealed class MailboxSyncService(
     /// "nothing happened" and counts the source against the failing-mailbox tally on
     /// the dashboard (<c>AnalyticsQueryService</c> counts only <c>failed</c>).
     /// </summary>
-    public static string ResolveUnsuccessfulRunStatus(Exception ex, MailboxMessageRef? highestProcessed)
+    public static string ResolveUnsuccessfulRunStatus(Exception ex, PolledItemRef? highestProcessed)
         => IsTimeout(ex) && highestProcessed is not null ? "partial" : "failed";
 
     private async Task TryPersistRunStateAsync(Guid reportSourceId)
@@ -481,11 +490,11 @@ public sealed class MailboxSyncService(
     /// </para>
     /// <para>
     /// Positions, not the UIDLs themselves, are what comes back: the returned
-    /// <see cref="MailboxMessageRef.Token"/> is an index into <paramref name="uidls"/>, which
+    /// <see cref="PolledItemRef.Token"/> is an index into <paramref name="uidls"/>, which
     /// is only meaningful for as long as the session that produced the listing stays open.
     /// </para>
     /// </summary>
-    public static IReadOnlyList<MailboxMessageRef> SelectUidlsPastCheckpoint(
+    public static IReadOnlyList<PolledItemRef> SelectUidlsPastCheckpoint(
         IReadOnlyList<string> uidls, string? lastProcessedUidl)
     {
         var start = 0;
@@ -501,10 +510,10 @@ public sealed class MailboxSyncService(
             }
         }
 
-        var pending = new List<MailboxMessageRef>(uidls.Count - start);
+        var pending = new List<PolledItemRef>(uidls.Count - start);
         for (var index = start; index < uidls.Count; index++)
         {
-            pending.Add(new MailboxMessageRef(
+            pending.Add(new PolledItemRef(
                 index, uidls[index], Backup.ReportMailIdentity.ForPop3(uidls[index])));
         }
 

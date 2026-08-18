@@ -75,12 +75,21 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - checkpointed sync (`LastProcessedUid`, `LastProcessedUidValidity`)
   - retry/backoff and run timeout controls
 - Sync operational history persisted in `mailbox_sync_run`.
-- **Polled ingestion over IMAP and POP3.** Both protocols run one pass — the drain
-  budget, batched checkpoints, archive-before-parse, the run rows, the
-  partial-versus-failed distinction and the retention deletion are shared — behind
-  `IMailboxTransport`, with `ImapMailboxTransport` and `Pop3MailboxTransport` holding only
-  what the protocols genuinely do differently. Adding a protocol is a transport and a
-  constant, not another branch in the sync service.
+- **Polled ingestion over IMAP, POP3 and S3.** All three run one pass — the drain budget,
+  batched checkpoints, archive-before-parse, the run rows, the partial-versus-failed
+  distinction and the retention deletion are shared — behind `IPolledSourceTransport`, with
+  each transport holding only what its protocol genuinely does differently. Adding a
+  protocol is a transport and a constant, not another branch in the sync service.
+  - **S3 is a report source, not a mailbox.** A bucket and a prefix instead of a host and a
+    port, per-source credentials (or the ambient chain), and objects that may be bare
+    report files *or* whole RFC822 messages — classified per object, so a bucket filled by
+    an SES delivery rule and one filled by a provider both work, as does this
+    application's own `.eml.gz` archive prefix, which makes a bucket replayable.
+  - **The S3 checkpoint is a (last-modified, key) pair**, not a key. S3's own `StartAfter`
+    resumes on key order, which is the obvious implementation and silently wrong: nothing
+    makes a key sort in arrival order, so a bucket with hashed or random key prefixes would
+    have every new object that sorted below the checkpoint skipped for ever. The cost of
+    doing it correctly is listing the prefix each pass, which the prefix is what bounds.
   - **POP3 checkpoints on a UIDL** (`report_source.LastProcessedUidl`), because it has no
     UID space and no UIDVALIDITY: the next pass finds that string in the listing and takes
     what follows. A checkpoint that is no longer there — the message was deleted by hand,

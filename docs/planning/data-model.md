@@ -149,15 +149,18 @@ already written rather than references to the table.
 | Column | Notes |
 |---|---|
 | `Id` | PK |
-| `Name` (200), `Host` (255), `Port`, `UseTls` | |
-| `Protocol` | max 20 — `imap`, `pop3` (both polled), `api` (pushed) |
-| `Username` | max 255 |
-| `PasswordEncrypted` | max 2048 — AES-256-GCM via `Security:CredentialEncryptionKey` |
+| `Name` (200), `Host` (255), `Port`, `UseTls` | Host and port are mailbox facts; empty/0 on an `s3` or `api` source |
+| `Protocol` | max 20 — `imap`, `pop3`, `s3` (all polled), `api` (pushed) |
+| `Username` | max 255 — mailbox username, or S3 access key id. Empty on `api`, and legitimately empty on `s3` when the ambient credential chain supplies one |
+| `PasswordEncrypted` | max 2048 — AES-256-GCM via `Security:CredentialEncryptionKey`. Mailbox password, or S3 secret access key: one column because it is the same secret to everything that handles it |
+| `S3Bucket` (255), `S3Prefix` (1024), `S3Region` (64), `S3Endpoint` (255), `S3ForcePathStyle` | Set only on an `s3` source, refused on any other. The prefix is what bounds a pass, which lists every key under it |
 | `DefaultClientId` | FK → `client`, **restrict**, indexed — client assigned to domains auto-created from this mailbox |
 | `IsActive` | bool |
 | `LastSuccessSyncAtUtc` | nullable |
 | `LastProcessedUid`, `LastProcessedUidValidity` | bigint, nullable — **the resumable backfill checkpoint**, IMAP only. Null on a `pop3` source |
-| `LastProcessedUidl` | max 70, nullable — the same checkpoint for `pop3`, which has no UID space: the UIDL of the last message fully handled, and the next pass takes what follows it in the listing. Null on an `imap` source. Two columns rather than one because a UID is an ordered integer and a UIDL is an opaque string, so no reader could tell which it was looking at |
+| `LastProcessedUidl` | max 70, nullable — the same checkpoint for `pop3`, which has no UID space: the UIDL of the last message fully handled, and the next pass takes what follows it in the listing. Null on any other protocol |
+| `LastProcessedObjectAtUtc`, `LastProcessedObjectKey` | nullable — the same checkpoint for `s3`, as a (last-modified, key) pair. A timestamp rather than a key because nothing makes an object's key sort in arrival order, so resuming on key order would silently skip every new object that sorted below the checkpoint; the key is the tiebreaker for objects sharing a timestamp. Null on any other protocol |
+| | Three separate checkpoints rather than one reused column, because they are three different kinds of thing — an ordered integer, an opaque string, a timestamp — and a shared column would leave no reader able to tell which it was looking at |
 | `AllowForeignDomains` | May ingest reports for domains another client owns. Default **true**, which is how every source behaved before it existed — routing by policy domain is what makes one shared mailbox usable for many clients. |
 | `DeleteAfterRetention` | default false — opt-in per source; the worker expunges report mail past the *widest* retention window among the clients this source serves, suspended entirely if any of them is under legal hold |
 | `OldestMessageAtUtc` | nullable — date of the oldest message still in the polled mailbox; the evidence for how far back the mailbox can still archive-replay from. IMAP fills it on a retention pass, which opens the whole folder anyway; POP3 fills it on every sync, where it costs one header fetch |

@@ -51,7 +51,7 @@ public sealed class MailboxRetentionService(
     IMailboxRetentionPlanner planner,
     ICredentialProtector credentialProtector,
     IReportMailArchive reportMailArchive,
-    IMailboxTransportFactory transportFactory,
+    IPolledSourceTransportFactory transportFactory,
     IAuditLog audit,
     ILogger<MailboxRetentionService> logger) : IMailboxRetentionService
 {
@@ -110,7 +110,9 @@ public sealed class MailboxRetentionService(
         CancellationToken ct)
     {
         var source = await db.ReportSources.SingleAsync(x => x.Id == plan.ReportSourceId, ct);
-        var password = credentialProtector.Unprotect(source.PasswordEncrypted);
+        var secret = string.IsNullOrEmpty(source.PasswordEncrypted)
+            ? string.Empty
+            : credentialProtector.Unprotect(source.PasswordEncrypted);
 
         // The planner already excluded anything without a mailbox, so a missing transport
         // here is a source whose protocol was removed from under it rather than an ordinary
@@ -119,7 +121,7 @@ public sealed class MailboxRetentionService(
             ?? throw new InvalidOperationException(
                 $"no mailbox transport for protocol '{source.Protocol}'");
 
-        await using var session = await transport.OpenForPruneAsync(source, password, cutoff, dryRun, ct);
+        await using var session = await transport.OpenForPruneAsync(source, secret, cutoff, dryRun, ct);
 
         var eligible = session.Eligible;
         var deleted = 0;

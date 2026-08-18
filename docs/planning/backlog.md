@@ -34,13 +34,21 @@ design system.) See the categorized lists below for the full inventory.
 - [x] (done) Integrate `DmarcRua` serializer and validate parsing against sample RUA XML fixtures.
 - [x] (done) Design PostgreSQL schema for agency, clients, domains, report sources, reports, records, and retention policies.
 - [x] (done) Add POP3 support to mailbox ingestion. `Pop3MailboxTransport` alongside
-      `ImapMailboxTransport` behind `IMailboxTransport`, so the drain budget, batched
+      `ImapMailboxTransport` behind `IPolledSourceTransport`, so the drain budget, batched
       checkpoints, archive-before-parse, run rows and retention deletion are shared rather
       than reimplemented per protocol. `pop3` is an accepted `protocol` value again — put
       back in the same change as the code that reads it, which is the lesson from the first
       round. Checkpoint is `LastProcessedUidl` (POP3 has no UID space or UIDVALIDITY); a
       server without UIDL is refused, because no durable checkpoint is possible and every
       pass would re-read the whole mailbox.
+- [x] (done) Add an S3 bucket as a report source. `S3ReportSourceTransport` alongside the
+      two mail transports behind `IPolledSourceTransport`, so it shares the drain, the run
+      rows and the retention deletion rather than growing a second ingestion route. Objects
+      may be bare report files or whole RFC822 messages and are classified per object, which
+      also makes the application's own `.eml.gz` archive prefix replayable. Credentials are
+      per source (or the ambient chain); the checkpoint is a (last-modified, key) pair, not
+      a key, because S3's `StartAfter` resumes on key order and nothing makes a key sort in
+      arrival order.
 - [x] (done) Implement tenant-aware data access model with strict client isolation for agency operators (client_viewer scoping via per-request user context).
 - [x] (done) Implement single-database tenant-keyed architecture (direct or transitive ClientId on all client-scoped entities, enforced in query services).
 - [x] (done) Define RBAC with agency_admin/agency_analyst/client_viewer roles (deny-by-default endpoint enforcement; in-app client grants).

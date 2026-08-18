@@ -175,6 +175,24 @@ Content-Type: application/json
   "isActive": true
 }
 
+### Create an S3 report source (replace defaultClientId)
+# Objects may be bare report files or whole RFC822 messages; each is classified on its own
+# content. Leave username/password out entirely to use the ambient credential chain.
+POST {{baseUrl}}/api/v1/report-sources
+Content-Type: application/json
+
+{
+  "name": "Acme reports bucket",
+  "protocol": "s3",
+  "s3Bucket": "acme-dmarc-reports",
+  "s3Prefix": "rua/",
+  "s3Region": "eu-west-1",
+  "username": "AKIAEXAMPLE",
+  "password": "replace-me",
+  "defaultClientId": "00000000-0000-0000-0000-000000000000",
+  "isActive": true
+}
+
 ### Patch report source (replace id)
 PATCH {{baseUrl}}/api/v1/report-sources/00000000-0000-0000-0000-000000000000
 Content-Type: application/json
