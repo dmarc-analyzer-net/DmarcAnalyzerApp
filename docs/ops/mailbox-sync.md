@@ -38,7 +38,7 @@ What differs is only what the protocol itself makes possible.
 | Addressed by | host + port | host + port | bucket + prefix |
 | Default TLS port | 993 | 995 | n/a |
 | Checkpoint | `LastProcessedUid` + `LastProcessedUidValidity` | `LastProcessedUidl` | `LastProcessedObjectAtUtc` + `LastProcessedObjectKey` |
-| Resuming | server-side UID range past the checkpoint | find the UIDL in the listing, take what follows | list the prefix, take what sorts after the (last-modified, key) pair |
+| Resuming | server-side UID range past the checkpoint | find the UIDL in the listing, take what follows | list the prefix, take what sorts after the (last-modified, key) pair — plus a separate cursor resuming the *listing* when the prefix exceeds the per-pass key cap |
 | Retention scan | `SEARCH DELIVEREDBEFORE`, server-side | reads every message's headers, client-side | the listing already carries every date |
 | Arrival time | `INTERNALDATE` | the sender's own `Date` header | the object's `LastModified` |
 | Deletion | `\Deleted` + `EXPUNGE` | `DELE`, applied only when the session ends with `QUIT` | `DeleteObject`, effective at once |
@@ -60,7 +60,10 @@ And three for S3:
 
 - **Set a prefix.** Every pass lists all keys under it. On a bucket that holds only reports
   that is fine; on a shared bucket it is the difference between a cheap poll and reading a
-  data lake. A pass stops at 100,000 keys and logs that it did.
+  data lake. A pass lists at most 100,000 keys and logs when it stops there — a prefix over
+  the cap is covered across passes rather than truncated, each pass resuming its listing
+  after the last key it saw (`S3ReadListingCursorKey`, and its own `S3PruneListingCursorKey`
+  for the retention pass) and starting a fresh lap once it reaches the end.
 - **Objects can be reports or whole messages, and both work.** Each object is classified on
   its own content: an RFC822 message (raw or gzipped) is parsed as mail and its attachments
   extracted; anything else goes to the payload extractor as-is. Pointing a source at this

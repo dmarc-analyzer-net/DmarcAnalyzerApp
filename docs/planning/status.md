@@ -42,8 +42,11 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     deletion** so the system has one retention window instead of two — cut on the widest
     window the source serves, suspended entirely for any source serving a client under
     legal hold, with a grace margin, a preview, and an audit row.
-  - Not built: replaying reports back from the bucket archive. Until it exists the
-    archive is evidence, not a restore path.
+  - Replaying reports back from the bucket archive is possible, but by hand and not as a
+    restore feature: point an `s3` report source at the archive prefix and the `.eml.gz`
+    objects are re-ingested like any other mail. What does not exist is a supervised
+    restore — no scoping to one client, domain or window, and no preview of what a run
+    would ingest; it is the live ingestion path, with the live routing and deduplication.
 - ASP.NET Core API with Carter modules and EF Core + PostgreSQL integration.
 - Core and ingestion/report schema migrations in place for:
   - `client`
@@ -108,10 +111,10 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     read it, so a source could be created and would silently never ingest a byte. The gap
     was between the pieces, where no unit test was looking.
 - **Pushed ingestion** (ADR 0010). A report source carries a `protocol` that says who
-  reads it: `imap` and `pop3` are polled by the worker, `api` is written to by an external
-  system posting raw report bytes to `POST /api/v1/reports`. All of them land through the
-  same extractor, the same parsers and the same ingestors, so the paths cannot drift on
-  deduplication.
+  reads it: `imap`, `pop3` and `s3` are polled by the worker, `api` is written to by an
+  external system posting raw report bytes to `POST /api/v1/reports`. All of them land
+  through the same extractor, the same parsers and the same ingestors, so the paths
+  cannot drift on deduplication.
   - **Machine credentials** are bearer tokens scoped to one report source, and the
     source decides which client the data lands under — there is no source id in the
     path to disagree with the credential. Issued and revoked from the console by an
