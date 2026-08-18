@@ -342,12 +342,14 @@ export function ReportSourcesPage() {
         delete fields.s3Region
         delete fields.s3Endpoint
         delete fields.s3ForcePathStyle
-      } else if (!fields.username) {
-        // Empty means the ambient credential chain, and the API refuses half a credential.
-        // Sending "" for both is how you ask for that; sending "" for one is the shape it
-        // rejects, which is a confusing error for a field the operator left alone.
-        delete fields.username
-        delete fields.password
+      } else if (!fields.username && !fields.password) {
+        // Both blank means the ambient credential chain. Sent explicitly rather than
+        // omitted — omitting means "leave unchanged," and a stored credential would
+        // silently survive a field the operator thought they had cleared. A half
+        // credential (only one blank) is sent as typed instead, so the API's own pairing
+        // check is what catches it, not a guess at intent made here.
+        fields.username = ''
+        fields.password = ''
       }
 
       if (editingMailboxId) {

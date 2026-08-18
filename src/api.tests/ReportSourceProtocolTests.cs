@@ -57,6 +57,16 @@ public sealed class ReportSourceProtocolTests
         DefaultClientId = clientId,
     };
 
+    private static CreateReportSourceRequest Bucket(Guid clientId, string? username = null, string? password = null) => new()
+    {
+        Name = "s3 bucket",
+        Protocol = ReportSourceProtocols.S3,
+        S3Bucket = "acme-reports",
+        Username = username ?? string.Empty,
+        Password = password ?? string.Empty,
+        DefaultClientId = clientId,
+    };
+
     [Fact]
     public async Task APop3SourceCanBeCreated()
     {
@@ -143,5 +153,101 @@ public sealed class ReportSourceProtocolTests
 
         Assert.True(updated.IsSuccess);
         Assert.Equal(ReportSourceProtocols.Imap, updated.Value!.Protocol);
+    }
+
+    /// <summary>
+    /// Create refuses this shape; a PATCH that produces it — one credential field cleared,
+    /// the other left as whatever it already was — has no equivalent in Create and needs its
+    /// own check.
+    /// </summary>
+    [Fact]
+    public async Task PatchingOnlyOneCredentialFieldOnAnS3SourceIsRefused()
+    {
+        using var db = NewDb();
+        var clientId = await SeedClientAsync(db);
+
+        var created = await NewService(db).CreateAsync(
+            Bucket(clientId, "AKIAEXAMPLE", "secret-key"), CancellationToken.None);
+
+        var updated = await NewService(db).UpdateAsync(
+            created.Value!.Id,
+            new UpdateReportSourceRequest { Username = string.Empty },
+            CancellationToken.None);
+
+        Assert.False(updated.IsSuccess);
+        Assert.Equal(400, updated.StatusCode);
+    }
+
+    /// <summary>
+    /// The one way an operator can hand a bucket's credential back to the ambient chain
+    /// (an instance role, IRSA) once it has been set: clear both fields together.
+    /// </summary>
+    [Fact]
+    public async Task ClearingBothCredentialFieldsOnAnS3SourceRevertsToTheAmbientChain()
+    {
+        using var db = NewDb();
+        var clientId = await SeedClientAsync(db);
+
+        var created = await NewService(db).CreateAsync(
+            Bucket(clientId, "AKIAEXAMPLE", "secret-key"), CancellationToken.None);
+
+        var updated = await NewService(db).UpdateAsync(
+            created.Value!.Id,
+            new UpdateReportSourceRequest { Username = string.Empty, Password = string.Empty },
+            CancellationToken.None);
+
+        Assert.True(updated.IsSuccess, updated.Error);
+        Assert.Equal(string.Empty, updated.Value!.Username);
+
+        var stored = await db.ReportSources.SingleAsync(x => x.Id == created.Value.Id);
+        Assert.Equal(string.Empty, stored.PasswordEncrypted);
+    }
+
+    /// <summary>
+    /// Switching away from a mailbox has to take the host and port with it, or the row is left
+    /// claiming a host an s3 source never connects to. The console already omits host/port
+    /// from a protocol-switch request, so this cannot be a refusal — it has to clean up after
+    /// the switch itself.
+    /// </summary>
+    [Fact]
+    public async Task SwitchingAMailboxSourceToS3ClearsTheStaleHostAndPort()
+    {
+        using var db = NewDb();
+        var clientId = await SeedClientAsync(db);
+
+        var created = await NewService(db).CreateAsync(
+            Mailbox(ReportSourceProtocols.Imap, clientId, 993), CancellationToken.None);
+
+        var updated = await NewService(db).UpdateAsync(
+            created.Value!.Id,
+            new UpdateReportSourceRequest { Protocol = ReportSourceProtocols.S3, S3Bucket = "acme-reports" },
+            CancellationToken.None);
+
+        Assert.True(updated.IsSuccess, updated.Error);
+
+        var stored = await db.ReportSources.SingleAsync(x => x.Id == created.Value.Id);
+        Assert.Equal(string.Empty, stored.Host);
+        Assert.Equal(0, stored.Port);
+        Assert.Equal("acme-reports", stored.S3Bucket);
+    }
+
+    /// <summary>
+    /// The reverse switch cannot invent a host, so it is refused rather than left half done.
+    /// </summary>
+    [Fact]
+    public async Task SwitchingAnS3SourceToImapWithoutAHostIsRefused()
+    {
+        using var db = NewDb();
+        var clientId = await SeedClientAsync(db);
+
+        var created = await NewService(db).CreateAsync(Bucket(clientId), CancellationToken.None);
+
+        var updated = await NewService(db).UpdateAsync(
+            created.Value!.Id,
+            new UpdateReportSourceRequest { Protocol = ReportSourceProtocols.Imap },
+            CancellationToken.None);
+
+        Assert.False(updated.IsSuccess);
+        Assert.Equal(400, updated.StatusCode);
     }
 }

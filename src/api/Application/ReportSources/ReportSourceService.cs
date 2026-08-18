@@ -203,6 +203,13 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
             source.Protocol = protocol;
         }
 
+        // Read once, off the protocol as it stands after the block above — whether or not
+        // this request touched it — since every check below needs to judge the final row,
+        // not just the fields this particular request happened to mention.
+        var mailbox = ReportSourceProtocols.IsMailbox(source.Protocol);
+        var bucket = IsBucket(source.Protocol);
+        var pushed = IsPushed(source.Protocol);
+
         if (request.Name is not null)
         {
             if (string.IsNullOrWhiteSpace(request.Name))
@@ -235,7 +242,10 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
 
         if (request.Username is not null)
         {
-            if (string.IsNullOrWhiteSpace(request.Username))
+            // Blank is refused everywhere except a bucket, where it is how a stored access
+            // key is handed back to the ambient credential chain — the same meaning it has
+            // on create.
+            if (string.IsNullOrWhiteSpace(request.Username) && !bucket)
             {
                 return ServiceResult<ReportSourceDto>.Failure("username cannot be empty", 400);
             }
@@ -245,12 +255,14 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
 
         if (request.Password is not null)
         {
-            if (string.IsNullOrWhiteSpace(request.Password))
+            if (string.IsNullOrWhiteSpace(request.Password) && !bucket)
             {
                 return ServiceResult<ReportSourceDto>.Failure("password cannot be empty", 400);
             }
 
-            source.PasswordEncrypted = credentialProtector.Protect(request.Password);
+            source.PasswordEncrypted = string.IsNullOrWhiteSpace(request.Password)
+                ? string.Empty
+                : credentialProtector.Protect(request.Password);
         }
 
         if (request.DefaultClientId.HasValue)
@@ -318,11 +330,61 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
         }
 
         // Checked at the end, on the row as it will be saved, rather than per field: the
-        // protocol and the bucket can arrive in the same request in either order, so no
-        // single field's handler can tell whether the result is coherent.
-        if (source.Protocol == ReportSourceProtocols.S3 && string.IsNullOrWhiteSpace(source.S3Bucket))
+        // protocol and the fields that do or do not belong to it can arrive in the same
+        // request in either order, so no single field's handler can tell whether the result
+        // is coherent.
+        //
+        // What no longer belongs to the final protocol is cleared here rather than refused.
+        // The console already drops these fields from the request for the protocol it is
+        // switching to — see ReportSourcesPage.tsx — so refusing a value merely left over
+        // from the protocol being switched away from would reject an ordinary protocol
+        // change the console itself sends.
+        if (!mailbox)
+        {
+            source.Host = string.Empty;
+            source.Port = 0;
+        }
+
+        if (pushed)
+        {
+            source.Username = string.Empty;
+            source.PasswordEncrypted = string.Empty;
+        }
+
+        if (!bucket)
+        {
+            source.S3Bucket = null;
+            source.S3Prefix = null;
+            source.S3Region = null;
+            source.S3Endpoint = null;
+        }
+
+        // What Create requires cannot be invented here, so these are refused rather than
+        // cleared: there is no host to fall back to for a mailbox, and no bucket name for
+        // an s3 source, that the row does not already carry.
+        if (mailbox && (string.IsNullOrWhiteSpace(source.Host) ||
+            string.IsNullOrWhiteSpace(source.Username) ||
+            string.IsNullOrEmpty(source.PasswordEncrypted) ||
+            source.Port <= 0))
+        {
+            return ServiceResult<ReportSourceDto>.Failure(
+                "a mailbox source requires host, port, username and password", 400);
+        }
+
+        if (bucket && string.IsNullOrWhiteSpace(source.S3Bucket))
         {
             return ServiceResult<ReportSourceDto>.Failure("an s3 source requires s3Bucket", 400);
+        }
+
+        // Half a credential is the dangerous shape: it looks configured and authenticates as
+        // nobody. Either both halves, or neither and the ambient chain — never one. Same
+        // rule as create, re-applied here because a PATCH can produce this shape create
+        // never could: one field cleared, the other left as whatever it already was.
+        if (bucket && string.IsNullOrWhiteSpace(source.Username) != string.IsNullOrEmpty(source.PasswordEncrypted))
+        {
+            return ServiceResult<ReportSourceDto>.Failure(
+                "an s3 source needs both username (access key id) and password (secret access key), " +
+                "or neither to use the ambient credential chain", 400);
         }
 
         source.UpdatedAtUtc = DateTime.UtcNow;
