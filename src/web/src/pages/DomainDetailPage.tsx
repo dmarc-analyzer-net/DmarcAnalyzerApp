@@ -25,8 +25,10 @@ import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
   ENFORCEMENT_STATUS_META,
+  isAttributableSource,
   parseAnalyticsDays,
   resolveEnforcementStatus,
+  UNATTRIBUTED_SOURCE_LABEL,
   type AnalyticsDays,
   type DomainDrilldown,
   type DomainSourceAnalytics,
@@ -1678,6 +1680,57 @@ function SourceIpText({ ip }: { ip: string }) {
   )
 }
 
+/**
+ * The first cell of a source row: the IP, as the expander for its detail panel.
+ *
+ * A source whose IP the reporter never sent gets neither — the panel is fetched by IP and
+ * cannot load without one, so an expander there could only ever produce an error banner
+ * (#190). The row itself stays, because its message counts are real; it just says so.
+ * Exported for its own test, since which of the two branches renders is the whole point.
+ */
+export function SourceIpCell({
+  ip,
+  expanded,
+  onToggle,
+}: {
+  ip: string
+  expanded: boolean
+  onToggle: () => void
+}) {
+  if (!isAttributableSource(ip)) {
+    return (
+      <span
+        // text-xs is the column's own size, matching the IP that would otherwise be here.
+        className="text-xs text-secondary italic"
+        title="This reporter sent these messages without a source IP, so they cannot be attributed to a sender."
+      >
+        {UNATTRIBUTED_SOURCE_LABEL}
+      </span>
+    )
+  }
+
+  return (
+    <button
+      type="button"
+      aria-expanded={expanded}
+      onClick={(event) => {
+        event.stopPropagation()
+        onToggle()
+      }}
+      className="inline-flex items-start gap-1.5 rounded-xs text-left font-mono text-xs font-medium text-body transition-colors hover:text-brand focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none"
+    >
+      <Icon
+        name="chevron-right"
+        size={14}
+        className={cn('mt-0.5 shrink-0 text-secondary transition-transform', expanded && 'rotate-90')}
+      />
+      <span>
+        <SourceIpText ip={ip} />
+      </span>
+    </button>
+  )
+}
+
 // Quarantined and Rejected moved into the expanded row, so 8 remain in the table.
 const SOURCE_COLUMN_COUNT = 8
 
@@ -1758,7 +1811,11 @@ export function DomainDetailPage() {
   useEffect(() => {
     if (sources.length === 0) return
     let cancelled = false
-    const ips = sources.slice(0, 100).map((s) => s.sourceIp)
+    const ips = sources
+      .slice(0, 100)
+      .map((s) => s.sourceIp)
+      .filter(isAttributableSource)
+    if (ips.length === 0) return
     void fetchJson<Record<string, string | null>>(
       `/api/v1/analytics/hostnames?ips=${encodeURIComponent(ips.join(','))}`,
     )
@@ -1796,6 +1853,9 @@ export function DomainDetailPage() {
 
   // ?source=<ip> drives the (single) expanded row, so expanded state is linkable.
   const toggleSource = (ip: string) => {
+    // An empty ip would put a bare `?source=` in the URL and expand a row whose detail
+    // panel cannot load. Callers guard too; this is the one that cannot be forgotten.
+    if (!isAttributableSource(ip)) return
     setSearchParams(
       (prev) => {
         const params = new URLSearchParams(prev)
@@ -1993,14 +2053,22 @@ export function DomainDetailPage() {
                     <ul className="mt-2.5 space-y-1 border-t border-[color-mix(in_srgb,currentColor_12%,transparent)] pt-2">
                       {guidance.blockingSources.slice(0, 5).map((source) => (
                         <li key={source.sourceIp} className="flex items-baseline justify-between gap-3">
-                          <button
-                            type="button"
-                            onClick={() => toggleSource(source.sourceIp)}
-                            className="min-w-0 break-all text-left font-mono text-xs text-body underline decoration-dotted underline-offset-2 hover:text-brand"
-                            title="Show this source in the table below"
-                          >
-                            {source.sourceIp}
-                          </button>
+                          {isAttributableSource(source.sourceIp) ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleSource(source.sourceIp)}
+                              className="min-w-0 break-all text-left font-mono text-xs text-body underline decoration-dotted underline-offset-2 hover:text-brand"
+                              title="Show this source in the table below"
+                            >
+                              {source.sourceIp}
+                            </button>
+                          ) : (
+                            // Failing mail with no reported IP still blocks enforcement, so it
+                            // belongs in this list — but it has no row below to expand.
+                            <span className="min-w-0 text-xs text-secondary italic">
+                              {UNATTRIBUTED_SOURCE_LABEL}
+                            </span>
+                          )}
                           <span className="whitespace-nowrap text-xs tabular-nums text-secondary">
                             {formatCompact(source.failedMessages)} failed
                           </span>
@@ -2087,8 +2155,12 @@ export function DomainDetailPage() {
                       hover highlight belong to the source instead of to each row, which
                       is what makes the hostname read as part of the row above it. */}
                   {sortedSources.map((source) => {
-                    const expanded = selectedSource === source.sourceIp
-                    const hostname = hostnames[source.sourceIp]
+                    // A source with no reported IP cannot be expanded, linked or resolved:
+                    // every one of those is keyed by the IP. Its counts are still real, so
+                    // the row stays — it just reads as unattributed and does nothing on click.
+                    const attributable = isAttributableSource(source.sourceIp)
+                    const expanded = attributable && selectedSource === source.sourceIp
+                    const hostname = attributable ? hostnames[source.sourceIp] : undefined
                     return (
                       <tbody
                         key={source.sourceIp}
@@ -2102,32 +2174,16 @@ export function DomainDetailPage() {
                           // The tbody owns the divider and the hover, so the rows inside
                           // must not draw their own or the group looks like two rows.
                           className="border-0 hover:bg-transparent"
-                          onClick={() => toggleSource(source.sourceIp)}
+                          onClick={attributable ? () => toggleSource(source.sourceIp) : undefined}
                         >
                           <TableCell>
                             {/* IP only. The hostname used to live here and, at 375px for a
                                 64-character Outlook name, it alone set this column's width. */}
-                            <button
-                              type="button"
-                              aria-expanded={expanded}
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                toggleSource(source.sourceIp)
-                              }}
-                              className="inline-flex items-start gap-1.5 rounded-xs text-left font-mono text-xs font-medium text-body transition-colors hover:text-brand focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none"
-                            >
-                              <Icon
-                                name="chevron-right"
-                                size={14}
-                                className={cn(
-                                  'mt-0.5 shrink-0 text-secondary transition-transform',
-                                  expanded && 'rotate-90',
-                                )}
-                              />
-                              <span>
-                                <SourceIpText ip={source.sourceIp} />
-                              </span>
-                            </button>
+                            <SourceIpCell
+                              ip={source.sourceIp}
+                              expanded={expanded}
+                              onToggle={() => toggleSource(source.sourceIp)}
+                            />
                           </TableCell>
                           <TableCell align="right" className="tabular-nums">
                             {formatCompact(source.messages)}
