@@ -39,16 +39,6 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         var policyPublished = feedback.PolicyPublished
             ?? throw new InvalidOperationException("DMARC report is missing policy_published.");
 
-        var validationMessages = aggregateReport.ValidationEvents
-            .Select(x =>
-            {
-                var severity = x.Severity == XmlSeverityType.Error ? "error" : "warning";
-                return $"{severity}: {x.Message}";
-            })
-            .Concat(normalizationMessages)
-            .Concat(DescribeDmarcBisTags(policyPublished))
-            .ToArray();
-
         // The captured RFC 9990 dispositions are keyed by position among the document's own
         // <record> elements, so they are only safe to use while the deserializer produced
         // exactly that many records. Nothing observed makes the two disagree, but if they ever
@@ -58,7 +48,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             ? normalized.DmarcBisDispositions
             : Array.Empty<string?>();
 
-        var records = feedback.Record?
+        var deserializedRecords = feedback.Record?
             .Select((record, index) =>
             {
                 var dkimAuth = record.AuthResults?.Dkim?
@@ -80,7 +70,12 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                     ?? Array.Empty<DmarcReportRecordSpfAuthParseResult>();
 
                 return new DmarcReportRecordParseResult(
-                    record.Row?.SourceIp ?? string.Empty,
+                    // Trimmed: a reporter that pretty-prints the element sends the IP with the
+                    // surrounding newline and indentation inside it, and every lookup that
+                    // matches on this column — source-detail, the DKIM/SPF auth joins — compares
+                    // it against a trimmed query value, so the untrimmed form is a source no
+                    // caller can ever address.
+                    (record.Row?.SourceIp ?? string.Empty).Trim(),
                     record.Row?.Count ?? 0,
                     actionDispositions.ElementAtOrDefault(index)
                         ?? record.Row?.PolicyEvaluated?.Disposition.ToString().ToLowerInvariant()
@@ -95,6 +90,24 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             })
             .ToArray()
             ?? Array.Empty<DmarcReportRecordParseResult>();
+
+        var records = deserializedRecords.Where(x => !IsEmptyRecord(x)).ToArray();
+        var emptyRecords = deserializedRecords.Length - records.Length;
+        if (emptyRecords > 0)
+        {
+            normalizationMessages.Add(
+                $"warning: dropped {emptyRecords} record(s) reporting no source IP and no messages");
+        }
+
+        var validationMessages = aggregateReport.ValidationEvents
+            .Select(x =>
+            {
+                var severity = x.Severity == XmlSeverityType.Error ? "error" : "warning";
+                return $"{severity}: {x.Message}";
+            })
+            .Concat(normalizationMessages)
+            .Concat(DescribeDmarcBisTags(policyPublished))
+            .ToArray();
 
         return new DmarcReportParseResult(
             metadata.OrgName ?? string.Empty,
@@ -113,6 +126,41 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             MapAlignment(policyPublished.AdkimRaw),
             MapAlignment(policyPublished.AspfRaw));
     }
+
+    /// <summary>
+    /// A record that reports no sender and no mail: no source IP, and a count of zero.
+    /// <para>
+    /// Observed in #190 from wp.pl and o2.pl — the same operator, which is why the blank row
+    /// there claimed two reporters. Both send a whole report whose single record is empty
+    /// throughout: <c>&lt;source_ip&gt;&lt;/source_ip&gt;&lt;count&gt;0&lt;/count&gt;</c>,
+    /// empty policy_evaluated, empty identifiers, empty auth_results. It is not corruption
+    /// and nothing failed to parse — it is a "nothing to report" heartbeat for the window,
+    /// and this is where it stops. The same end state arrives when the deserializer cannot
+    /// fill a <c>&lt;row&gt;</c> at all (absent, miscased, or namespaced on its own), because
+    /// every field the row carries then falls to its default; both are dropped here.
+    /// </para>
+    /// <para>
+    /// Stored, such a record becomes a sending source of its own: the analytics aggregation
+    /// groups by SourceIp, so an empty one appears in the table as a blank row with zeroes
+    /// across it, inflates the domain's source count, and — since source-detail needs an IP
+    /// to query by — answers 400 when an operator expands it, which is what #190 reported.
+    /// </para>
+    /// <para>
+    /// The condition is deliberately both halves, not just the blank IP. A record with a
+    /// blank IP and a real count is mail that genuinely arrived and was reported; dropping it
+    /// would under-count the domain's volume and the compliance denominator, which is worse
+    /// than showing it unattributed. Only a record that reports neither sender nor mail can
+    /// be dropped without losing something.
+    /// </para>
+    /// <para>
+    /// The report itself is still ingested — a reporter that saw nothing did still report,
+    /// and the domain is still receiving reports from it. RecordCount keeps the reporter's own
+    /// record total, so a report this fired on stays discoverable afterwards: it has more
+    /// records than rows in dmarc_report_record.
+    /// </para>
+    /// </summary>
+    private static bool IsEmptyRecord(DmarcReportRecordParseResult record)
+        => record.SourceIp.Length == 0 && record.MessageCount <= 0;
 
     private static string MapDisposition(DispositionType disposition) => disposition switch
     {

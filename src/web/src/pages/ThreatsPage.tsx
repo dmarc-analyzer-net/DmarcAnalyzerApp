@@ -9,7 +9,13 @@ import { Card, CardHeader } from '@/components/ui/card'
 import { Icon } from '@/components/ui/icon'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { parseAnalyticsDays, type AnalyticsDays, type ThreatFeed } from '@/lib/analytics'
+import {
+  isAttributableSource,
+  parseAnalyticsDays,
+  UNATTRIBUTED_SOURCE_LABEL,
+  type AnalyticsDays,
+  type ThreatFeed,
+} from '@/lib/analytics'
 import { fetchJson } from '@/lib/api'
 import type { Client } from '@/lib/entities'
 import { formatCompact, formatFullDate, formatPercent, formatRelativeOrDate } from '@/lib/format'
@@ -74,7 +80,8 @@ export function ThreatsPage() {
     const sources = feed?.sources ?? []
     if (sources.length === 0) return
     let cancelled = false
-    const ips = [...new Set(sources.slice(0, 100).map((s) => s.sourceIp))]
+    const ips = [...new Set(sources.slice(0, 100).map((s) => s.sourceIp))].filter(isAttributableSource)
+    if (ips.length === 0) return
     void fetchJson<Record<string, string | null>>(
       `/api/v1/analytics/hostnames?ips=${encodeURIComponent(ips.join(','))}`,
     )
@@ -210,11 +217,21 @@ export function ThreatsPage() {
                   </TableHeader>
                   <TableBody>
                     {feed.sources.map((source) => {
-                      const hostname = hostnames[source.sourceIp]
+                      const attributable = isAttributableSource(source.sourceIp)
+                      const hostname = attributable ? hostnames[source.sourceIp] : undefined
+                      // ?source= only means something for a row the drill-down can expand.
+                      const domainParams = new URLSearchParams()
+                      if (attributable) domainParams.set('source', source.sourceIp)
+                      if (days !== 30) domainParams.set('days', String(days))
+                      const domainQuery = domainParams.toString()
                       return (
                         <TableRow key={`${source.sourceIp}-${source.domainId}`} className="cursor-default">
                           <TableCell>
-                            <div className="font-mono text-xs text-body">{source.sourceIp}</div>
+                            {attributable ? (
+                              <div className="font-mono text-xs text-body">{source.sourceIp}</div>
+                            ) : (
+                              <div className="text-xs text-secondary italic">{UNATTRIBUTED_SOURCE_LABEL}</div>
+                            )}
                             {hostname ? (
                               <div className="mt-0.5 max-w-[220px] truncate font-mono text-[11px] text-secondary">
                                 {hostname}
@@ -223,9 +240,13 @@ export function ThreatsPage() {
                           </TableCell>
                           <TableCell>
                             <Link
-                              to={`/domains/${source.domainId}?source=${encodeURIComponent(source.sourceIp)}${days !== 30 ? `&days=${days}` : ''}`}
+                              to={`/domains/${source.domainId}${domainQuery ? `?${domainQuery}` : ''}`}
                               className="font-mono text-xs text-body underline decoration-dotted underline-offset-2 hover:text-brand"
-                              title="Open the domain drill-down with this source expanded"
+                              title={
+                                attributable
+                                  ? 'Open the domain drill-down with this source expanded'
+                                  : 'Open the domain drill-down'
+                              }
                             >
                               {source.domain}
                             </Link>

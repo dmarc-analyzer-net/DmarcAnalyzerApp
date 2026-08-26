@@ -211,6 +211,25 @@ export type DomainSourceAnalytics = {
   lastSeenUtc: string
 }
 
+/**
+ * Whether a source row can be addressed by IP — which is what makes it expandable, linkable
+ * and resolvable to a hostname.
+ *
+ * A reporter can send a record that states a message count but no source IP, and the
+ * aggregation groups those into a source whose `sourceIp` is empty. It is real mail and has
+ * to stay in the table, but nothing keyed on the IP works for it: source-detail requires an
+ * `ip` parameter and answers 400 without one, so before this guard expanding the row showed
+ * an error banner instead of a panel (#190). Records that report no IP *and* no messages —
+ * the wp.pl/o2.pl heartbeats that issue was about — are dropped at ingestion instead, so
+ * this path is for the ones that carry real volume.
+ */
+export function isAttributableSource(sourceIp: string): boolean {
+  return sourceIp.trim().length > 0
+}
+
+/** What to show in place of the missing IP. Reads as the reporter's omission, not ours. */
+export const UNATTRIBUTED_SOURCE_LABEL = 'No source IP reported'
+
 // --- Source detail (GET /api/v1/analytics/domains/{domainId}/source-detail) ---
 
 /** Policy-evaluated DKIM x SPF combo; a message is DMARC-compliant when either passes. */
