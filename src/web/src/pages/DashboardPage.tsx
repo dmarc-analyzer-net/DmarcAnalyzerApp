@@ -159,7 +159,7 @@ export function DashboardPage() {
               />
             </Card>
 
-            <Card pad={false}>
+            <Card pad={false} className="overflow-hidden">
               <div className="px-5 pt-4 pb-2">
                 <CardHeader
                   title="Needs attention"

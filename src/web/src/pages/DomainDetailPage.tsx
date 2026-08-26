@@ -2166,6 +2166,15 @@ export function DomainDetailPage() {
                             >
                               {hostname}
                             </TableCell>
+                            {/* Empty filler spanning the remaining columns so the group's
+                                hover/expanded background paints the full row width instead
+                                of leaving the uncovered columns showing through as a blank
+                                rectangle — this row still only reserves width for its own
+                                colspan, so the layout stays as narrow as before. */}
+                            <TableCell
+                              colSpan={SOURCE_COLUMN_COUNT - SOURCE_HOSTNAME_COLSPAN}
+                              className="pt-0 pb-3"
+                            />
                           </TableRow>
                         ) : null}
                         {expanded ? (
