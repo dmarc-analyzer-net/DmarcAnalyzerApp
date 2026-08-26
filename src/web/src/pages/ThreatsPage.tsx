@@ -174,7 +174,7 @@ export function ThreatsPage() {
             />
           </div>
 
-          <Card>
+          <Card className="overflow-hidden">
             <div className="flex items-start justify-between gap-3 px-5 pt-5">
               <CardHeader
                 title="Failing sources"

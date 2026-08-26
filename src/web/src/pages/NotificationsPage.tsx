@@ -188,7 +188,7 @@ export function NotificationsPage() {
             </Card>
           ) : null}
 
-          <Card>
+          <Card className="overflow-hidden">
             <div className="flex items-start justify-between gap-3 px-5 pt-5">
               <CardHeader title="Recipients" description="Addresses currently receiving notifications" />
               <Badge variant="neutral">{recipients.length}</Badge>

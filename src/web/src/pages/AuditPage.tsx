@@ -228,7 +228,7 @@ export function AuditPage() {
 
       {page ? (
         <div className={cn('transition-opacity', busy && 'opacity-60')}>
-          <Card>
+          <Card className="overflow-hidden">
             <div className="flex items-start justify-between gap-3 px-5 pt-5">
               <CardHeader
                 title="Activity"
