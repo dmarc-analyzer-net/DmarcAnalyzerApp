@@ -12,7 +12,11 @@ export function Card({ className, pad = false, ...props }: CardProps) {
   return (
     <div
       className={cn(
-        'rounded-lg border border-border bg-surface-card shadow-card',
+        // overflow-hidden clips content flush against the rounded corners — a
+        // table header/row background otherwise paints a square-cornered
+        // rectangle that pokes past them. Nothing here relies on overflowing
+        // content (no portals/tooltips/dropdowns render inside a Card).
+        'overflow-hidden rounded-lg border border-border bg-surface-card shadow-card',
         pad && 'p-5',
         className,
       )}

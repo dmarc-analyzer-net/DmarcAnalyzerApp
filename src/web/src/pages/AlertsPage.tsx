@@ -179,7 +179,7 @@ export function AlertsPage() {
             />
           </div>
 
-          <Card className="overflow-hidden">
+          <Card>
             <div className="px-5 pt-5">
               <CardHeader
                 title="Recent alerts"

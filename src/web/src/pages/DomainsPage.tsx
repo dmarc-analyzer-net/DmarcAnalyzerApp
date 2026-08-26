@@ -492,7 +492,7 @@ export function DomainsPage() {
         />
       </div>
 
-      <Card className="overflow-hidden">
+      <Card>
         <div className={cn('overflow-x-auto transition-opacity', busy && 'opacity-60')}>
           <Table>
             <TableHeader>

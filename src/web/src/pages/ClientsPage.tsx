@@ -188,7 +188,7 @@ export function ClientsPage() {
           <Icon name="loader-circle" size={24} className="animate-spin text-secondary" />
         </div>
       ) : (
-        <Card pad={false} className="overflow-hidden">
+        <Card pad={false}>
           <div className="overflow-x-auto">
             <Table>
               <TableHeader>

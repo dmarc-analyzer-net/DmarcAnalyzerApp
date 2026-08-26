@@ -97,7 +97,7 @@ export function ApiCredentialsCard({ sources }: { sources: ReportSource[] }) {
   }
 
   return (
-    <Card pad={false} className="mt-3.5 overflow-hidden">
+    <Card pad={false} className="mt-3.5">
       <div className="flex flex-wrap items-start justify-between gap-3 px-5 pt-4 pb-2">
         <CardHeader
           title="Machine credentials"
