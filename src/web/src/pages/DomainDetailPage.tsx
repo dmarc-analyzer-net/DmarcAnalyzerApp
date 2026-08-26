@@ -1644,22 +1644,26 @@ function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPanelProps)
 /**
  * Renders a source IP, allowing IPv6 to wrap at its colons.
  *
- * IPv6 is 38-40 characters and 316px wide in mono, against 119px for IPv4. Once the
- * hostname moved to its own spanning row, this became the only thing setting the
- * column's width — worth stating precisely, because the hostname is the intuitive
- * culprit and it is not the one. Shortening every hostname in the rendered table moved
- * the column not at all (348px before and after); shortening every IP took it from
- * 348px to 119px and the table from 1138px to 1038px, exactly its container.
+ * The column has ~138px for text once padding and the chevron are spent. A worst-case
+ * IPv4 (255.255.255.255) is 108px at the column's own text-xs (12px) and always fits.
+ * IPv6 does not: even at the smaller text-[10px] this renders it at, an address with no
+ * `::` run to compress (e.g. 2a00:1968:0:9:109:235:175:108) is 174px and still wraps.
+ * What the smaller size buys is the common case — a compressed address like
+ * 2001:4860:4860::8888 drops from ~156px (at 12px, the column's base size) to ~120px,
+ * fitting on one line instead of wrapping to two.
  *
  * A <wbr> after each colon lets a long address fold at a group boundary and never
- * mid-hextet, so nothing is truncated and shorter addresses stay on one line. IPv4 has
- * no colons and is returned untouched.
+ * mid-hextet, so nothing is truncated and an address that does wrap still reads cleanly.
+ * IPv4 has no colons and is returned untouched, inheriting the column's own size.
  */
 function SourceIpText({ ip }: { ip: string }) {
   if (!ip.includes(':')) return <>{ip}</>
   const groups = ip.split(':')
   return (
-    <>
+    // A size down from the column's own text-xs — IPv6 is the address family with
+    // room to lose, since it's the one wrapping, and dropping a size buys back some
+    // of what wrapping was trying to avoid without widening the column.
+    <span className="text-[10px]">
       {groups.map((group, i) => (
         <span key={i}>
           {group}
@@ -1670,7 +1674,7 @@ function SourceIpText({ ip }: { ip: string }) {
           ) : null}
         </span>
       ))}
-    </>
+    </span>
   )
 }
 
@@ -2110,7 +2114,7 @@ export function DomainDetailPage() {
                                 event.stopPropagation()
                                 toggleSource(source.sourceIp)
                               }}
-                              className="inline-flex items-start gap-1.5 rounded-xs text-left font-mono text-sm font-medium text-body transition-colors hover:text-brand focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none"
+                              className="inline-flex items-start gap-1.5 rounded-xs text-left font-mono text-xs font-medium text-body transition-colors hover:text-brand focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none"
                             >
                               <Icon
                                 name="chevron-right"
