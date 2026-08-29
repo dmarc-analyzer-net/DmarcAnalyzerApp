@@ -316,10 +316,13 @@ function RecordBlock({
 }) {
   return (
     <div>
-      <div className="flex items-center gap-2">
+      {/* Wraps and breaks: meta can carry DNS-controlled values (a TLS-RPT rua
+          can be one long unbroken URI), and a flex item defaults to min-width
+          auto, which would push the whole card past the viewport. */}
+      <div className="flex flex-wrap items-center gap-2">
         <PanelSectionTitle>{title}</PanelSectionTitle>
         <Badge variant={statusMeta.badge}>{statusMeta.label}</Badge>
-        {meta ? <span className="font-mono text-xs text-secondary">{meta}</span> : null}
+        {meta ? <span className="min-w-0 break-all font-mono text-xs text-secondary">{meta}</span> : null}
       </div>
       {raw ? (
         <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-xs leading-relaxed text-body">
@@ -1089,17 +1092,17 @@ function noSessionsCopy(status: TlsRptRecord['status']): ReactNode {
     case 'missing':
       return (
         <>
-          No TLS reports, and none are coming: this domain publishes no{' '}
-          <span className="font-mono">_smtp._tls</span> record, so nothing invites reporters to
-          send them. Publishing one is the prerequisite — reporting is opt-in on the receiving
-          side.
+          No TLS reports received in this window. This domain publishes no{' '}
+          <span className="font-mono">_smtp._tls</span> record, so nothing is inviting reporters
+          to send any — publishing one is the prerequisite, and reporting is opt-in on the
+          receiving side.
         </>
       )
     case 'invalid':
       return (
         <>
           No TLS reports received in this window. Reporters discard the record above and treat
-          this domain as not implementing TLS-RPT, so none will arrive until it is fixed.
+          this domain as not implementing TLS-RPT, so while it stands nothing is inviting them.
         </>
       )
     case 'lookup_failed':

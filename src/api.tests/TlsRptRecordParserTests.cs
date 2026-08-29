@@ -14,7 +14,6 @@ public sealed class TlsRptRecordParserTests
     [Theory]
     [InlineData("v=TLSRPTv1;rua=mailto:reports@example.com", "mailto:reports@example.com")]
     [InlineData("v=TLSRPTv1; rua=mailto:reports@example.com", "mailto:reports@example.com")]
-    [InlineData("v=tlsrptv1;rua=mailto:reports@example.com", "mailto:reports@example.com")]
     [InlineData("v=TLSRPTv1; rua=https://reporting.example.com/v1/tlsrpt", "https://reporting.example.com/v1/tlsrpt")]
     public void Found_ForASingleValidRecord(string txt, string expectedRua)
     {
@@ -101,15 +100,68 @@ public sealed class TlsRptRecordParserTests
         Assert.Contains("no rua=", Assert.Single(record.Issues));
     }
 
-    /// <summary>Only mailto: and https: are defined; a record with neither is unusable.</summary>
-    [Fact]
-    public void Invalid_WhenNoRuaSchemeIsSupported()
+    /// <summary>
+    /// Only mailto: and https: are defined, and the value must be a URI that
+    /// actually reaches something — a scheme prefix is not on its own a
+    /// destination, and saying "found" for one would invite exactly the false
+    /// confidence this card exists to remove.
+    /// </summary>
+    [Theory]
+    [InlineData("http://reports.example.com/tls")] // wrong scheme
+    [InlineData("https:relative")]                 // no host
+    [InlineData("mailto:nobody")]                  // no domain
+    [InlineData("mailto:@example.com")]            // no mailbox
+    [InlineData("reports@example.com")]            // no scheme at all
+    public void Invalid_WhenNoRuaDestinationIsDeliverable(string rua)
     {
-        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1; rua=http://reports.example.com/tls"]);
+        var record = TlsRptRecordChecker.Parse([$"v=TLSRPTv1; rua={rua}"]);
 
         Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
         Assert.Empty(record.Rua);
-        Assert.Contains("does not define", Assert.Single(record.Issues));
+        Assert.Contains("not one reporters can use", Assert.Single(record.Issues));
+    }
+
+    /// <summary>
+    /// RFC 8460's ABNF writes the version %s"v=TLSRPTv1", and RFC 7405's %s means
+    /// case-sensitive — reporters discard the rest. Graded as invalid rather than
+    /// missing: the domain published something, and the spelling is the fix.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenTheVersionTagIsMiscased()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=tlsrptv1;rua=mailto:reports@example.com"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Empty(record.Rua);
+        Assert.Contains("case-sensitive", Assert.Single(record.Issues));
+    }
+
+    /// <summary>
+    /// The version has to be the whole first tag. Without this the record below
+    /// reaches found, because the tag parser reads "v" and never checks what
+    /// followed it on the same field.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenTheVersionTagCarriesTrailingJunk()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1 junk; rua=mailto:a@example.com"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Contains("requires exactly", Assert.Single(record.Issues));
+    }
+
+    /// <summary>
+    /// A version and nothing else is a published record missing its required
+    /// field, not an absent one — same grading the MTA-STS parser gives a bare
+    /// v=STSv1.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenOnlyTheVersionIsPublished()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Contains("no rua=", Assert.Single(record.Issues));
     }
 
     /// <summary>One good destination and one bad: usable, but the bad one is still worth saying.</summary>
@@ -125,13 +177,13 @@ public sealed class TlsRptRecordParserTests
     }
 
     /// <summary>
-    /// The version has to be the whole first token. "v=TLSRPTv12" is a different
-    /// version of something, and a bare "v=TLSRPTv1" has no field after the
-    /// required delimiter — neither is a TLS-RPT record we should claim to read.
+    /// Nothing TLS-RPT-shaped at the name at all. "v=TLSRPTv12" is a different
+    /// version of some other thing, and a record that merely mentions the
+    /// version later is not one — claiming either would be reporting on a record
+    /// we do not understand.
     /// </summary>
     [Theory]
     [InlineData("v=TLSRPTv12;rua=mailto:a@example.com")]
-    [InlineData("v=TLSRPTv1")]
     [InlineData("rua=mailto:a@example.com;v=TLSRPTv1")]
     public void Missing_WhenTheVersionTokenIsNotOurs(string txt)
     {
