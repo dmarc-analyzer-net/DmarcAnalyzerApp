@@ -188,19 +188,20 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
     }
 
     /// <summary>
-    /// The RFC's discard rule: a TLS-RPT record is one whose first
-    /// semicolon-delimited tag is exactly <c>v=TLSRPTv1</c>. Case-sensitive,
-    /// because RFC 8460's ABNF writes it %s"v=TLSRPTv1" and RFC 7405's %s means
-    /// exactly that — and whole-tag, because "v=TLSRPTv1 junk" is not the
-    /// version tag however much of it looks like one.
+    /// The RFC's discard rule, in its own words: keep the records that begin
+    /// with <c>v=TLSRPTv1;</c>. Case-sensitive, because RFC 8460's ABNF writes
+    /// the version %s"v=TLSRPTv1" and RFC 7405's %s means exactly that — and
+    /// including the delimiter, because the grammar requires at least one field
+    /// after it. So "v=TLSRPTv1 junk;…" is not a record (the version tag is not
+    /// the whole tag), and neither is a bare "v=TLSRPTv1" (no field follows).
     /// <para>
-    /// A bare <c>v=TLSRPTv1</c> passes: it is a real record that is missing a
-    /// required field, which the rua checks then say. Same grading the MTA-STS
-    /// parser gives a bare v=STSv1.
+    /// Both still get graded, just not counted — see
+    /// <see cref="DescribeWithoutAValidRecord"/>. Keeping them out of the count
+    /// is what stops a stale malformed record from invalidating a working one.
     /// </para>
     /// </summary>
     private static bool IsTlsRptRecord(string txt)
-        => string.Equals(FirstTag(txt), TlsRptVersion, StringComparison.Ordinal);
+        => txt.Trim().StartsWith(TlsRptVersion + ";", StringComparison.Ordinal);
 
     /// <summary>
     /// Why there is no usable record. Publishing TLS-RPT is optional, so nothing
@@ -218,12 +219,16 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
         }
 
         var firstTag = FirstTag(candidate);
-        return new TlsRptRecordDto(TlsRptRecordStatus.Invalid, candidate, [],
-            [string.Equals(firstTag, TlsRptVersion, StringComparison.OrdinalIgnoreCase)
+        var issue = string.Equals(firstTag, TlsRptVersion, StringComparison.Ordinal)
+            ? $"The record is {TlsRptVersion} and nothing else — RFC 8460 requires at least a rua= " +
+              "destination after it, so reporters have nowhere to send anything."
+            : string.Equals(firstTag, TlsRptVersion, StringComparison.OrdinalIgnoreCase)
                 ? $"The version tag is spelled {firstTag} — RFC 8460 defines it as case-sensitive " +
                   $"{TlsRptVersion}, and reporters discard anything else."
                 : $"The record starts with \"{firstTag}\" — RFC 8460 requires exactly {TlsRptVersion} " +
-                  "as the first tag, before any other field."]);
+                  "as the first tag, before any other field.";
+
+        return new TlsRptRecordDto(TlsRptRecordStatus.Invalid, candidate, [], [issue]);
     }
 
     /// <summary>

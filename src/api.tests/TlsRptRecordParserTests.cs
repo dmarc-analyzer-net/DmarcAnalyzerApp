@@ -85,6 +85,8 @@ public sealed class TlsRptRecordParserTests
     [Theory]
     [InlineData("v=tlsrptv1;rua=mailto:stale@example.com")]  // miscased version
     [InlineData("v=TLSRPTv1 junk;rua=mailto:stale@example.com")] // junk on the version field
+    [InlineData("v=TLSRPTv1")]                               // no field after the version
+    [InlineData("  v=tlsrptv1;rua=mailto:stale@example.com")] // and leading whitespace
     public void Found_WhenAMalformedRecordSitsBesideAValidOne(string stale)
     {
         var record = TlsRptRecordChecker.Parse([stale, "v=TLSRPTv1;rua=mailto:good@example.com"]);
@@ -213,13 +215,28 @@ public sealed class TlsRptRecordParserTests
 
     /// <summary>
     /// A version and nothing else is a published record missing its required
-    /// field, not an absent one — same grading the MTA-STS parser gives a bare
-    /// v=STSv1.
+    /// field, not an absent one — reporters discard it, but the domain plainly
+    /// tried, and "not configured" would not help them.
     /// </summary>
     [Fact]
     public void Invalid_WhenOnlyTheVersionIsPublished()
     {
         var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Equal("v=TLSRPTv1", record.Raw);
+        Assert.Contains("and nothing else", Assert.Single(record.Issues));
+    }
+
+    /// <summary>
+    /// The delimiter is part of the discard rule, so a version with no field is
+    /// not a record for counting purposes — but it is still a record with a
+    /// required field missing once it is the only thing at the name.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenTheVersionHasADelimiterButNoFields()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1;"]);
 
         Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
         Assert.Contains("no rua=", Assert.Single(record.Issues));
