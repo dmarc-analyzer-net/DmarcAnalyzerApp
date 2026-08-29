@@ -33,6 +33,7 @@ public static class MtaStsServiceCollectionExtensions
         services.AddSingleton<IMtaStsPolicyFetcher, MtaStsPolicyFetcher>();
         services.AddSingleton<IMtaStsCheckService, MtaStsCheckService>();
         services.AddScoped<IMtaStsStateCache, MtaStsStateCache>();
+        services.AddSingleton<ITlsRptRecordChecker, TlsRptRecordChecker>();
         services.AddScoped<ITlsRptQueryService, TlsRptQueryService>();
         services.AddScoped<IMtaStsReadinessService, MtaStsReadinessService>();
         services.AddScoped<IMtaStsInspectionService, MtaStsInspectionService>();

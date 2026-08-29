@@ -602,3 +602,24 @@ step is independently shippable.
       `mailbox_sync_run`, surfaced beside parse failures, so operators can see
       TLS traffic arriving before support lands. Left out of the fix above
       because it needs a migration and a UI change.
+
+- [x] (done 2026-08-29) **Show the `_smtp._tls` record, and stop nesting TLS-RPT
+      under MTA-STS.** Both reported in #195, which also asked whether the
+      record name was wrong — it is not: RFC 8460 §3 and Appendix A both put the
+      policy at `_smtp._tls`, and `_tlsrpt` resolves nowhere.
+
+      *Why the other two were right:* MTA-STS (RFC 8461) and TLS-RPT (RFC 8460)
+      are independent — TLS-RPT reports on DANE and plain transport failures as
+      readily as on STS breakage, and either can be published without the other
+      — so rendering the panel inside the MTA-STS card implied a dependency that
+      does not exist. And the record was never checked at all: TLS-RPT data came
+      only from ingested reports, so the empty state blamed reporter scarcity for
+      what is, on a domain with no `_smtp._tls` record, structural. Nobody was
+      asked, and no amount of waiting changes that.
+
+      *The work:* `TlsRptRecordChecker` (one cached TXT lookup, the RFC's
+      not-exactly-one rule, rua schemes), carried on the existing `tls-rpt`
+      response so the card stays one fetch; a separate TLS reporting card; and
+      empty-state copy that names the actual reason per record status. No
+      migration — the lookup is live, like record inspection, not persisted
+      state like the MTA-STS pass.

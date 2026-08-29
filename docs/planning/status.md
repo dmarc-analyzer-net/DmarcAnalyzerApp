@@ -368,8 +368,15 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     sessions, success rate, failure breakdown by category and result type,
     failures per receiving MX — anchored to the newest **TLS** data the caller
     can see (TLS reporting lags DMARC; anchoring to DMARC's anchor would blank
-    the panel), rendered in the Transport security card with the page's window
-    selector; the no-reporter case renders quietly, it is the norm
+    the panel), rendered in its **own** TLS reporting card with the page's
+    window selector; the no-reporter case renders quietly, it is the norm
+  - the same response carries `record`, a live `_smtp._tls` TXT lookup (RFC
+    8460 §3, same not-exactly-one rule as MTA-STS). Two things needed it: the
+    card had no way to show the record a client must publish, and zero sessions
+    was being explained as reporter scarcity when for a domain without the
+    record it is structural — nobody was ever asked. Reported in #195, which
+    also moved the panel out of the MTA-STS card: TLS-RPT and MTA-STS are
+    separate mechanisms and nesting one under the other implied otherwise
   - the **testing→enforce gate**: a pure evaluator combining the monitoring
     checks (TXT, fetch, syntax, MX coverage), the hosted policy's
     time-in-testing clock (`ModeChangedAtUtc`), and the TLS-RPT evidence — no

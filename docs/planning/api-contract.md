@@ -83,7 +83,7 @@ cross-tenant ids return **404**, never 403.
 | GET | `/analytics/domains/{domainId}/records` | Live DNS DMARC/SPF records parsed tag-by-tag, compared against the observed `policy_published` |
 | GET | `/analytics/domains/{domainId}/mta-sts` | The domain's persisted MTA-STS state (record, policy file, MX coverage) — database only, no live lookups |
 | POST | `/analytics/domains/{domainId}/mta-sts/recheck` | **staff** — runs the MTA-STS check live (DNS + HTTPS) and persists it; returns the updated state |
-| GET | `/analytics/domains/{domainId}/tls-rpt` | TLS-RPT summary: sessions, success rate, failures by category/result-type/receiving MX. Windows anchor to the newest **TLS** data the caller can see |
+| GET | `/analytics/domains/{domainId}/tls-rpt` | TLS-RPT summary: sessions, success rate, failures by category/result-type/receiving MX, plus `record` — the live `_smtp._tls` TXT lookup (`found`/`missing`/`lookup_failed`/`invalid`, RFC 8460 §3), without which zero sessions is unreadable. Windows anchor to the newest **TLS** data the caller can see. Touches DNS, so unlike `mta-sts` it is not a pure database read |
 | GET | `/analytics/threats` | Sources with fully unauthenticated volume across visible domains. Accepts `limit` (default 100, max 500) |
 | GET | `/analytics/hostnames` | Best-effort reverse DNS. Requires `ips` (comma-separated, max 100) |
 
