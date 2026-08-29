@@ -25,6 +25,42 @@ check the underscores first.
 List values take an index: `Network__TrustedNetworks__0`,
 `Network__TrustedNetworks__1`, and so on.
 
+## How the values work
+
+Every setting below is typed, and a value that does not convert stops the
+process at startup with a message naming the variable. That is deliberate — a
+setting silently falling back to its default is the failure mode this page's
+first rule already warns about, and it is worse.
+
+**Booleans are `true` or `false`.** Nothing else is accepted: not `1` or `0`,
+not `yes` or `no`, not `on` or `off`. Case does not matter. This trips up
+Docker habits, where `1` is the usual way to turn something on.
+
+**Numbers are plain digits** — `3600`, not `3600s` or `1h`. Where a setting
+means a duration, the unit is in its name (`Worker__ScheduleIntervalSeconds`,
+`Alerts__CooldownHours`).
+
+**An empty value is not the same as unset.** `Auth__Oidc__Enabled=` sets the
+variable to an empty string, which is not a boolean and fails; delete the line
+to take the default.
+
+**Quotes are part of the value in some places and not others.** This one is
+worth knowing because the value *looks* right and the error does not:
+
+| Where | `Auth__Oidc__Enabled="true"` becomes | Works |
+|---|---|---|
+| Compose `environment:` mapping — `Auth__Oidc__Enabled: "true"` | `true` | yes |
+| Compose `env_file:` | `true` | yes |
+| Compose `environment:` list — `- Auth__Oidc__Enabled="true"` | `"true"` | **no** |
+| `docker run --env-file` | `"true"` | **no** |
+
+So prefer the mapping form in Compose, and leave quotes off entirely in a file
+passed to `--env-file`.
+
+On Kubernetes the same trap arrives through Helm's type coercion:
+`--set extraEnv.Auth__Oidc__Enabled=1` renders the string `"1"` and fails.
+Write `true` there, or set it in a values file.
+
 ## Required
 
 Two settings have no usable default.

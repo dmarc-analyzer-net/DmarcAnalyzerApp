@@ -32,6 +32,9 @@ if (mode == AppMode.Migrate)
     // trail, nothing that serves or ingests. It runs to completion and exits, so
     // an orchestrator can order schema changes ahead of every application pod.
     var migrateBuilder = Host.CreateApplicationBuilder(args);
+    // Every mistyped value fails here, as one sentence naming the variable,
+    // rather than as an unhandled binder exception somewhere later.
+    ConfigurationPreflight.Validate(migrateBuilder.Configuration);
     var migrateTelemetry = migrateBuilder.AddTelemetry(mode);
     var migrateConnectionString = ConnectionStringResolver.Resolve(migrateBuilder.Configuration)
         ?? throw new InvalidOperationException(
@@ -85,6 +88,7 @@ if (mode == AppMode.Migrate)
 if (mode == AppMode.Worker)
 {
     var workerBuilder = Host.CreateApplicationBuilder(args);
+    ConfigurationPreflight.Validate(workerBuilder.Configuration);
     var workerTelemetry = workerBuilder.AddTelemetry(mode);
     var workerConnectionString = ConnectionStringResolver.Resolve(workerBuilder.Configuration)
         ?? "Host=localhost;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres";
@@ -160,6 +164,7 @@ if (mode == AppMode.MtaSts)
     // (never migrate from an internet-facing, replica-able pod — the console or
     // a migrate Job owns the schema), hosted services, and credential handling.
     var mtaStsBuilder = WebApplication.CreateBuilder(args);
+    ConfigurationPreflight.Validate(mtaStsBuilder.Configuration);
     var mtaStsTelemetry = mtaStsBuilder.AddTelemetry(mode);
 
     // No localhost fallback, unlike api/worker: this mode exists to face the
@@ -216,6 +221,7 @@ if (mode == AppMode.MtaSts)
 }
 
 var builder = WebApplication.CreateBuilder(args);
+ConfigurationPreflight.Validate(builder.Configuration);
 var apiTelemetry = builder.AddTelemetry(mode);
 var connectionString = ConnectionStringResolver.Resolve(builder.Configuration)
     ?? "Host=localhost;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres";
