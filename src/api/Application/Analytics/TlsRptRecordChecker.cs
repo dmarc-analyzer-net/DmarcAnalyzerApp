@@ -87,9 +87,17 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
 
         if (!tags.TryGetValue("rua", out var rua) || rua.Length == 0)
         {
+            // A miscased rua is not an absent one, and saying so is the difference
+            // between a fix that takes a second and a client wondering what is
+            // missing. Reporters read it as absent either way: RFC 8460 writes the
+            // directive %s"rua=", and §3 has parsers ignore fields they don't know.
+            var miscased = tags.Keys.FirstOrDefault(k => string.Equals(k, "rua", StringComparison.OrdinalIgnoreCase));
             return new TlsRptRecordDto(TlsRptRecordStatus.Invalid, raw, [],
-                ["The record has no rua= destination — RFC 8460 requires one, and there is nowhere " +
-                 "to send the reports."]);
+                [miscased is not null
+                    ? $"The report destination is spelled {miscased}= — RFC 8460 defines it as " +
+                      "case-sensitive rua=, so reporters read this record as having nowhere to send to."
+                    : "The record has no rua= destination — RFC 8460 requires one, and there is nowhere " +
+                      "to send the reports."]);
         }
 
         var issues = new List<string>();
@@ -147,10 +155,17 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
         return uri.UserInfo.Length > 0 && uri.Host.Length > 0;
     }
 
-    /// <summary>Semicolon-separated k=v pairs; first occurrence wins, matching the MTA-STS parser.</summary>
+    /// <summary>
+    /// Semicolon-separated k=v pairs; first occurrence wins. Keys are kept as
+    /// published and compared case-sensitively, because RFC 8460's ABNF spells
+    /// the directives with %s and §3 has parsers ignore fields they don't
+    /// recognize — so RUA= reaches no reporter. (The MTA-STS parser next door
+    /// still folds case on its tags; that is its own record's question, and not
+    /// something to change from here.)
+    /// </summary>
     private static Dictionary<string, string> ParseTags(string record)
     {
-        var tags = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var tags = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var part in record.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             var eq = part.IndexOf('=');

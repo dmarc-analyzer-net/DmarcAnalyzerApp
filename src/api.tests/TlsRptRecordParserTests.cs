@@ -137,6 +137,22 @@ public sealed class TlsRptRecordParserTests
     }
 
     /// <summary>
+    /// Same %s rule as the version: RFC 8460 writes the directive "rua=" and has
+    /// parsers ignore fields they don't recognize, so RUA= reaches no reporter.
+    /// The message names the casing rather than reporting the field as absent —
+    /// "you have no rua" is unhelpful when it is right there in the record.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenTheRuaDirectiveIsMiscased()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1; RUA=mailto:reports@example.com"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Empty(record.Rua);
+        Assert.Contains("case-sensitive rua=", Assert.Single(record.Issues));
+    }
+
+    /// <summary>
     /// The version has to be the whole first tag. Without this the record below
     /// reaches found, because the tag parser reads "v" and never checks what
     /// followed it on the same field.
