@@ -76,6 +76,34 @@ public sealed class TlsRptRecordParserTests
         Assert.Single(record.Issues);
     }
 
+    /// <summary>
+    /// RFC 8460 discards non-conforming records *before* applying the
+    /// exactly-one rule, so a stale malformed record sitting beside a good one
+    /// changes nothing: reporters use the good one. Grading it any other way
+    /// would report a working domain as broken.
+    /// </summary>
+    [Theory]
+    [InlineData("v=tlsrptv1;rua=mailto:stale@example.com")]  // miscased version
+    [InlineData("v=TLSRPTv1 junk;rua=mailto:stale@example.com")] // junk on the version field
+    public void Found_WhenAMalformedRecordSitsBesideAValidOne(string stale)
+    {
+        var record = TlsRptRecordChecker.Parse([stale, "v=TLSRPTv1;rua=mailto:good@example.com"]);
+
+        Assert.Equal(TlsRptRecordStatus.Found, record.Status);
+        Assert.Equal(["mailto:good@example.com"], record.Rua);
+    }
+
+    /// <summary>Every comma needs a URI after it — a stray separator is a syntax error, not whitespace.</summary>
+    [Fact]
+    public void Found_WithAnIssue_WhenTheRuaListHasAStrayComma()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1; rua=mailto:reports@example.com,"]);
+
+        Assert.Equal(TlsRptRecordStatus.Found, record.Status);
+        Assert.Equal(["mailto:reports@example.com"], record.Rua);
+        Assert.Contains("empty entry", Assert.Single(record.Issues));
+    }
+
     [Fact]
     public void Invalid_WhenTwoRecordsArePublished()
     {

@@ -33,11 +33,12 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
     /// as <c>invalid</c> rather than <c>found</c>, because it is how reporters
     /// behave — the domain gets no reports either way.
     /// <para>
-    /// Detection and validation are deliberately split. Anything whose first
-    /// token looks like a TLS-RPT version is *detected*, however malformed, and
-    /// then graded — so a domain that tried and got it wrong reads as invalid
-    /// with a reason, not as a domain that never published anything. Only a name
-    /// carrying no TLS-RPT-shaped record at all is missing.
+    /// The discard rule is applied strictly, and only then, if nothing survives
+    /// it, is anything TLS-RPT-shaped graded for a diagnostic. Both halves
+    /// matter: strict first, so a stale malformed record beside a good one
+    /// cannot make a working domain read as broken; lenient after, so a domain
+    /// that published something botched doesn't read as one that published
+    /// nothing. Only a name carrying no TLS-RPT-shaped record at all is missing.
     /// </para>
     /// </summary>
     public static TlsRptRecordDto Parse(IReadOnlyList<string>? txts)
@@ -48,14 +49,13 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
                 ["DNS lookup failed — could not check the record."]);
         }
 
-        var records = txts.Where(LooksLikeTlsRptRecord).ToList();
-        if (records.Count == 0)
-        {
-            // Deliberately no issue text: publishing TLS-RPT is optional, and the
-            // card renders this state by status alone — it is the ordinary case,
-            // not a finding.
-            return new TlsRptRecordDto(TlsRptRecordStatus.Missing, null, [], []);
-        }
+        // The RFC's discard step first, and strictly: a record whose version tag
+        // is not exactly v=TLSRPTv1 is not one of the records the exactly-one
+        // rule counts. Doing this leniently would let a stale miscased record
+        // sitting beside a good one report the domain as broken when reporters
+        // discard the stale one and use the good one — the opposite of the
+        // mistake this parser is trying not to make.
+        var records = txts.Where(IsTlsRptRecord).ToList();
 
         if (records.Count > 1)
         {
@@ -64,25 +64,12 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
                  "this domain as not implementing TLS-RPT. Remove the extras."]);
         }
 
-        var raw = records[0];
-
-        // The version must be the whole first semicolon-delimited tag, spelled
-        // exactly: RFC 8460's ABNF writes it %s"v=TLSRPTv1", and RFC 7405's %s
-        // means case-sensitive. A record failing this is discarded by reporters,
-        // so calling it found would be the very mistake this card exists to
-        // prevent — but it is still a record someone published, so it is graded
-        // rather than ignored.
-        var firstTag = raw.Trim().Split(';')[0].Trim();
-        if (!string.Equals(firstTag, TlsRptVersion, StringComparison.Ordinal))
+        if (records.Count == 0)
         {
-            return new TlsRptRecordDto(TlsRptRecordStatus.Invalid, raw, [],
-                [string.Equals(firstTag, TlsRptVersion, StringComparison.OrdinalIgnoreCase)
-                    ? $"The version tag is spelled {firstTag} — RFC 8460 defines it as case-sensitive " +
-                      $"{TlsRptVersion}, and reporters discard anything else."
-                    : $"The record starts with \"{firstTag}\" — RFC 8460 requires exactly {TlsRptVersion} " +
-                      "as the first tag, before any other field."]);
+            return DescribeWithoutAValidRecord(txts);
         }
 
+        var raw = records[0];
         var tags = ParseTags(raw);
 
         if (!tags.TryGetValue("rua", out var rua) || rua.Length == 0)
@@ -112,7 +99,12 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
 
         var issues = new List<string>();
         var destinations = new List<string>();
-        foreach (var uri in rua.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+
+        // Empty elements are kept rather than dropped: RFC 8460 requires a URI
+        // after every comma, so "rua=mailto:a@example.com," is a syntax error a
+        // strict reporter may reject the whole record over. Silently trimming it
+        // would report the record as clean.
+        foreach (var uri in rua.Split(',', StringSplitOptions.TrimEntries))
         {
             // Only mailto: and https: are defined, and the value has to be a URI
             // a reporter could actually deliver to. A destination failing either
@@ -121,6 +113,11 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
             if (IsDeliverableRuaUri(uri))
             {
                 destinations.Add(uri);
+            }
+            else if (uri.Length == 0)
+            {
+                issues.Add("The rua list has an empty entry — RFC 8460 requires a URI after every " +
+                           "comma. Remove the stray separator.");
             }
             else
             {
@@ -191,11 +188,49 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
     }
 
     /// <summary>
-    /// Whether a TXT string is TLS-RPT-shaped enough to grade. Deliberately
-    /// looser than the ABNF — case-insensitive, and a bare version counts — so
-    /// that a botched record is reported as broken rather than silently
-    /// disappearing into "not configured". <see cref="Parse"/> applies the
-    /// strict rules; this only decides which records it applies them to.
+    /// The RFC's discard rule: a TLS-RPT record is one whose first
+    /// semicolon-delimited tag is exactly <c>v=TLSRPTv1</c>. Case-sensitive,
+    /// because RFC 8460's ABNF writes it %s"v=TLSRPTv1" and RFC 7405's %s means
+    /// exactly that — and whole-tag, because "v=TLSRPTv1 junk" is not the
+    /// version tag however much of it looks like one.
+    /// <para>
+    /// A bare <c>v=TLSRPTv1</c> passes: it is a real record that is missing a
+    /// required field, which the rua checks then say. Same grading the MTA-STS
+    /// parser gives a bare v=STSv1.
+    /// </para>
+    /// </summary>
+    private static bool IsTlsRptRecord(string txt)
+        => string.Equals(FirstTag(txt), TlsRptVersion, StringComparison.Ordinal);
+
+    /// <summary>
+    /// Why there is no usable record. Publishing TLS-RPT is optional, so nothing
+    /// at all is <c>missing</c> and renders quietly by status alone — but a
+    /// record that was published and botched must not read the same way, or the
+    /// card tells someone who tried that they never did. So anything
+    /// TLS-RPT-shaped is graded here, however malformed.
+    /// </summary>
+    private static TlsRptRecordDto DescribeWithoutAValidRecord(IReadOnlyList<string> txts)
+    {
+        var candidate = txts.FirstOrDefault(LooksLikeTlsRptRecord);
+        if (candidate is null)
+        {
+            return new TlsRptRecordDto(TlsRptRecordStatus.Missing, null, [], []);
+        }
+
+        var firstTag = FirstTag(candidate);
+        return new TlsRptRecordDto(TlsRptRecordStatus.Invalid, candidate, [],
+            [string.Equals(firstTag, TlsRptVersion, StringComparison.OrdinalIgnoreCase)
+                ? $"The version tag is spelled {firstTag} — RFC 8460 defines it as case-sensitive " +
+                  $"{TlsRptVersion}, and reporters discard anything else."
+                : $"The record starts with \"{firstTag}\" — RFC 8460 requires exactly {TlsRptVersion} " +
+                  "as the first tag, before any other field."]);
+    }
+
+    /// <summary>
+    /// Whether a TXT string is TLS-RPT-shaped enough to be worth a diagnostic.
+    /// Deliberately looser than <see cref="IsTlsRptRecord"/> — case-insensitive,
+    /// and trailing junk on the version field counts — because its only job is
+    /// to recognize an attempt. It never decides whether a record is usable.
     /// </summary>
     private static bool LooksLikeTlsRptRecord(string txt)
     {
@@ -210,4 +245,7 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
         return trimmed.Length == TlsRptVersion.Length
             || trimmed[TlsRptVersion.Length] is ';' or ' ' or '\t';
     }
+
+    /// <summary>The first semicolon-delimited tag, trimmed — where the version has to be.</summary>
+    private static string FirstTag(string txt) => txt.Trim().Split(';')[0].Trim();
 }
