@@ -87,17 +87,27 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
 
         if (!tags.TryGetValue("rua", out var rua) || rua.Length == 0)
         {
-            // A miscased rua is not an absent one, and saying so is the difference
-            // between a fix that takes a second and a client wondering what is
-            // missing. Reporters read it as absent either way: RFC 8460 writes the
-            // directive %s"rua=", and §3 has parsers ignore fields they don't know.
-            var miscased = tags.Keys.FirstOrDefault(k => string.Equals(k, "rua", StringComparison.OrdinalIgnoreCase));
-            return new TlsRptRecordDto(TlsRptRecordStatus.Invalid, raw, [],
-                [miscased is not null
+            // Three ways to have no destination, and they need different fixes,
+            // so they get different messages. A miscased directive in particular
+            // is not an absent one — reporters read it as absent (RFC 8460 writes
+            // it %s"rua=", and §3 has parsers ignore fields they don't know), but
+            // "you have no rua=" is a strange thing to read about a record whose
+            // next word is RUA. Note the exact key is excluded from that search:
+            // a present-but-empty rua= is spelled correctly.
+            var miscased = tags.Keys.FirstOrDefault(k =>
+                !string.Equals(k, "rua", StringComparison.Ordinal)
+                && string.Equals(k, "rua", StringComparison.OrdinalIgnoreCase));
+
+            var issue = rua is { Length: 0 }
+                ? "The rua= directive is empty — RFC 8460 requires a destination, and there is " +
+                  "nowhere to send the reports."
+                : miscased is not null
                     ? $"The report destination is spelled {miscased}= — RFC 8460 defines it as " +
                       "case-sensitive rua=, so reporters read this record as having nowhere to send to."
-                    : "The record has no rua= destination — RFC 8460 requires one, and there is nowhere " +
-                      "to send the reports."]);
+                    : "The record has no rua= destination — RFC 8460 requires one, and there is " +
+                      "nowhere to send the reports.";
+
+            return new TlsRptRecordDto(TlsRptRecordStatus.Invalid, raw, [], [issue]);
         }
 
         var issues = new List<string>();

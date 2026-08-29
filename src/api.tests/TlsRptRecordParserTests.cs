@@ -153,6 +153,23 @@ public sealed class TlsRptRecordParserTests
     }
 
     /// <summary>
+    /// An empty rua= is spelled correctly and still has no destination. The
+    /// three no-destination cases need different fixes, so each says its own
+    /// thing rather than the nearest one.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenTheRuaDirectiveIsEmpty()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1; rua="]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Empty(record.Rua);
+        var issue = Assert.Single(record.Issues);
+        Assert.Contains("is empty", issue);
+        Assert.DoesNotContain("case-sensitive", issue);
+    }
+
+    /// <summary>
     /// The version has to be the whole first tag. Without this the record below
     /// reaches found, because the tag parser reads "v" and never checks what
     /// followed it on the same field.
