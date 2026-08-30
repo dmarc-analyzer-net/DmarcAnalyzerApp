@@ -1,0 +1,371 @@
+using DmarcAnalyzer.Api.Application.Analytics;
+using Xunit;
+
+namespace DmarcAnalyzer.Api.Tests;
+
+/// <summary>
+/// The `_smtp._tls` TXT parser (RFC 8460 §3). The rule worth pinning down is
+/// the not-exactly-one one: after discarding records that don't start with
+/// v=TLSRPTv1, anything but a single usable record means reporters treat the
+/// domain as not implementing TLS-RPT, so it must not read as found.
+/// </summary>
+public sealed class TlsRptRecordParserTests
+{
+    [Theory]
+    [InlineData("v=TLSRPTv1;rua=mailto:reports@example.com", "mailto:reports@example.com")]
+    [InlineData("v=TLSRPTv1; rua=mailto:reports@example.com", "mailto:reports@example.com")]
+    [InlineData("v=TLSRPTv1; rua=https://reporting.example.com/v1/tlsrpt", "https://reporting.example.com/v1/tlsrpt")]
+    public void Found_ForASingleValidRecord(string txt, string expectedRua)
+    {
+        var record = TlsRptRecordChecker.Parse([txt]);
+
+        Assert.Equal(TlsRptRecordStatus.Found, record.Status);
+        Assert.Equal(txt, record.Raw);
+        Assert.Equal([expectedRua], record.Rua);
+        Assert.Empty(record.Issues);
+    }
+
+    /// <summary>RFC 8460 §3: the record may list a comma-separated set of destinations.</summary>
+    [Fact]
+    public void Found_KeepsEveryRuaDestination()
+    {
+        var record = TlsRptRecordChecker.Parse(
+            ["v=TLSRPTv1; rua=mailto:a@example.com, https://r.example.com/tls"]);
+
+        Assert.Equal(TlsRptRecordStatus.Found, record.Status);
+        Assert.Equal(["mailto:a@example.com", "https://r.example.com/tls"], record.Rua);
+    }
+
+    /// <summary>
+    /// A doubled delimiter leaves an empty field, which the grammar does not
+    /// allow — and a tag parser drops the blank, so the record reads fine right
+    /// up until a strict reporter refuses it. The diagnostic has to name the
+    /// semicolon, not claim the record is empty: it plainly has a rua.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenADelimiterIsDoubled()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1;;rua=mailto:reports@example.com"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Empty(record.Rua);
+        Assert.Contains("empty field", Assert.Single(record.Issues));
+    }
+
+    /// <summary>
+    /// The grammar's whitespace lives in the delimiter, not inside a field, so
+    /// "rua =…" is malformed. It matters because a tag parser trims the name and
+    /// would otherwise read it as a perfectly good rua.
+    /// </summary>
+    [Theory]
+    [InlineData("v=TLSRPTv1; rua =mailto:reports@example.com", "rua =mailto:reports@example.com")]
+    [InlineData("v=TLSRPTv1; junk", "junk")]
+    [InlineData("v=TLSRPTv1; rua=mailto:a@example.com; =orphan", "=orphan")]
+    public void Invalid_WhenAFieldIsNotANameValuePair(string txt, string expectedInMessage)
+    {
+        var record = TlsRptRecordChecker.Parse([txt]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Empty(record.Rua);
+        Assert.Contains($"\"{expectedInMessage}\"", Assert.Single(record.Issues));
+    }
+
+    /// <summary>
+    /// A rua URI may carry its own equals sign in a query string, so only the
+    /// field *name* is validated — checking the value would break records the
+    /// RFC allows.
+    /// </summary>
+    [Fact]
+    public void Found_WhenARuaUriContainsAnEqualsSign()
+    {
+        var record = TlsRptRecordChecker.Parse(
+            ["v=TLSRPTv1; rua=https://r.example.com/tlsrpt?token=abc123"]);
+
+        Assert.Equal(TlsRptRecordStatus.Found, record.Status);
+        Assert.Equal(["https://r.example.com/tlsrpt?token=abc123"], record.Rua);
+        Assert.Empty(record.Issues);
+    }
+
+    /// <summary>The one trailing semicolon the ABNF's [field-delim] allows.</summary>
+    [Fact]
+    public void Found_WhenTheRecordEndsWithASingleDelimiter()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1; rua=mailto:reports@example.com;"]);
+
+        Assert.Equal(TlsRptRecordStatus.Found, record.Status);
+        Assert.Equal(["mailto:reports@example.com"], record.Rua);
+        Assert.Empty(record.Issues);
+    }
+
+    /// <summary>Extension fields are legal and ignored; the record is still usable.</summary>
+    [Fact]
+    public void Found_IgnoresUnknownFields()
+    {
+        var record = TlsRptRecordChecker.Parse(
+            ["v=TLSRPTv1; rua=mailto:a@example.com; ext-thing=whatever"]);
+
+        Assert.Equal(TlsRptRecordStatus.Found, record.Status);
+        Assert.Equal(["mailto:a@example.com"], record.Rua);
+    }
+
+    [Fact]
+    public void Missing_WhenNothingIsPublished()
+    {
+        var record = TlsRptRecordChecker.Parse([]);
+
+        Assert.Equal(TlsRptRecordStatus.Missing, record.Status);
+        Assert.Null(record.Raw);
+        // Publishing TLS-RPT is optional — not publishing it is not a finding.
+        Assert.Empty(record.Issues);
+    }
+
+    /// <summary>A TXT set at the name that holds something else entirely (SPF, verification tokens).</summary>
+    [Fact]
+    public void Missing_WhenNoRecordCarriesTheVersion()
+    {
+        var record = TlsRptRecordChecker.Parse(["some-verification=abc123", "v=spf1 -all"]);
+
+        Assert.Equal(TlsRptRecordStatus.Missing, record.Status);
+    }
+
+    [Fact]
+    public void LookupFailed_IsNotMissing()
+    {
+        var record = TlsRptRecordChecker.Parse(null);
+
+        Assert.Equal(TlsRptRecordStatus.LookupFailed, record.Status);
+        Assert.Single(record.Issues);
+    }
+
+    /// <summary>
+    /// RFC 8460 discards non-conforming records *before* applying the
+    /// exactly-one rule, so a stale malformed record sitting beside a good one
+    /// changes nothing: reporters use the good one. Grading it any other way
+    /// would report a working domain as broken.
+    /// </summary>
+    [Theory]
+    [InlineData("v=tlsrptv1;rua=mailto:stale@example.com")]  // miscased version
+    [InlineData("v=TLSRPTv1 junk;rua=mailto:stale@example.com")] // junk on the version field
+    [InlineData("v=TLSRPTv1")]                               // no field after the version
+    [InlineData("v=TLSRPTv1;")]                              // delimiter, still no field
+    [InlineData("v=TLSRPTv1;;rua=mailto:stale@example.com")] // empty field between delimiters
+    [InlineData("v=TLSRPTv1; rua =mailto:stale@example.com")] // space before the equals sign
+    [InlineData("v=TLSRPTv1; junk")]                          // a field that is not name=value
+    [InlineData("  v=TLSRPTv1;rua=mailto:stale@example.com")] // leading whitespace, otherwise fine
+    public void Found_WhenAMalformedRecordSitsBesideAValidOne(string stale)
+    {
+        var record = TlsRptRecordChecker.Parse([stale, "v=TLSRPTv1;rua=mailto:good@example.com"]);
+
+        Assert.Equal(TlsRptRecordStatus.Found, record.Status);
+        Assert.Equal(["mailto:good@example.com"], record.Rua);
+    }
+
+    /// <summary>
+    /// The ABNF's field-delim is <c>*WSP ";" *WSP</c>, so a space before the
+    /// semicolon is legal and the record is fine. The RFC's prose discard rule
+    /// ("does not begin with v=TLSRPTv1;") reads stricter than its own grammar;
+    /// following the prose literally would fail a conforming domain.
+    /// </summary>
+    [Fact]
+    public void Found_WhenWhitespacePrecedesTheFieldDelimiter()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1 ; rua=mailto:reports@example.com"]);
+
+        Assert.Equal(TlsRptRecordStatus.Found, record.Status);
+        Assert.Equal(["mailto:reports@example.com"], record.Rua);
+        Assert.Empty(record.Issues);
+    }
+
+    /// <summary>
+    /// But whitespace *before* the version is not in the grammar — the record
+    /// starts at the version tag. Named as its own problem, since trimming it
+    /// away would report a record that has a rua as having nothing at all.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenTheRecordBeginsWithWhitespace()
+    {
+        var record = TlsRptRecordChecker.Parse(["  v=TLSRPTv1;rua=mailto:reports@example.com"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Contains("begins with whitespace", Assert.Single(record.Issues));
+    }
+
+    /// <summary>
+    /// A stray comma breaks the grammar — tlsrpt-rua requires a URI after every
+    /// one — and RFC 8460 obliges reporters to accept only syntactically valid
+    /// records, so a strict one discards this outright. That is not the same as
+    /// an unsupported scheme, which parses fine and is merely ignored, so the
+    /// two are graded differently.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenTheRuaListHasAStrayComma()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1; rua=mailto:reports@example.com,"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Empty(record.Rua);
+        Assert.Contains("empty entry", Assert.Single(record.Issues));
+    }
+
+    [Fact]
+    public void Invalid_WhenTwoRecordsArePublished()
+    {
+        var record = TlsRptRecordChecker.Parse([
+            "v=TLSRPTv1;rua=mailto:a@example.com",
+            "v=TLSRPTv1;rua=mailto:b@example.com",
+        ]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Empty(record.Rua);
+        Assert.Contains("2 TLS-RPT records", Assert.Single(record.Issues));
+    }
+
+    /// <summary>The ABNF makes rua required — without it there is nowhere to report.</summary>
+    [Fact]
+    public void Invalid_WhenRuaIsMissing()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1; ext-thing=whatever"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Equal("v=TLSRPTv1; ext-thing=whatever", record.Raw);
+        Assert.Contains("no rua=", Assert.Single(record.Issues));
+    }
+
+    /// <summary>
+    /// Only mailto: and https: are defined, and the value must be a URI that
+    /// actually reaches something — a scheme prefix is not on its own a
+    /// destination, and saying "found" for one would invite exactly the false
+    /// confidence this card exists to remove.
+    /// </summary>
+    [Theory]
+    [InlineData("http://reports.example.com/tls")] // wrong scheme
+    [InlineData("https:relative")]                 // no host
+    [InlineData("mailto:nobody")]                  // no domain
+    [InlineData("mailto:@example.com")]            // no mailbox
+    [InlineData("reports@example.com")]            // no scheme at all
+    public void Invalid_WhenNoRuaDestinationIsDeliverable(string rua)
+    {
+        var record = TlsRptRecordChecker.Parse([$"v=TLSRPTv1; rua={rua}"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Empty(record.Rua);
+        Assert.Contains("not one reporters can use", Assert.Single(record.Issues));
+    }
+
+    /// <summary>
+    /// RFC 8460's ABNF writes the version %s"v=TLSRPTv1", and RFC 7405's %s means
+    /// case-sensitive — reporters discard the rest. Graded as invalid rather than
+    /// missing: the domain published something, and the spelling is the fix.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenTheVersionTagIsMiscased()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=tlsrptv1;rua=mailto:reports@example.com"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Empty(record.Rua);
+        Assert.Contains("case-sensitive", Assert.Single(record.Issues));
+    }
+
+    /// <summary>
+    /// Same %s rule as the version: RFC 8460 writes the directive "rua=" and has
+    /// parsers ignore fields they don't recognize, so RUA= reaches no reporter.
+    /// The message names the casing rather than reporting the field as absent —
+    /// "you have no rua" is unhelpful when it is right there in the record.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenTheRuaDirectiveIsMiscased()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1; RUA=mailto:reports@example.com"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Empty(record.Rua);
+        Assert.Contains("case-sensitive rua=", Assert.Single(record.Issues));
+    }
+
+    /// <summary>
+    /// An empty rua= is spelled correctly and still has no destination. The
+    /// three no-destination cases need different fixes, so each says its own
+    /// thing rather than the nearest one.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenTheRuaDirectiveIsEmpty()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1; rua="]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Empty(record.Rua);
+        var issue = Assert.Single(record.Issues);
+        Assert.Contains("is empty", issue);
+        Assert.DoesNotContain("case-sensitive", issue);
+    }
+
+    /// <summary>
+    /// The version has to be the whole first tag. Without this the record below
+    /// reaches found, because the tag parser reads "v" and never checks what
+    /// followed it on the same field.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenTheVersionTagCarriesTrailingJunk()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1 junk; rua=mailto:a@example.com"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Contains("requires exactly", Assert.Single(record.Issues));
+    }
+
+    /// <summary>
+    /// A version and nothing else is a published record missing its required
+    /// field, not an absent one — reporters discard it, but the domain plainly
+    /// tried, and "not configured" would not help them.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenOnlyTheVersionIsPublished()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Equal("v=TLSRPTv1", record.Raw);
+        Assert.Contains("and nothing else", Assert.Single(record.Issues));
+    }
+
+    /// <summary>
+    /// The ABNF wants 1*(field-delim tlsrpt-field), so a delimiter with nothing
+    /// after it is no more a record than a bare version is — but it is still a
+    /// record with its required field missing once it is alone at the name.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenTheVersionHasADelimiterButNoFields()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1;"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Contains("and nothing else", Assert.Single(record.Issues));
+    }
+
+    /// <summary>One good destination and one bad: usable, but the bad one is still worth saying.</summary>
+    [Fact]
+    public void Found_WithAnIssue_WhenOnlySomeDestinationsAreUsable()
+    {
+        var record = TlsRptRecordChecker.Parse(
+            ["v=TLSRPTv1; rua=mailto:a@example.com,ftp://example.com/drop"]);
+
+        Assert.Equal(TlsRptRecordStatus.Found, record.Status);
+        Assert.Equal(["mailto:a@example.com"], record.Rua);
+        Assert.Single(record.Issues);
+    }
+
+    /// <summary>
+    /// Nothing TLS-RPT-shaped at the name at all. "v=TLSRPTv12" is a different
+    /// version of some other thing, and a record that merely mentions the
+    /// version later is not one — claiming either would be reporting on a record
+    /// we do not understand.
+    /// </summary>
+    [Theory]
+    [InlineData("v=TLSRPTv12;rua=mailto:a@example.com")]
+    [InlineData("rua=mailto:a@example.com;v=TLSRPTv1")]
+    public void Missing_WhenTheVersionTokenIsNotOurs(string txt)
+    {
+        Assert.Equal(TlsRptRecordStatus.Missing, TlsRptRecordChecker.Parse([txt]).Status);
+    }
+}

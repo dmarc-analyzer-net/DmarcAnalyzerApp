@@ -506,6 +506,22 @@ export type TlsRptMxHostStat = {
   resultTypes: string[]
 }
 
+/**
+ * Outcome of the _smtp._tls TXT lookup. 'invalid' mirrors MTA-STS: RFC 8460 §3
+ * discards records that don't begin with v=TLSRPTv1, and if what's left isn't
+ * exactly one usable record, reporters treat the domain as not implementing
+ * TLS-RPT — which must not read as found. Never 'inherited': no tree walk.
+ */
+export type TlsRptRecordStatus = 'found' | 'missing' | 'lookup_failed' | 'invalid'
+
+/** The live _smtp._tls record. Rua holds the usable destinations; the rest are issues. */
+export type TlsRptRecord = {
+  status: TlsRptRecordStatus
+  raw: string | null
+  rua: string[]
+  issues: string[]
+}
+
 /** Windows anchor to the newest TLS data the caller can see — TLS reporting usually lags DMARC. */
 export type TlsRptSummary = {
   window: AnalyticsWindow
@@ -519,6 +535,8 @@ export type TlsRptSummary = {
   failuresByCategory: TlsRptCategoryStat[]
   failuresByType: TlsRptFailureTypeStat[]
   byReceivingMx: TlsRptMxHostStat[]
+  /** Zero sessions reads differently depending on this — asked vs answered. */
+  record: TlsRptRecord
 }
 
 // --- MTA-STS promotion gate (embedded in the mta-sts GET) ---

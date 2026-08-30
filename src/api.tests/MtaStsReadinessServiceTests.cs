@@ -49,7 +49,7 @@ public sealed class MtaStsReadinessServiceTests
         });
         await db.SaveChangesAsync();
 
-        var service = new MtaStsReadinessService(db, new TlsRptQueryService(db, TestCurrentUserContext.Admin()));
+        var service = new MtaStsReadinessService(db, new TlsRptQueryService(db, TestCurrentUserContext.Admin(), new TlsRptRecordChecker(TestDnsTxtResolver.Empty())));
         var readiness = await service.GetForDomainAsync(domainId, CancellationToken.None);
 
         Assert.NotNull(readiness);
@@ -72,7 +72,7 @@ public sealed class MtaStsReadinessServiceTests
         });
         await db.SaveChangesAsync();
 
-        var service = new MtaStsReadinessService(db, new TlsRptQueryService(db, TestCurrentUserContext.Admin()));
+        var service = new MtaStsReadinessService(db, new TlsRptQueryService(db, TestCurrentUserContext.Admin(), new TlsRptRecordChecker(TestDnsTxtResolver.Empty())));
         var readiness = await service.GetForDomainAsync(domainId, CancellationToken.None);
 
         Assert.Equal(MtaStsReadinessStatus.InsufficientData, readiness!.Status);
@@ -92,7 +92,7 @@ public sealed class MtaStsReadinessServiceTests
         });
         await db.SaveChangesAsync();
 
-        var service = new MtaStsReadinessService(db, new TlsRptQueryService(db, TestCurrentUserContext.Admin()));
+        var service = new MtaStsReadinessService(db, new TlsRptQueryService(db, TestCurrentUserContext.Admin(), new TlsRptRecordChecker(TestDnsTxtResolver.Empty())));
         var readiness = await service.GetForDomainAsync(domainId, CancellationToken.None);
 
         Assert.Equal(MtaStsReadinessStatus.NotReady, readiness!.Status);
@@ -111,7 +111,7 @@ public sealed class MtaStsReadinessServiceTests
         });
         await db.SaveChangesAsync();
 
-        var service = new MtaStsReadinessService(db, new TlsRptQueryService(db, TestCurrentUserContext.Admin()));
+        var service = new MtaStsReadinessService(db, new TlsRptQueryService(db, TestCurrentUserContext.Admin(), new TlsRptRecordChecker(TestDnsTxtResolver.Empty())));
         var readiness = await service.GetForDomainAsync(domainId, CancellationToken.None);
 
         Assert.All(readiness!.Checks, c => Assert.Equal("pass", c.Status));

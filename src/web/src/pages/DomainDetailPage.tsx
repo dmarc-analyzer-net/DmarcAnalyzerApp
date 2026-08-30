@@ -42,6 +42,7 @@ import {
   type RecordComparison,
   type RecordInspection,
   type SourceDetail,
+  type TlsRptRecord,
   type TlsRptSummary,
   type ValueCount,
 } from '@/lib/analytics'
@@ -294,26 +295,34 @@ const LOOKUP_STATUS_META: Record<
   inherited: { label: 'Inherited', badge: 'warning' },
 }
 
+/**
+ * One live DNS record: status badge, the raw string, and any findings. Takes
+ * the resolved status meta rather than a status, because each record type
+ * grades its own statuses — a missing DMARC record is a danger, a missing
+ * _smtp._tls record is just a domain that hasn't opted in.
+ */
 function RecordBlock({
   title,
-  status,
+  statusMeta,
   raw,
   meta,
   issues,
 }: {
   title: string
-  status: RecordInspection['dmarc']['status']
+  statusMeta: { label: string; badge: 'success' | 'danger' | 'warning' | 'neutral' }
   raw: string | null
   meta?: string | null
   issues: string[]
 }) {
-  const statusMeta = LOOKUP_STATUS_META[status]
   return (
     <div>
-      <div className="flex items-center gap-2">
+      {/* Wraps and breaks: meta can carry DNS-controlled values (a TLS-RPT rua
+          can be one long unbroken URI), and a flex item defaults to min-width
+          auto, which would push the whole card past the viewport. */}
+      <div className="flex flex-wrap items-center gap-2">
         <PanelSectionTitle>{title}</PanelSectionTitle>
         <Badge variant={statusMeta.badge}>{statusMeta.label}</Badge>
-        {meta ? <span className="font-mono text-xs text-secondary">{meta}</span> : null}
+        {meta ? <span className="min-w-0 break-all font-mono text-xs text-secondary">{meta}</span> : null}
       </div>
       {raw ? (
         <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-all rounded-md border border-border bg-surface-sunken px-3 py-2 font-mono text-xs leading-relaxed text-body">
@@ -395,13 +404,13 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           <RecordBlock
             title="DMARC (live DNS)"
-            status={inspection.dmarc.status}
+            statusMeta={LOOKUP_STATUS_META[inspection.dmarc.status]}
             raw={inspection.dmarc.raw}
             issues={inspection.dmarc.issues}
           />
           <RecordBlock
             title="SPF (live DNS)"
-            status={inspection.spf.status}
+            statusMeta={LOOKUP_STATUS_META[inspection.spf.status]}
             raw={inspection.spf.raw}
             meta={
               inspection.spf.status === 'found'
@@ -578,13 +587,12 @@ function formatMaxAge(seconds: number): string {
  * plain database read, so unlike the record inspection card nothing here waits
  * on live DNS or an HTTPS fetch. Recheck (staff only) runs those on demand.
  */
-function TransportSecurityCard({ domainId, days }: { domainId: string; days: AnalyticsDays }) {
+function TransportSecurityCard({ domainId }: { domainId: string }) {
   const { user } = useAuth()
   const staff = isStaff(user)
   const admin = isAdmin(user)
   const [state, setState] = useState<MtaStsState | null>(null)
   const [policyResponse, setPolicyResponse] = useState<MtaStsPolicyResponse | null>(null)
-  const [tlsSummary, setTlsSummary] = useState<TlsRptSummary | null>(null)
   const [busy, setBusy] = useState(true)
   const [rechecking, setRechecking] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -595,15 +603,13 @@ function TransportSecurityCard({ domainId, days }: { domainId: string; days: Ana
     setBusy(true)
     setError(null)
     try {
-      const [statePayload, policyPayload, tlsPayload] = await Promise.all([
+      const [statePayload, policyPayload] = await Promise.all([
         fetchJson<MtaStsState>(`/api/v1/analytics/domains/${domainId}/mta-sts`),
         fetchJson<MtaStsPolicyResponse>(`/api/v1/domains/${domainId}/mta-sts-policy`),
-        fetchJson<TlsRptSummary>(`/api/v1/analytics/domains/${domainId}/tls-rpt?days=${days}`),
       ])
       if (seq === requestSeq.current) {
         setState(statePayload)
         setPolicyResponse(policyPayload)
-        setTlsSummary(tlsPayload)
       }
     } catch (loadError) {
       if (seq === requestSeq.current) {
@@ -612,7 +618,7 @@ function TransportSecurityCard({ domainId, days }: { domainId: string; days: Ana
     } finally {
       if (seq === requestSeq.current) setBusy(false)
     }
-  }, [domainId, days])
+  }, [domainId])
 
   useEffect(() => {
     void load()
@@ -800,7 +806,6 @@ function TransportSecurityCard({ domainId, days }: { domainId: string; days: Ana
           onChanged={() => void load()}
         />
       ) : null}
-      {!busy && !error && tlsSummary ? <TlsRptSection summary={tlsSummary} /> : null}
     </Card>
   )
 }
@@ -1053,6 +1058,8 @@ function HostedPolicySection({
   )
 }
 
+// --- TLS reporting (TLS-RPT) ---
+
 const TLS_CATEGORY_BADGE: Record<string, 'danger' | 'warning' | 'neutral'> = {
   sts: 'danger',       // this policy breaking delivery — the gate's blocker
   dane: 'warning',
@@ -1060,27 +1067,152 @@ const TLS_CATEGORY_BADGE: Record<string, 'danger' | 'warning' | 'neutral'> = {
   other: 'neutral',
 }
 
+const TLS_RPT_RECORD_META: Record<
+  TlsRptRecord['status'],
+  { label: string; badge: 'success' | 'danger' | 'warning' | 'neutral' }
+> = {
+  found: { label: 'Published', badge: 'success' },
+  // Neutral, not danger, for the same reason MTA-STS is: publishing TLS-RPT is
+  // optional and most domains don't. It is a prerequisite for reports, not a
+  // security failing.
+  missing: { label: 'Not configured', badge: 'neutral' },
+  lookup_failed: { label: 'Lookup failed', badge: 'warning' },
+  // Not exactly one usable record — RFC 8460 §3 has reporters treat that as no
+  // TLS-RPT at all, so the domain gets nothing while looking configured.
+  invalid: { label: 'Invalid', badge: 'danger' },
+}
+
+/**
+ * Why zero sessions, in the domain's own terms. The record is what makes the
+ * difference legible: without it no reporter was ever asked, so waiting longer
+ * cannot help.
+ */
+function noSessionsCopy(status: TlsRptRecord['status']): ReactNode {
+  switch (status) {
+    case 'missing':
+      return (
+        <>
+          No TLS reports received in this window. This domain publishes no{' '}
+          <span className="font-mono">_smtp._tls</span> record, so nothing is inviting reporters
+          to send any — publishing one is the prerequisite, and reporting is opt-in on the
+          receiving side.
+        </>
+      )
+    case 'invalid':
+      return (
+        <>
+          No TLS reports received in this window. Reporters discard the record above and treat
+          this domain as not implementing TLS-RPT, so while it stands nothing is inviting them.
+        </>
+      )
+    case 'lookup_failed':
+      return (
+        <>
+          No TLS reports received in this window. The{' '}
+          <span className="font-mono">_smtp._tls</span> lookup failed, so whether reporters are
+          being invited at all could not be checked.
+        </>
+      )
+    default:
+      return (
+        <>
+          No TLS reports received for this domain in this window. The record is published, so
+          reporters have been invited — but reporting is opt-in on the sender side, and most
+          domains attract few or none.
+        </>
+      )
+  }
+}
+
+/**
+ * TLS reporting, in its own card rather than a section of the MTA-STS one.
+ * The two are separate mechanisms (RFC 8460 and RFC 8461): a domain can
+ * publish either without the other, and TLS-RPT reports on DANE and plain
+ * transport failures as readily as on STS policy breakage. Nesting it under
+ * MTA-STS implied a dependency that does not exist — reported in #195.
+ *
+ * Loads on its own because it waits on a live DNS lookup, the same reason the
+ * record inspection card does.
+ */
+function TlsReportingCard({ domainId, days }: { domainId: string; days: AnalyticsDays }) {
+  const [summary, setSummary] = useState<TlsRptSummary | null>(null)
+  const [busy, setBusy] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const requestSeq = useRef(0)
+
+  const load = useCallback(async () => {
+    const seq = ++requestSeq.current
+    setBusy(true)
+    setError(null)
+    try {
+      const payload = await fetchJson<TlsRptSummary>(
+        `/api/v1/analytics/domains/${domainId}/tls-rpt?days=${days}`,
+      )
+      if (seq === requestSeq.current) setSummary(payload)
+    } catch (loadError) {
+      if (seq === requestSeq.current) {
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load TLS reporting')
+      }
+    } finally {
+      if (seq === requestSeq.current) setBusy(false)
+    }
+  }, [domainId, days])
+
+  useEffect(() => {
+    void load()
+  }, [load])
+
+  return (
+    <Card pad>
+      <CardHeader
+        title="TLS reporting (TLS-RPT)"
+        description="Whether senders are asked to report on TLS delivery to this domain — the _smtp._tls record — and what they reported"
+      />
+      {busy ? (
+        <div className="flex items-center gap-2 py-4 text-sm text-secondary">
+          <Icon name="loader-circle" size={16} className="animate-spin" />
+          Looking up the TLS-RPT record…
+        </div>
+      ) : error ? (
+        <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+          {error}
+        </p>
+      ) : summary ? (
+        <div className="mt-4 space-y-5">
+          <RecordBlock
+            title="TLS-RPT (live DNS)"
+            statusMeta={TLS_RPT_RECORD_META[summary.record.status]}
+            raw={summary.record.raw}
+            meta={summary.record.rua.length > 0 ? summary.record.rua.join(', ') : null}
+            issues={summary.record.issues}
+          />
+          <TlsRptSessions summary={summary} />
+        </div>
+      ) : null}
+    </Card>
+  )
+}
+
 /**
  * Encryption in transit, as reporters saw it. Empty is the norm — TLS-RPT has
  * far fewer reporters than DMARC — so no data renders quietly, not as an error.
  */
-function TlsRptSection({ summary }: { summary: TlsRptSummary }) {
+function TlsRptSessions({ summary }: { summary: TlsRptSummary }) {
   if (summary.totalSessions === 0) {
     return (
-      <div className="mt-5 border-t border-border pt-4">
-        <PanelSectionTitle>Encryption in transit (TLS-RPT)</PanelSectionTitle>
+      <div className="border-t border-border pt-4">
+        <PanelSectionTitle>Encryption in transit</PanelSectionTitle>
         <p className="mt-2 text-xs leading-relaxed text-secondary">
-          No TLS reports received for this domain in this window. Reporters are opt-in on the
-          sender side (a `_smtp._tls` record invites them), and most domains never attract any.
+          {noSessionsCopy(summary.record.status)}
         </p>
       </div>
     )
   }
 
   return (
-    <div className="mt-5 border-t border-border pt-4">
+    <div className="border-t border-border pt-4">
       <div className="flex flex-wrap items-center gap-2">
-        <PanelSectionTitle>Encryption in transit (TLS-RPT)</PanelSectionTitle>
+        <PanelSectionTitle>Encryption in transit</PanelSectionTitle>
         <Badge variant={summary.failedSessions === 0 ? 'success' : 'warning'}>
           {formatPercent(summary.successRate)} encrypted
         </Badge>
@@ -2101,7 +2233,9 @@ export function DomainDetailPage() {
 
           <RecordInspectionCard domainId={domainId} />
 
-          <TransportSecurityCard domainId={domainId} days={days} />
+          <TransportSecurityCard domainId={domainId} />
+
+          <TlsReportingCard domainId={domainId} days={days} />
 
           {/* The centerpiece: per-source breakdown */}
           <Card>

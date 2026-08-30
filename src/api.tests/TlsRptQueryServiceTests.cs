@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Application.Analytics;
+using DmarcAnalyzer.Api.Application.Auth;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -15,6 +16,14 @@ public sealed class TlsRptQueryServiceTests
     private static DmarcAnalyzerDbContext NewDb()
         => new(new DbContextOptionsBuilder<DmarcAnalyzerDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options);
+
+    /// <summary>
+    /// The real record checker over stubbed DNS — the summary carries a live
+    /// `_smtp._tls` lookup, and the aggregation tests should not care.
+    /// </summary>
+    private static TlsRptQueryService NewService(
+        DmarcAnalyzerDbContext db, ICurrentUserContext user, IDnsTxtResolver? dns = null)
+        => new(db, user, new TlsRptRecordChecker(dns ?? TestDnsTxtResolver.Empty()));
 
     private static (Client Client, Domain Domain) Seed(DmarcAnalyzerDbContext db, string slug)
     {
@@ -67,7 +76,7 @@ public sealed class TlsRptQueryServiceTests
         AddPolicy(db, otherDomain.Id, 1);
         await db.SaveChangesAsync();
 
-        var viewer = new TlsRptQueryService(db, TestCurrentUserContext.Viewer(granted.Id));
+        var viewer = NewService(db, TestCurrentUserContext.Viewer(granted.Id));
 
         Assert.Null(await viewer.GetDomainSummaryAsync(otherDomain.Id, 30, CancellationToken.None));
         Assert.NotNull(await viewer.GetDomainSummaryAsync(grantedDomain.Id, 30, CancellationToken.None));
@@ -85,7 +94,7 @@ public sealed class TlsRptQueryServiceTests
         AddDetail(db, p2.Id, "starttls-not-supported", "transport", 1, mx: "mx2.acme.example");
         await db.SaveChangesAsync();
 
-        var summary = (await new TlsRptQueryService(db, TestCurrentUserContext.Admin())
+        var summary = (await NewService(db, TestCurrentUserContext.Admin())
             .GetDomainSummaryAsync(domain.Id, 30, CancellationToken.None))!;
 
         Assert.Equal(157, summary.TotalSessions);
@@ -116,11 +125,49 @@ public sealed class TlsRptQueryServiceTests
         AddPolicy(db, domain.Id, 110, ok: 20);
         await db.SaveChangesAsync();
 
-        var summary = (await new TlsRptQueryService(db, TestCurrentUserContext.Admin())
+        var summary = (await NewService(db, TestCurrentUserContext.Admin())
             .GetDomainSummaryAsync(domain.Id, 30, CancellationToken.None))!;
 
         Assert.True(summary.Window.AnchoredToLatestData);
         Assert.Equal(30, summary.TotalSessions);
+    }
+
+    /// <summary>
+    /// Zero sessions means two opposite things depending on this record, so the
+    /// summary has to carry it: published means nobody answered, missing means
+    /// nobody was asked.
+    /// </summary>
+    [Fact]
+    public async Task Summary_CarriesTheLiveTlsRptRecord()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db, "acme");
+        await db.SaveChangesAsync();
+
+        var dns = TestDnsTxtResolver.Empty()
+            .Publish($"_smtp._tls.{domain.Name}", "v=TLSRPTv1;rua=mailto:tls@acme.example");
+
+        var summary = (await NewService(db, TestCurrentUserContext.Admin(), dns)
+            .GetDomainSummaryAsync(domain.Id, 30, CancellationToken.None))!;
+
+        Assert.Equal(0, summary.TotalSessions);
+        Assert.Equal(TlsRptRecordStatus.Found, summary.Record.Status);
+        Assert.Equal(["mailto:tls@acme.example"], summary.Record.Rua);
+    }
+
+    [Fact]
+    public async Task Summary_ReportsAMissingTlsRptRecord()
+    {
+        await using var db = NewDb();
+        var (_, domain) = Seed(db, "acme");
+        AddPolicy(db, domain.Id, 1);
+        await db.SaveChangesAsync();
+
+        var summary = (await NewService(db, TestCurrentUserContext.Admin())
+            .GetDomainSummaryAsync(domain.Id, 30, CancellationToken.None))!;
+
+        Assert.Equal(TlsRptRecordStatus.Missing, summary.Record.Status);
+        Assert.Null(summary.Record.Raw);
     }
 
     [Fact]
@@ -135,7 +182,7 @@ public sealed class TlsRptQueryServiceTests
         AddDetail(db, stale.Id, "sts-policy-invalid", "sts", 5);
         await db.SaveChangesAsync();
 
-        var sample = await new TlsRptQueryService(db, TestCurrentUserContext.Admin())
+        var sample = await NewService(db, TestCurrentUserContext.Admin())
             .GetGateSampleAsync(domain.Id, DateTime.UtcNow.AddDays(-14), CancellationToken.None);
 
         Assert.Equal(109, sample.TotalSessions);   // the stale policy is outside the gate window
