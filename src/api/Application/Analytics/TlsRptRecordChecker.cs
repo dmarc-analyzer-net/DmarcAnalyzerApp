@@ -49,12 +49,12 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
                 ["DNS lookup failed — could not check the record."]);
         }
 
-        // The RFC's discard step first, and strictly: a record whose version tag
-        // is not exactly v=TLSRPTv1 is not one of the records the exactly-one
-        // rule counts. Doing this leniently would let a stale miscased record
-        // sitting beside a good one report the domain as broken when reporters
-        // discard the stale one and use the good one — the opposite of the
-        // mistake this parser is trying not to make.
+        // The RFC's discard step first, and strictly: only records beginning
+        // with "v=TLSRPTv1;" are the ones the exactly-one rule counts. Doing
+        // this leniently would let a stale malformed record sitting beside a
+        // good one report the domain as broken, when reporters discard the
+        // stale one and use the good one — the opposite of the mistake this
+        // parser is trying not to make.
         var records = txts.Where(IsTlsRptRecord).ToList();
 
         if (records.Count > 1)
