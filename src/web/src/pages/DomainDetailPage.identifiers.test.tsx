@@ -17,7 +17,7 @@ describe('ValueList', () => {
   })
 
   it('names the null reverse-path instead of showing the bare angle brackets', () => {
-    render(<ValueList items={[{ value: '<>', messages: 12 }]} emptyText="none" />)
+    render(<ValueList items={[{ value: '<>', messages: 12 }]} emptyText="none" nullSender />)
 
     const entry = screen.getByTitle(/null reverse-path/i)
     expect(entry).toHaveTextContent('null sender')
@@ -25,16 +25,28 @@ describe('ValueList', () => {
   })
 
   it('recognises the null reverse-path from a reporter that pretty-prints its XML', () => {
-    render(<ValueList items={[{ value: '\n      <>\n    ', messages: 12 }]} emptyText="none" />)
+    render(<ValueList items={[{ value: '\n      <>\n    ', messages: 12 }]} emptyText="none" nullSender />)
 
     expect(screen.getByTitle(/null reverse-path/i)).toHaveTextContent('null sender')
   })
 
   it('does not call it a null sender when the value merely contains angle brackets', () => {
-    render(<ValueList items={[{ value: '<script>', messages: 12 }]} emptyText="none" />)
+    render(<ValueList items={[{ value: '<script>', messages: 12 }]} emptyText="none" nullSender />)
 
     expect(screen.queryByTitle(/null reverse-path/i)).not.toBeInTheDocument()
     expect(screen.getByText('<script>')).toBeInTheDocument()
+  })
+
+  /**
+   * The header-from list renders through the same component, and `<>` there is a malformed
+   * `From:`, not a null envelope sender. Labelling it would assert the source sent bounces
+   * on the evidence of a broken reporter, so the label is opt-in per list.
+   */
+  it('leaves the angle brackets alone in a list that is not the envelope sender', () => {
+    render(<ValueList items={[{ value: '<>', messages: 12 }]} emptyText="none" />)
+
+    expect(screen.queryByTitle(/null reverse-path/i)).not.toBeInTheDocument()
+    expect(screen.getByText('<>')).toBeInTheDocument()
   })
 
   it('falls back to the empty text when the reporter sent nothing to list', () => {

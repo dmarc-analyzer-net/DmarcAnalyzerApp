@@ -205,7 +205,21 @@ const NULL_REVERSE_PATH = '<>'
 const NULL_REVERSE_PATH_HINT =
   'Empty envelope sender (RFC 5321 null reverse-path) — bounces, delivery status notifications and auto-replies'
 
-export function ValueList({ items, emptyText }: { items: ValueCount[]; emptyText: string }) {
+/**
+ * `nullSender` is opt-in per list rather than applied to every value, because the null
+ * reverse-path is a property of the SMTP envelope. This same component also renders
+ * header-from, where `<>` is not a null sender but a malformed `From:` — labelling it
+ * would assert the source sent bounces on the evidence of a broken reporter.
+ */
+export function ValueList({
+  items,
+  emptyText,
+  nullSender = false,
+}: {
+  items: ValueCount[]
+  emptyText: string
+  nullSender?: boolean
+}) {
   if (items.length === 0) {
     return <p className="mt-2 text-sm text-secondary">{emptyText}</p>
   }
@@ -213,7 +227,7 @@ export function ValueList({ items, emptyText }: { items: ValueCount[]; emptyText
     <ul className="mt-2 space-y-1.5">
       {items.map((item) => (
         <li key={item.value} className="flex items-baseline justify-between gap-3">
-          {item.value.trim() === NULL_REVERSE_PATH ? (
+          {nullSender && item.value.trim() === NULL_REVERSE_PATH ? (
             <span className="min-w-0 break-all text-xs text-body" title={NULL_REVERSE_PATH_HINT}>
               null sender <span className="font-mono text-secondary">{NULL_REVERSE_PATH}</span>
             </span>
@@ -1633,7 +1647,7 @@ function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPanelProps)
         </section>
         <section className="rounded-md border border-border bg-surface-card p-3">
           <PanelSectionTitle>Envelope from</PanelSectionTitle>
-          <ValueList items={detail.envelopeFroms} emptyText="No envelope-from domains reported." />
+          <ValueList items={detail.envelopeFroms} emptyText="No envelope-from domains reported." nullSender />
         </section>
         <section className="rounded-md border border-border bg-surface-card p-3">
           <PanelSectionTitle>Reporters</PanelSectionTitle>
