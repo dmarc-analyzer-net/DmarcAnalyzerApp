@@ -25,6 +25,16 @@ namespace DmarcAnalyzer.Api.Application.Hosting;
 /// uses.
 /// </para>
 /// <para>
+/// Two things are deliberately out of reach. A mistyped variable <em>name</em>
+/// binds nothing, so there is no value to check and the default applies in
+/// silence — the oldest trap on this deployment surface, and one only the
+/// documentation can warn about. And variables the framework or another SDK
+/// reads rather than this app (<c>ASPNETCORE_*</c>, <c>Logging__*</c>,
+/// <c>OTEL_*</c>) keep their own rules; telemetry falls back on an unrecognised
+/// value on purpose, because a typo in a tracing variable must not be why a
+/// mail-ingesting service refuses to boot.
+/// </para>
+/// <para>
 /// What it does change is <em>when</em>. <c>Services.Configure&lt;T&gt;</c> binds
 /// lazily, so a bad <c>Alerts__IntervalMinutes</c> used to surface as a 500 from
 /// whichever request first resolved <c>IOptions&lt;AlertOptions&gt;</c>, long

@@ -27,10 +27,20 @@ List values take an index: `Network__TrustedNetworks__0`,
 
 ## How the values work
 
-Every setting below is typed, and a value that does not convert stops the
-process at startup with a message naming the variable. That is deliberate — a
-setting silently falling back to its default is the failure mode this page's
-first rule already warns about, and it is worse.
+The settings this app binds to its own options — the `Worker__*`, `Email__*`,
+`Alerts__*`, `Digest__*`, `Dns__*`, `MtaSts__*`, `Retention__*`, `Network__*`,
+`Backup__*` and `Auth__Oidc__*` groups below, plus `Database__MigrateOnStartup`
+— are typed, and a value that does not convert stops the process at startup with
+a message naming the variable. That is deliberate: a setting silently falling
+back to its default is the failure mode the rule above already warns about, and
+it is worse.
+
+Two things are outside that check, and neither is an oversight. Variables read
+by the framework or another SDK rather than by this app — `ASPNETCORE_*`,
+`Logging__*`, `OTEL_*` — follow their own rules, and the telemetry ones fall
+back deliberately (see [Telemetry](#telemetry-opentelemetry)). And a mistyped
+variable *name* is invisible to any of this: nothing binds it, so the default
+applies in silence. That is still the first thing to check.
 
 **Booleans are `true` or `false`.** Nothing else is accepted: not `1` or `0`,
 not `yes` or `no`, not `on` or `off`. Case does not matter. This trips up
