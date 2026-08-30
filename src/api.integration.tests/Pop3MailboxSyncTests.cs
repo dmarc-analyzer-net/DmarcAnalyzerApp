@@ -55,8 +55,7 @@ public sealed class Pop3MailboxSyncTests(PostgresFixture postgres) : IAsyncLifet
     // GreenMail rather than a hand-rolled fake: the point of this suite is the behaviour a
     // stub would have to be written to have. Plaintext, because TLS is MailKit's concern and
     // is already exercised by every IMAP deployment — what is under test is POP3 itself.
-    private readonly IContainer _mail = new ContainerBuilder()
-        .WithImage("greenmail/standalone:2.1.9")
+    private readonly IContainer _mail = new ContainerBuilder("greenmail/standalone:2.1.9")
         .WithEnvironment(
             "GREENMAIL_OPTS",
             "-Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.pop3 " +

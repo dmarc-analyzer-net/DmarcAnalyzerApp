@@ -45,8 +45,7 @@ public sealed class S3ReportSourceTests(PostgresFixture postgres) : IAsyncLifeti
     private static readonly Guid ClientId = Guid.Parse("55555555-5555-5555-5555-555555555555");
     private static readonly Guid SourceId = Guid.Parse("66666666-6666-6666-6666-666666666666");
 
-    private readonly IContainer _minio = new ContainerBuilder()
-        .WithImage("minio/minio:RELEASE.2025-04-22T22-12-26Z")
+    private readonly IContainer _minio = new ContainerBuilder("minio/minio:RELEASE.2025-04-22T22-12-26Z")
         .WithEnvironment("MINIO_ROOT_USER", AccessKey)
         .WithEnvironment("MINIO_ROOT_PASSWORD", SecretKey)
         .WithCommand("server", "/data")
