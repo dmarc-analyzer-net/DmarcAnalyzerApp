@@ -52,6 +52,40 @@ public sealed class TlsRptRecordParserTests
         Assert.Contains("empty field", Assert.Single(record.Issues));
     }
 
+    /// <summary>
+    /// The grammar's whitespace lives in the delimiter, not inside a field, so
+    /// "rua =…" is malformed. It matters because a tag parser trims the name and
+    /// would otherwise read it as a perfectly good rua.
+    /// </summary>
+    [Theory]
+    [InlineData("v=TLSRPTv1; rua =mailto:reports@example.com", "rua =mailto:reports@example.com")]
+    [InlineData("v=TLSRPTv1; junk", "junk")]
+    [InlineData("v=TLSRPTv1; rua=mailto:a@example.com; =orphan", "=orphan")]
+    public void Invalid_WhenAFieldIsNotANameValuePair(string txt, string expectedInMessage)
+    {
+        var record = TlsRptRecordChecker.Parse([txt]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Empty(record.Rua);
+        Assert.Contains($"\"{expectedInMessage}\"", Assert.Single(record.Issues));
+    }
+
+    /// <summary>
+    /// A rua URI may carry its own equals sign in a query string, so only the
+    /// field *name* is validated — checking the value would break records the
+    /// RFC allows.
+    /// </summary>
+    [Fact]
+    public void Found_WhenARuaUriContainsAnEqualsSign()
+    {
+        var record = TlsRptRecordChecker.Parse(
+            ["v=TLSRPTv1; rua=https://r.example.com/tlsrpt?token=abc123"]);
+
+        Assert.Equal(TlsRptRecordStatus.Found, record.Status);
+        Assert.Equal(["https://r.example.com/tlsrpt?token=abc123"], record.Rua);
+        Assert.Empty(record.Issues);
+    }
+
     /// <summary>The one trailing semicolon the ABNF's [field-delim] allows.</summary>
     [Fact]
     public void Found_WhenTheRecordEndsWithASingleDelimiter()
@@ -115,6 +149,8 @@ public sealed class TlsRptRecordParserTests
     [InlineData("v=TLSRPTv1")]                               // no field after the version
     [InlineData("v=TLSRPTv1;")]                              // delimiter, still no field
     [InlineData("v=TLSRPTv1;;rua=mailto:stale@example.com")] // empty field between delimiters
+    [InlineData("v=TLSRPTv1; rua =mailto:stale@example.com")] // space before the equals sign
+    [InlineData("v=TLSRPTv1; junk")]                          // a field that is not name=value
     [InlineData("  v=TLSRPTv1;rua=mailto:stale@example.com")] // leading whitespace, otherwise fine
     public void Found_WhenAMalformedRecordSitsBesideAValidOne(string stale)
     {

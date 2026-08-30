@@ -250,13 +250,56 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
 
         for (var i = 0; i < fields.Length; i++)
         {
-            if (fields[i].AsSpan().Trim(" \t").Length > 0)
+            if (fields[i].AsSpan().Trim(" \t").Length == 0)
             {
+                // Blank: only the last slot may be, and only if it isn't the only one.
+                if (i == 0 || i != fields.Length - 1)
+                {
+                    return false;
+                }
+
                 continue;
             }
 
-            // Blank: only the last slot may be, and only if it isn't the only one.
-            if (i == 0 || i != fields.Length - 1)
+            if (!IsWellFormedField(fields[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// <c>tlsrpt-field</c> is <c>rua=…</c> or an extension, and both are a name,
+    /// an <c>=</c>, and a value. The *WSP the grammar allows lives in the
+    /// delimiter, not inside the field, so "rua =mailto:…" is malformed — and it
+    /// matters here because a tag parser trims the name and would read it as a
+    /// perfectly good rua.
+    /// <para>
+    /// Only the name is checked. The value is left alone deliberately: a rua URI
+    /// may carry an <c>=</c> of its own in a query string, and rejecting that
+    /// would break records the RFC allows.
+    /// </para>
+    /// </summary>
+    private static bool IsWellFormedField(string field)
+    {
+        var trimmed = field.AsSpan().Trim(" \t");
+        var equals = trimmed.IndexOf('=');
+        if (equals <= 0)
+        {
+            return false;
+        }
+
+        var name = trimmed[..equals];
+        if (!char.IsAsciiLetterOrDigit(name[0]))
+        {
+            return false;
+        }
+
+        foreach (var c in name)
+        {
+            if (!char.IsAsciiLetterOrDigit(c) && c is not ('_' or '-' or '.'))
             {
                 return false;
             }
@@ -293,15 +336,7 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
 
         var firstTag = FirstTag(candidate);
         var issue = string.Equals(firstTag, TlsRptVersion, StringComparison.Ordinal)
-            ? HasAnyField(candidate)
-                // The version is right and there is content, so the fault is in
-                // how the fields are delimited — saying "nothing else" here
-                // would be plainly false to anyone reading their own record.
-                ? "The record has an empty field — RFC 8460 allows one optional semicolon at the " +
-                  "end and requires a field after every other, so reporters do not parse it. " +
-                  "Remove the stray semicolon."
-                : $"The record is {TlsRptVersion} and nothing else — RFC 8460 requires at least a rua= " +
-                  "destination after it, so reporters have nowhere to send anything."
+            ? DescribeFieldFault(candidate)
             : string.Equals(firstTag, TlsRptVersion, StringComparison.OrdinalIgnoreCase)
                 ? $"The version tag is spelled {firstTag} — RFC 8460 defines it as case-sensitive " +
                   $"{TlsRptVersion}, and reporters discard anything else."
@@ -309,6 +344,35 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
                   "as the first tag, before any other field.";
 
         return new TlsRptRecordDto(TlsRptRecordStatus.Invalid, candidate, [], [issue]);
+    }
+
+    /// <summary>
+    /// The version is right, so the fault is in what follows it. Named
+    /// specifically, because these are the records whose owner is looking at the
+    /// raw value on the same card and can see it is not empty.
+    /// </summary>
+    private static string DescribeFieldFault(string candidate)
+    {
+        var fields = candidate.Split(';')[1..];
+
+        var malformed = fields.FirstOrDefault(f =>
+            f.AsSpan().Trim(" \t").Length > 0 && !IsWellFormedField(f));
+        if (malformed is not null)
+        {
+            return $"The field \"{malformed.Trim()}\" is not a name=value pair — RFC 8460 allows no " +
+                   "space around the equals sign, and every field needs one. Reporters discard the " +
+                   "whole record over it.";
+        }
+
+        if (fields.Any(f => f.AsSpan().Trim(" \t").Length > 0))
+        {
+            return "The record has an empty field — RFC 8460 allows one optional semicolon at the " +
+                   "end and requires a field after every other, so reporters do not parse it. " +
+                   "Remove the stray semicolon.";
+        }
+
+        return $"The record is {TlsRptVersion} and nothing else — RFC 8460 requires at least a rua= " +
+               "destination after it, so reporters have nowhere to send anything.";
     }
 
     /// <summary>
@@ -334,7 +398,4 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
     /// <summary>The first semicolon-delimited tag, trimmed — where the version has to be.</summary>
     private static string FirstTag(string txt) => txt.Trim().Split(';')[0].Trim();
 
-    /// <summary>Whether anything at all follows the version tag — a delimited field, however malformed.</summary>
-    private static bool HasAnyField(string txt)
-        => txt.Split(';')[1..].Any(f => f.AsSpan().Trim(" \t").Length > 0);
 }
