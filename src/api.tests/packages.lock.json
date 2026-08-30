@@ -78,8 +78,8 @@
       },
       "DmarcRua": {
         "type": "Transitive",
-        "resolved": "2.0.1",
-        "contentHash": "QYdDqSUq0IYtcMJ2WrXdF31pOxGi/LpW4OqqDnchkqPzYkpivD5SrEea7NGHVAPFQ2OpOSvMrzNIKnTzeK/vlw=="
+        "resolved": "2.1.0",
+        "contentHash": "cZpbbak8yiRonF5pNgBcFHZftINIuBrTsCrXOw/rumkiNK9S4UCuJJiM+PZ0PQrCJr1ac/mBuSgSivAQHRGe/w=="
       },
       "DnsClient": {
         "type": "Transitive",
@@ -575,7 +575,7 @@
         "dependencies": {
           "AWSSDK.S3": "[4.0.102, )",
           "Carter": "[10.0.0, )",
-          "DmarcRua": "[2.0.1, )",
+          "DmarcRua": "[2.1.0, )",
           "DnsClient": "[1.8.0, )",
           "MailKit": "[4.17.0, )",
           "Microsoft.AspNetCore.Authentication.OpenIdConnect": "[10.0.10, )",
