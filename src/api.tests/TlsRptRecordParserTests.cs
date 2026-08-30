@@ -36,6 +36,33 @@ public sealed class TlsRptRecordParserTests
         Assert.Equal(["mailto:a@example.com", "https://r.example.com/tls"], record.Rua);
     }
 
+    /// <summary>
+    /// A doubled delimiter leaves an empty field, which the grammar does not
+    /// allow — and a tag parser drops the blank, so the record reads fine right
+    /// up until a strict reporter refuses it. The diagnostic has to name the
+    /// semicolon, not claim the record is empty: it plainly has a rua.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenADelimiterIsDoubled()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1;;rua=mailto:reports@example.com"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Empty(record.Rua);
+        Assert.Contains("empty field", Assert.Single(record.Issues));
+    }
+
+    /// <summary>The one trailing semicolon the ABNF's [field-delim] allows.</summary>
+    [Fact]
+    public void Found_WhenTheRecordEndsWithASingleDelimiter()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1; rua=mailto:reports@example.com;"]);
+
+        Assert.Equal(TlsRptRecordStatus.Found, record.Status);
+        Assert.Equal(["mailto:reports@example.com"], record.Rua);
+        Assert.Empty(record.Issues);
+    }
+
     /// <summary>Extension fields are legal and ignored; the record is still usable.</summary>
     [Fact]
     public void Found_IgnoresUnknownFields()
@@ -87,6 +114,7 @@ public sealed class TlsRptRecordParserTests
     [InlineData("v=TLSRPTv1 junk;rua=mailto:stale@example.com")] // junk on the version field
     [InlineData("v=TLSRPTv1")]                               // no field after the version
     [InlineData("v=TLSRPTv1;")]                              // delimiter, still no field
+    [InlineData("v=TLSRPTv1;;rua=mailto:stale@example.com")] // empty field between delimiters
     [InlineData("  v=TLSRPTv1;rua=mailto:stale@example.com")] // leading whitespace, otherwise fine
     public void Found_WhenAMalformedRecordSitsBesideAValidOne(string stale)
     {

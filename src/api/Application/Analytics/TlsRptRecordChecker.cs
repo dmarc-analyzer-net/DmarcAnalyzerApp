@@ -218,15 +218,51 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
             return false;
         }
 
-        var rest = txt.AsSpan(TlsRptVersion.Length).TrimStart(" \t");
-        if (rest.Length == 0 || rest[0] != ';')
+        var segments = txt.Split(';');
+
+        // field-delim is *WSP ";" *WSP, so whitespace may sit between the
+        // version tag and the semicolon — but nothing else may. "v=TLSRPTv1
+        // junk;…" does not carry the version tag, it carries something starting
+        // with it.
+        if (segments[0].AsSpan(TlsRptVersion.Length).TrimStart(" \t").Length > 0)
         {
             return false;
         }
 
-        // 1*(field-delim tlsrpt-field): the delimiter has to be followed by an
-        // actual field, so "v=TLSRPTv1;" on its own is not a record either.
-        return rest[1..].TrimStart(" \t").Length > 0;
+        return HasWellFormedFields(segments);
+    }
+
+    /// <summary>
+    /// <c>1*(field-delim tlsrpt-field) [field-delim]</c>, checked against the
+    /// semicolon-split record: there must be at least one field, and a blank
+    /// slot is legal only as the single optional trailing delimiter. So
+    /// "v=TLSRPTv1;" has no field, and "v=TLSRPTv1;;rua=…" has an empty one —
+    /// neither is a record, however readable the second looks once a tag parser
+    /// has dropped the blank.
+    /// </summary>
+    private static bool HasWellFormedFields(string[] segments)
+    {
+        var fields = segments[1..];
+        if (fields.Length == 0)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < fields.Length; i++)
+        {
+            if (fields[i].AsSpan().Trim(" \t").Length > 0)
+            {
+                continue;
+            }
+
+            // Blank: only the last slot may be, and only if it isn't the only one.
+            if (i == 0 || i != fields.Length - 1)
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -257,8 +293,15 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
 
         var firstTag = FirstTag(candidate);
         var issue = string.Equals(firstTag, TlsRptVersion, StringComparison.Ordinal)
-            ? $"The record is {TlsRptVersion} and nothing else — RFC 8460 requires at least a rua= " +
-              "destination after it, so reporters have nowhere to send anything."
+            ? HasAnyField(candidate)
+                // The version is right and there is content, so the fault is in
+                // how the fields are delimited — saying "nothing else" here
+                // would be plainly false to anyone reading their own record.
+                ? "The record has an empty field — RFC 8460 allows one optional semicolon at the " +
+                  "end and requires a field after every other, so reporters do not parse it. " +
+                  "Remove the stray semicolon."
+                : $"The record is {TlsRptVersion} and nothing else — RFC 8460 requires at least a rua= " +
+                  "destination after it, so reporters have nowhere to send anything."
             : string.Equals(firstTag, TlsRptVersion, StringComparison.OrdinalIgnoreCase)
                 ? $"The version tag is spelled {firstTag} — RFC 8460 defines it as case-sensitive " +
                   $"{TlsRptVersion}, and reporters discard anything else."
@@ -290,4 +333,8 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
 
     /// <summary>The first semicolon-delimited tag, trimmed — where the version has to be.</summary>
     private static string FirstTag(string txt) => txt.Trim().Split(';')[0].Trim();
+
+    /// <summary>Whether anything at all follows the version tag — a delimited field, however malformed.</summary>
+    private static bool HasAnyField(string txt)
+        => txt.Split(';')[1..].Any(f => f.AsSpan().Trim(" \t").Length > 0);
 }
