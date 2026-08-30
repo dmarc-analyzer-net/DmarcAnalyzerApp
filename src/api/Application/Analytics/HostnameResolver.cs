@@ -18,24 +18,39 @@ public sealed class HostnameResolver(IMemoryCache cache, ILogger<HostnameResolve
 
     public async Task<IReadOnlyDictionary<string, string?>> ResolveAsync(IReadOnlyCollection<string> ips, CancellationToken ct)
     {
-        var results = new Dictionary<string, string?>();
-        var pending = new List<string>();
-
-        foreach (var raw in ips.Distinct())
+        // The address as the caller spelled it, mapped to its canonical form. Report
+        // records store the source IP exactly as the reporter wrote it and nothing
+        // normalises it on the way in, so an IPv6 address can arrive uppercase or
+        // uncompressed while IPAddress.ToString() only ever answers in lowercase
+        // compressed form. Answering under the canonical spelling handed the caller a
+        // key it never asked for and could not match against its own rows, which is
+        // why IPv6 sources stayed hostname-less however often they were requested.
+        // The cache still keys on the canonical form, so two spellings of one address
+        // share a single lookup.
+        var canonical = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var raw in ips)
         {
-            if (!IPAddress.TryParse(raw.Trim(), out var parsed))
+            var asked = raw.Trim();
+            if (canonical.ContainsKey(asked) || !IPAddress.TryParse(asked, out var parsed))
             {
                 continue;
             }
 
-            var normalized = parsed.ToString();
-            if (cache.TryGetValue<string?>(CacheKey(normalized), out var cached))
+            canonical[asked] = parsed.ToString();
+        }
+
+        var known = new Dictionary<string, string?>(StringComparer.Ordinal);
+        var pending = new List<string>();
+
+        foreach (var address in canonical.Values.Distinct(StringComparer.Ordinal))
+        {
+            if (cache.TryGetValue<string?>(CacheKey(address), out var cached))
             {
-                results[normalized] = cached;
+                known[address] = cached;
             }
             else
             {
-                pending.Add(normalized);
+                pending.Add(address);
             }
         }
 
@@ -56,10 +71,13 @@ public sealed class HostnameResolver(IMemoryCache cache, ILogger<HostnameResolve
 
         foreach (var (ip, hostname) in await Task.WhenAll(lookups))
         {
-            results[ip] = hostname;
+            known[ip] = hostname;
         }
 
-        return results;
+        return canonical.ToDictionary(
+            entry => entry.Key,
+            entry => known.GetValueOrDefault(entry.Value),
+            StringComparer.Ordinal);
     }
 
     private async Task<string?> LookupAsync(string ip, CancellationToken ct)
