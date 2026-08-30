@@ -57,6 +57,7 @@ import type {
   MtaStsPolicyResponse,
 } from '@/lib/entities'
 import { formatCompact, formatFullDate, formatPercent, formatRelativeOrDate, formatShortDate } from '@/lib/format'
+import { useHostnames } from '@/lib/use-hostnames'
 import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
 
@@ -1925,7 +1926,9 @@ export function DomainDetailPage() {
   const [sortDir, setSortDir] = useState<SortDir>('desc')
 
   usePageTitle(drilldown?.domain?.name ?? 'Domain')
-  const [hostnames, setHostnames] = useState<Record<string, string | null>>({})
+  // Reverse-DNS enrichment, resolved per row as it scrolls into view: this table
+  // renders every source it has and a real domain reached 1176 of them.
+  const { hostnames, observeSource } = useHostnames()
   const requestSeq = useRef(0)
 
   const loadData = useCallback(async () => {
@@ -1972,30 +1975,6 @@ export function DomainDetailPage() {
     const row = document.getElementById(`source-row-${selectedSource}`)
     row?.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [selectedSource, sources])
-
-  // Reverse-DNS enrichment: resolved lazily after the table renders so slow
-  // PTR lookups never block the sources list. Merges keep earlier answers.
-  useEffect(() => {
-    if (sources.length === 0) return
-    let cancelled = false
-    const ips = sources
-      .slice(0, 100)
-      .map((s) => s.sourceIp)
-      .filter(isAttributableSource)
-    if (ips.length === 0) return
-    void fetchJson<Record<string, string | null>>(
-      `/api/v1/analytics/hostnames?ips=${encodeURIComponent(ips.join(','))}`,
-    )
-      .then((resolved) => {
-        if (!cancelled) setHostnames((prev) => ({ ...prev, ...resolved }))
-      })
-      .catch(() => {
-        // Hostname enrichment is best-effort; the table stays IP-only on failure.
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [sources])
 
   // Back link to the domains list, preserving the window and client filter it was opened with.
   const backHref = useMemo(() => {
@@ -2333,6 +2312,10 @@ export function DomainDetailPage() {
                     return (
                       <tbody
                         key={source.sourceIp}
+                        // Attaching this is what asks for the reverse-DNS name, once the
+                        // group is near the viewport. An unattributed source has no
+                        // address to look up, so it is left unobserved.
+                        ref={attributable ? observeSource(source.sourceIp) : undefined}
                         className={cn(
                           'border-b border-[var(--gray-100)] transition-colors duration-[120ms] ease-out hover:bg-gray-50',
                           expanded && 'bg-gray-50',
