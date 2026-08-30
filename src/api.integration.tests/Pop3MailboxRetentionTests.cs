@@ -45,8 +45,7 @@ public sealed class Pop3MailboxRetentionTests(PostgresFixture postgres) : IAsync
     private static readonly Guid ClientId = Guid.Parse("33333333-3333-3333-3333-333333333333");
     private static readonly Guid SourceId = Guid.Parse("44444444-4444-4444-4444-444444444444");
 
-    private readonly IContainer _mail = new ContainerBuilder()
-        .WithImage("greenmail/standalone:2.1.9")
+    private readonly IContainer _mail = new ContainerBuilder("greenmail/standalone:2.1.9")
         .WithEnvironment(
             "GREENMAIL_OPTS",
             "-Dgreenmail.setup.test.smtp -Dgreenmail.setup.test.pop3 " +
