@@ -492,7 +492,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - the parser's `ValidationMessages` are still discarded by `MailboxSyncService`,
     so these repairs leave no trace an operator can find. Backlog item.
 
-- **DmarcRua is pinned at 2.0.1, and the alignment tags are read around it.** The
+- **The 2.0.0 → 2.0.1 upgrade, and the alignment workaround it forced.** The
   library publishes no releases or changelog, so the upgrade was reviewed by diffing
   the commits embedded in the two nuspecs (`5d30703` → `7a59061`). It is worth taking:
   parsing became namespace-agnostic, a `trusted_forwarded` → `trusted_forwarder`
@@ -538,6 +538,43 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - the namespace-stripping pass is **not** redundant on 2.0.1, though it looks it.
     See the rejected backlog item: removing it turns one explanatory warning into 31
     `Could not find schema information` warnings per namespaced report.
+
+- **DmarcRua is pinned at 2.1.0.** A single upstream commit (`7a59061` → `a16a9ef`,
+  authored 2026-08-15, published 2026-08-21), and it closed both issues this project
+  filed. Reviewed the same way as the last one, by diffing the commits embedded in
+  the nuspecs — the package's `releaseNotes` field says "Initial release", which is
+  boilerplate rather than a description. Still `netstandard2.0`, still no
+  dependencies. The bump is source-compatible: the API project builds unchanged and
+  all 61 `DmarcRuaReportParser` tests pass against it untouched.
+  - **#11 is fixed.** `CleanOutStringSpecials` now null-guards, so an omitted
+    `<adkim>`/`<aspf>` returns null from `.Adkim`/`.Aspf` instead of throwing.
+    Verified against the published package, not inferred from the diff. `MapAlignment`
+    can therefore go back to the properties — both conditions its doc comment sets out
+    now hold — but that is a separate change from the version bump.
+  - **#12 is half-fixed, and the missing half matters.**
+    `PolicyEvaluatedType.Disposition` is now an `ActionDispositionType`, so RFC 9990's
+    `pass` deserializes and reads back as `pass`. But `rua.xsd` still types that
+    element as `DispositionType`, so schema validation rejects the value: `HasErrors`
+    true, `ValidReport` false, and one `The value 'pass' is invalid according to its
+    datatype 'DispositionType'` error per report. **Keep the DMARCbis disposition
+    machinery** — the by-index capture and the `pass` → `none` transport rewrite —
+    until the schema catches up, because retiring it now would trade a working value
+    for a false error on every conformant DMARCbis report, and that lands directly on
+    the open backlog item to surface validation messages to operators. Should it ever
+    be retired, add `pass` to the `EnumRepairs` allowed set for
+    `policy_evaluated/disposition` *first*: it is not in that set, so dropping the
+    rewrite on its own would have our own repair pass silently substitute `none`.
+  - the namespace-stripping pass is still required. Re-measured on 2.1.0 rather than
+    carried over: 26 `Could not find schema information` warnings on a one-record
+    namespaced report with it removed.
+  - `DMARCResultType` still aliases `None = Pass`, so the deliberately narrowed
+    `EnumRepairs` sets stay exactly as they are.
+  - the rest is unused here: a new `TryReadAggregateReport` that reads without
+    throwing, `ReadAggregateReport` now clearing its validation state so an instance
+    is reusable, and the extension methods rewritten as C# 14 extension members with
+    null-hardening. `NamespaceIgnorantXmlReader` also moved out of the global
+    namespace into `DmarcRua`, which dates the closing aside on the rejected
+    namespace-stripping item in the backlog.
 
 ## Planned Next
 
