@@ -86,13 +86,43 @@ public sealed class TlsRptRecordParserTests
     [InlineData("v=tlsrptv1;rua=mailto:stale@example.com")]  // miscased version
     [InlineData("v=TLSRPTv1 junk;rua=mailto:stale@example.com")] // junk on the version field
     [InlineData("v=TLSRPTv1")]                               // no field after the version
-    [InlineData("  v=tlsrptv1;rua=mailto:stale@example.com")] // and leading whitespace
+    [InlineData("  v=TLSRPTv1;rua=mailto:stale@example.com")] // leading whitespace, otherwise fine
     public void Found_WhenAMalformedRecordSitsBesideAValidOne(string stale)
     {
         var record = TlsRptRecordChecker.Parse([stale, "v=TLSRPTv1;rua=mailto:good@example.com"]);
 
         Assert.Equal(TlsRptRecordStatus.Found, record.Status);
         Assert.Equal(["mailto:good@example.com"], record.Rua);
+    }
+
+    /// <summary>
+    /// The ABNF's field-delim is <c>*WSP ";" *WSP</c>, so a space before the
+    /// semicolon is legal and the record is fine. The RFC's prose discard rule
+    /// ("does not begin with v=TLSRPTv1;") reads stricter than its own grammar;
+    /// following the prose literally would fail a conforming domain.
+    /// </summary>
+    [Fact]
+    public void Found_WhenWhitespacePrecedesTheFieldDelimiter()
+    {
+        var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1 ; rua=mailto:reports@example.com"]);
+
+        Assert.Equal(TlsRptRecordStatus.Found, record.Status);
+        Assert.Equal(["mailto:reports@example.com"], record.Rua);
+        Assert.Empty(record.Issues);
+    }
+
+    /// <summary>
+    /// But whitespace *before* the version is not in the grammar — the record
+    /// starts at the version tag. Named as its own problem, since trimming it
+    /// away would report a record that has a rua as having nothing at all.
+    /// </summary>
+    [Fact]
+    public void Invalid_WhenTheRecordBeginsWithWhitespace()
+    {
+        var record = TlsRptRecordChecker.Parse(["  v=TLSRPTv1;rua=mailto:reports@example.com"]);
+
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Contains("begins with whitespace", Assert.Single(record.Issues));
     }
 
     /// <summary>Every comma needs a URI after it — a stray separator is a syntax error, not whitespace.</summary>

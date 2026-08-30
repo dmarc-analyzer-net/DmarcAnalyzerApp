@@ -188,20 +188,31 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
     }
 
     /// <summary>
-    /// The RFC's discard rule, in its own words: keep the records that begin
-    /// with <c>v=TLSRPTv1;</c>. Case-sensitive, because RFC 8460's ABNF writes
-    /// the version %s"v=TLSRPTv1" and RFC 7405's %s means exactly that — and
-    /// including the delimiter, because the grammar requires at least one field
-    /// after it. So "v=TLSRPTv1 junk;…" is not a record (the version tag is not
-    /// the whole tag), and neither is a bare "v=TLSRPTv1" (no field follows).
+    /// The RFC's discard rule, read off the ABNF rather than its prose summary:
+    /// the record *starts* at the version tag (there is no *WSP before
+    /// tlsrpt-version, so leading whitespace is not part of the grammar), the
+    /// version is case-sensitive (%s"v=TLSRPTv1"), and at least one delimited
+    /// field must follow. The delimiter itself is <c>*WSP ";" *WSP</c>, so
+    /// "v=TLSRPTv1 ; rua=…" is legal and a plain StartsWith("v=TLSRPTv1;")
+    /// would wrongly discard it.
     /// <para>
-    /// Both still get graded, just not counted — see
+    /// So this counts "v=TLSRPTv1;…" and "v=TLSRPTv1 ; …", and does not count a
+    /// bare version, a miscased one, "v=TLSRPTv1 junk;…", or anything with
+    /// leading whitespace. Those still get graded, just not counted — see
     /// <see cref="DescribeWithoutAValidRecord"/>. Keeping them out of the count
     /// is what stops a stale malformed record from invalidating a working one.
     /// </para>
     /// </summary>
     private static bool IsTlsRptRecord(string txt)
-        => txt.Trim().StartsWith(TlsRptVersion + ";", StringComparison.Ordinal);
+    {
+        if (!txt.StartsWith(TlsRptVersion, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var rest = txt.AsSpan(TlsRptVersion.Length).TrimStart(" \t");
+        return rest.Length > 0 && rest[0] == ';';
+    }
 
     /// <summary>
     /// Why there is no usable record. Publishing TLS-RPT is optional, so nothing
@@ -216,6 +227,17 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
         if (candidate is null)
         {
             return new TlsRptRecordDto(TlsRptRecordStatus.Missing, null, [], []);
+        }
+
+        // Leading whitespace is checked before the tag is read, because reading
+        // the tag trims it away — and "the record is v=TLSRPTv1 and nothing
+        // else" is a confusing thing to say about a record that has a rua and
+        // one stray space in front of it.
+        if (candidate.Length > 0 && char.IsWhiteSpace(candidate[0]))
+        {
+            return new TlsRptRecordDto(TlsRptRecordStatus.Invalid, candidate, [],
+                [$"The record begins with whitespace — RFC 8460's grammar starts it at {TlsRptVersion}, " +
+                 "so reporters do not recognize it. Republish the value without the leading space."]);
         }
 
         var firstTag = FirstTag(candidate);
