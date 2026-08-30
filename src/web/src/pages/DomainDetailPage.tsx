@@ -190,7 +190,22 @@ function EvaluatedChip({ combo }: { combo: EvaluatedCombo }) {
   )
 }
 
-function ValueList({ items, emptyText }: { items: ValueCount[]; emptyText: string }) {
+/**
+ * `<>` is not a missing value and not a rendering artifact: it is the RFC 5321 null
+ * reverse-path, which a reporter sends when the source's envelope sender was empty —
+ * what bounces, delivery status notifications and auto-replies use. Rendered raw it is
+ * a glyph nobody outside SMTP recognises (#196).
+ *
+ * It is deliberately not labelled "none" or "empty", which is what the issue asked for:
+ * that is the *other* case, the reporter not sending the element at all, and those rows
+ * are dropped from this list upstream. Collapsing the two would say a source sent no
+ * envelope sender when what it actually sent was a bounce.
+ */
+const NULL_REVERSE_PATH = '<>'
+const NULL_REVERSE_PATH_HINT =
+  'Empty envelope sender (RFC 5321 null reverse-path) — bounces, delivery status notifications and auto-replies'
+
+export function ValueList({ items, emptyText }: { items: ValueCount[]; emptyText: string }) {
   if (items.length === 0) {
     return <p className="mt-2 text-sm text-secondary">{emptyText}</p>
   }
@@ -198,7 +213,13 @@ function ValueList({ items, emptyText }: { items: ValueCount[]; emptyText: strin
     <ul className="mt-2 space-y-1.5">
       {items.map((item) => (
         <li key={item.value} className="flex items-baseline justify-between gap-3">
-          <span className="min-w-0 break-all font-mono text-xs text-body">{item.value}</span>
+          {item.value.trim() === NULL_REVERSE_PATH ? (
+            <span className="min-w-0 break-all text-xs text-body" title={NULL_REVERSE_PATH_HINT}>
+              null sender <span className="font-mono text-secondary">{NULL_REVERSE_PATH}</span>
+            </span>
+          ) : (
+            <span className="min-w-0 break-all font-mono text-xs text-body">{item.value}</span>
+          )}
           <span className="text-xs tabular-nums text-secondary">{formatCompact(item.messages)}</span>
         </li>
       ))}
