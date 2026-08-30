@@ -99,11 +99,17 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
 
         var issues = new List<string>();
         var destinations = new List<string>();
+        var malformedList = false;
 
-        // Empty elements are kept rather than dropped: RFC 8460 requires a URI
-        // after every comma, so "rua=mailto:a@example.com," is a syntax error a
-        // strict reporter may reject the whole record over. Silently trimming it
-        // would report the record as clean.
+        // Two different faults live in this loop, and only one of them is fatal.
+        //
+        // An empty element ("rua=mailto:a@example.com,") breaks the grammar:
+        // tlsrpt-rua requires a URI after every comma, and RFC 8460 obliges
+        // reporters to accept only records that are syntactically valid — so a
+        // strict one may drop the record entirely and this domain cannot be
+        // called configured. An unsupported scheme is not the same thing: the
+        // ABNF's tlsrpt-uri is any URI, so the record still parses and reporters
+        // simply ignore the destination they can't use.
         foreach (var uri in rua.Split(',', StringSplitOptions.TrimEntries))
         {
             // Only mailto: and https: are defined, and the value has to be a URI
@@ -116,8 +122,10 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
             }
             else if (uri.Length == 0)
             {
+                malformedList = true;
                 issues.Add("The rua list has an empty entry — RFC 8460 requires a URI after every " +
-                           "comma. Remove the stray separator.");
+                           "comma, and a reporter parsing strictly discards the whole record over " +
+                           "it. Remove the stray separator.");
             }
             else
             {
@@ -126,7 +134,7 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
             }
         }
 
-        if (destinations.Count == 0)
+        if (destinations.Count == 0 || malformedList)
         {
             return new TlsRptRecordDto(TlsRptRecordStatus.Invalid, raw, [], issues);
         }
@@ -211,7 +219,14 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
         }
 
         var rest = txt.AsSpan(TlsRptVersion.Length).TrimStart(" \t");
-        return rest.Length > 0 && rest[0] == ';';
+        if (rest.Length == 0 || rest[0] != ';')
+        {
+            return false;
+        }
+
+        // 1*(field-delim tlsrpt-field): the delimiter has to be followed by an
+        // actual field, so "v=TLSRPTv1;" on its own is not a record either.
+        return rest[1..].TrimStart(" \t").Length > 0;
     }
 
     /// <summary>

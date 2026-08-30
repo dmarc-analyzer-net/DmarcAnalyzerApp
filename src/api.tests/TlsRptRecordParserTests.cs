@@ -86,6 +86,7 @@ public sealed class TlsRptRecordParserTests
     [InlineData("v=tlsrptv1;rua=mailto:stale@example.com")]  // miscased version
     [InlineData("v=TLSRPTv1 junk;rua=mailto:stale@example.com")] // junk on the version field
     [InlineData("v=TLSRPTv1")]                               // no field after the version
+    [InlineData("v=TLSRPTv1;")]                              // delimiter, still no field
     [InlineData("  v=TLSRPTv1;rua=mailto:stale@example.com")] // leading whitespace, otherwise fine
     public void Found_WhenAMalformedRecordSitsBesideAValidOne(string stale)
     {
@@ -125,14 +126,20 @@ public sealed class TlsRptRecordParserTests
         Assert.Contains("begins with whitespace", Assert.Single(record.Issues));
     }
 
-    /// <summary>Every comma needs a URI after it — a stray separator is a syntax error, not whitespace.</summary>
+    /// <summary>
+    /// A stray comma breaks the grammar — tlsrpt-rua requires a URI after every
+    /// one — and RFC 8460 obliges reporters to accept only syntactically valid
+    /// records, so a strict one discards this outright. That is not the same as
+    /// an unsupported scheme, which parses fine and is merely ignored, so the
+    /// two are graded differently.
+    /// </summary>
     [Fact]
-    public void Found_WithAnIssue_WhenTheRuaListHasAStrayComma()
+    public void Invalid_WhenTheRuaListHasAStrayComma()
     {
         var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1; rua=mailto:reports@example.com,"]);
 
-        Assert.Equal(TlsRptRecordStatus.Found, record.Status);
-        Assert.Equal(["mailto:reports@example.com"], record.Rua);
+        Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
+        Assert.Empty(record.Rua);
         Assert.Contains("empty entry", Assert.Single(record.Issues));
     }
 
@@ -259,9 +266,9 @@ public sealed class TlsRptRecordParserTests
     }
 
     /// <summary>
-    /// The delimiter is part of the discard rule, so a version with no field is
-    /// not a record for counting purposes — but it is still a record with a
-    /// required field missing once it is the only thing at the name.
+    /// The ABNF wants 1*(field-delim tlsrpt-field), so a delimiter with nothing
+    /// after it is no more a record than a bare version is — but it is still a
+    /// record with its required field missing once it is alone at the name.
     /// </summary>
     [Fact]
     public void Invalid_WhenTheVersionHasADelimiterButNoFields()
@@ -269,7 +276,7 @@ public sealed class TlsRptRecordParserTests
         var record = TlsRptRecordChecker.Parse(["v=TLSRPTv1;"]);
 
         Assert.Equal(TlsRptRecordStatus.Invalid, record.Status);
-        Assert.Contains("no rua=", Assert.Single(record.Issues));
+        Assert.Contains("and nothing else", Assert.Single(record.Issues));
     }
 
     /// <summary>One good destination and one bad: usable, but the bad one is still worth saying.</summary>
