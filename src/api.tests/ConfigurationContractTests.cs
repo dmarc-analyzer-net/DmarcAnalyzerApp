@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using DmarcAnalyzer.Api.Application.Auth;
+using DmarcAnalyzer.Api.Application.Hosting;
 using Xunit;
 
 namespace DmarcAnalyzer.Api.Tests;
@@ -25,20 +26,12 @@ namespace DmarcAnalyzer.Api.Tests;
 /// </summary>
 public sealed class ConfigurationContractTests
 {
-    /// <summary>Config sections bound to a strongly-typed options class.</summary>
-    private static readonly (string Section, Type Type)[] BoundSections =
-    [
-        ("Worker", typeof(DmarcAnalyzer.Api.Workers.WorkerOptions)),
-        ("Email", typeof(DmarcAnalyzer.Api.Application.Notifications.EmailOptions)),
-        ("Alerts", typeof(DmarcAnalyzer.Api.Application.Notifications.AlertOptions)),
-        ("Digest", typeof(DmarcAnalyzer.Api.Application.Notifications.DigestOptions)),
-        ("Dns", typeof(DmarcAnalyzer.Api.Application.Analytics.DnsOptions)),
-        ("MtaSts", typeof(DmarcAnalyzer.Api.Application.MtaSts.MtaStsOptions)),
-        ("Retention", typeof(DmarcAnalyzer.Api.Application.Retention.RetentionOptions)),
-        ("Network", typeof(DmarcAnalyzer.Api.Application.Security.NetworkOptions)),
-        ("Backup", typeof(DmarcAnalyzer.Api.Application.Backup.BackupOptions)),
-        ("Auth:Oidc", typeof(OidcOptions)),
-    ];
+    /// <summary>
+    /// The registry the application itself validates against, so this file and
+    /// the startup check can never disagree about what a bound section is.
+    /// </summary>
+    private static readonly (string Section, Type Type)[] BoundSections
+        = ConfigurationPreflight.BoundSections;
 
     /// <summary>
     /// Settings read straight from <c>IConfiguration</c> rather than through an
@@ -93,7 +86,7 @@ public sealed class ConfigurationContractTests
     }
 
     private static string EnvName(string section, string property)
-        => $"{section.Replace(':', '_').Replace("_", "__")}__{property}";
+        => ConfigurationPreflight.EnvironmentVariableName($"{section}:{property}");
 
     public static TheoryData<string, string> EveryBoundSetting()
     {
@@ -187,8 +180,9 @@ public sealed class ConfigurationContractTests
             .ToArray();
 
         Assert.True(unregistered.Length == 0,
-            $"Options class not in BoundSections: {string.Join(", ", unregistered)}. " +
-            $"Add it with its section name, or list it in NotConfigurationSections with a reason.");
+            $"Options class not in ConfigurationPreflight.BoundSections: {string.Join(", ", unregistered)}. " +
+            $"Add it with its section name, or list it in NotConfigurationSections with a reason. " +
+            $"Until it is listed, its settings are neither documented here nor checked at startup.");
     }
 
     [Fact]
