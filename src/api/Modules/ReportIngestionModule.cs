@@ -18,6 +18,7 @@ namespace DmarcAnalyzer.Api.Modules;
 /// </summary>
 public sealed class ReportIngestionModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         app.MapPost("/api/v1/reports", async (

@@ -6,24 +6,32 @@ using DmarcAnalyzer.Api.Data.Entities;
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
 /// <summary>
-/// What became of one extracted payload. <see cref="Format"/> is what the bytes turned out
+/// What became of one extracted payload. <see cref="ReportPayloadIngestResult.Format"/> is what the bytes turned out
 /// to be, which is not always what the caller thought it was sending.
 /// </summary>
 public enum ReportPayloadOutcome
 {
+    /// <summary>Stored by the format's ingestor.</summary>
     Inserted,
+
+    /// <summary>Already stored; nothing written.</summary>
     Duplicate,
 
     /// <summary>Refused: the report is for a domain this source may not ingest for.</summary>
     ForeignDomainRefused,
 }
 
+/// <summary>The routed outcome: which format the bytes turned out to be, and what became of them.</summary>
 public sealed record ReportPayloadIngestResult(string Format, ReportPayloadOutcome Outcome)
 {
+    /// <summary>Format label for DMARC aggregate (RUA) XML.</summary>
     public const string Dmarc = "dmarc";
+
+    /// <summary>Format label for SMTP TLS-RPT JSON.</summary>
     public const string Tls = "tls";
 }
 
+/// <summary>Routes an extracted payload to the right parser and ingestor — see <see cref="ReportPayloadIngestor"/>.</summary>
 public interface IReportPayloadIngestor
 {
     /// <summary>
@@ -58,6 +66,7 @@ public sealed class ReportPayloadIngestor(
     IDmarcReportIngestor dmarcIngestor,
     ITlsReportIngestor tlsIngestor) : IReportPayloadIngestor
 {
+    /// <inheritdoc />
     public async Task<ReportPayloadIngestResult> IngestAsync(
         ExtractedReportPayload payload, ReportSource source, CancellationToken ct)
     {

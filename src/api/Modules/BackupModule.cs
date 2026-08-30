@@ -22,6 +22,7 @@ namespace DmarcAnalyzer.Api.Modules;
 /// </summary>
 public sealed class BackupModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         // Returned as a download rather than a plain body: this is a file an operator

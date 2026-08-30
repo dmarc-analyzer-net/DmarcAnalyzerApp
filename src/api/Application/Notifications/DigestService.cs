@@ -6,8 +6,10 @@ using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Application.Notifications;
 
+/// <summary>One row of the digest's worst-domains table.</summary>
 public sealed record DigestDomainLine(string Domain, long Messages, double ComplianceRate, string Policy);
 
+/// <summary>Everything one client's monthly digest email says, computed before rendering.</summary>
 public sealed record DigestSummary(
     Guid ClientId,
     string ClientName,
@@ -23,8 +25,10 @@ public sealed record DigestSummary(
     int AlertsRaised,
     IReadOnlyList<DigestDomainLine> WorstDomains);
 
+/// <summary>How a send pass went; Skipped counts clients already delivered for the period or with no recipients.</summary>
 public sealed record DigestSendResult(int ClientsConsidered, int Sent, int Skipped, IReadOnlyList<string> SentTo);
 
+/// <summary>The monthly digest — see <see cref="DigestService"/>.</summary>
 public interface IDigestService
 {
     /// <summary>Builds a client's summary for a period without sending anything.</summary>
@@ -58,6 +62,7 @@ public sealed class DigestService(
     private readonly DigestOptions _options = digestOptions.Value;
     private readonly EmailOptions _email = emailOptions.Value;
 
+    /// <inheritdoc />
     public async Task<DigestSummary?> BuildAsync(
         Guid clientId, DateTime periodStartUtc, DateTime periodEndUtc, CancellationToken ct)
     {
@@ -167,6 +172,7 @@ public sealed class DigestService(
                 g => g.OrderByDescending(x => x.RangeEndUtc).First().PublishedPolicy);
     }
 
+    /// <inheritdoc />
     public string Render(DigestSummary s)
     {
         var body = new StringBuilder();
@@ -220,6 +226,7 @@ public sealed class DigestService(
         return body.ToString();
     }
 
+    /// <inheritdoc />
     public async Task<DigestSendResult> SendDueAsync(CancellationToken ct)
     {
         if (!_options.Enabled)

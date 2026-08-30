@@ -5,8 +5,10 @@ using DmarcAnalyzer.Api.Application.MtaSts;
 
 namespace DmarcAnalyzer.Api.Modules;
 
+/// <summary>Endpoints under /api/v1/analytics and /api/v1/threats — the read-only analytics surface.</summary>
 public sealed class AnalyticsModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/v1/analytics/summary", async (

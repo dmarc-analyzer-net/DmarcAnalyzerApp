@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.MtaSts;
 
+/// <summary>Feeds the promotion gate its inputs — see <see cref="MtaStsReadinessEvaluator"/>.</summary>
 public interface IMtaStsReadinessService
 {
     /// <summary>
@@ -15,10 +16,12 @@ public interface IMtaStsReadinessService
     Task<MtaStsReadinessDto?> GetForDomainAsync(Guid domainId, CancellationToken ct);
 }
 
+/// <summary>Loads policy, state, and the TLS-RPT gate sample, then delegates to the pure evaluator.</summary>
 public sealed class MtaStsReadinessService(
     DmarcAnalyzerDbContext db,
     ITlsRptQueryService tlsRpt) : IMtaStsReadinessService
 {
+    /// <inheritdoc />
     public async Task<MtaStsReadinessDto?> GetForDomainAsync(Guid domainId, CancellationToken ct)
     {
         var policy = await db.MtaStsPolicies

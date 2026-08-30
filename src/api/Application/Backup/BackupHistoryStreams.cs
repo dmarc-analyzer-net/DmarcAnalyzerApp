@@ -7,7 +7,7 @@ namespace DmarcAnalyzer.Api.Application.Backup;
 /// One append-only table, and how to page through it by time.
 /// </summary>
 /// <param name="Name">Also the object-key segment and the <c>backup_stream_state</c> key.</param>
-/// <param name="ReadAsync">Rows at or after <paramref name="since"/>, oldest first. Null means everything.</param>
+/// <param name="ReadAsync">Rows at or after the given watermark, oldest first. Null means everything.</param>
 /// <param name="TimestampOf">The row's own time, used to advance the watermark.</param>
 public sealed record BackupHistoryStream(
     string Name,
@@ -40,6 +40,7 @@ public static class BackupHistoryStreams
     /// </summary>
     public const int MaxRowsPerPass = 5000;
 
+    /// <summary>The audit trail, paged by OccurredAtUtc.</summary>
     public static readonly BackupHistoryStream AuditEvents = new(
         "audit_event",
         async (db, since, ct) => await Page(
@@ -49,6 +50,7 @@ public static class BackupHistoryStreams
             ct),
         row => ((Data.Entities.AuditEvent)row).OccurredAtUtc);
 
+    /// <summary>Alert events, paged by DetectedAtUtc.</summary>
     public static readonly BackupHistoryStream AlertEvents = new(
         "alert_event",
         async (db, since, ct) => await Page(
@@ -58,6 +60,7 @@ public static class BackupHistoryStreams
             ct),
         row => ((Data.Entities.AlertEvent)row).DetectedAtUtc);
 
+    /// <summary>Digest deliveries, paged by SentAtUtc.</summary>
     public static readonly BackupHistoryStream DigestDeliveries = new(
         "digest_delivery",
         async (db, since, ct) => await Page(
@@ -67,6 +70,7 @@ public static class BackupHistoryStreams
             ct),
         row => ((Data.Entities.DigestDelivery)row).SentAtUtc);
 
+    /// <summary>Sync runs, paged by CreatedAtUtc.</summary>
     public static readonly BackupHistoryStream MailboxSyncRuns = new(
         "mailbox_sync_run",
         async (db, since, ct) => await Page(
@@ -76,6 +80,7 @@ public static class BackupHistoryStreams
             ct),
         row => ((Data.Entities.MailboxSyncRun)row).CreatedAtUtc);
 
+    /// <summary>DMARC ingest records, paged by IngestedAtUtc.</summary>
     public static readonly BackupHistoryStream ReportIngests = new(
         "dmarc_report_ingest",
         async (db, since, ct) => await Page(
@@ -85,6 +90,7 @@ public static class BackupHistoryStreams
             ct),
         row => ((Data.Entities.DmarcReportIngest)row).IngestedAtUtc);
 
+    /// <summary>TLS-RPT ingest records, paged by IngestedAtUtc.</summary>
     public static readonly BackupHistoryStream TlsReportIngests = new(
         "tls_report_ingest",
         async (db, since, ct) => await Page(
@@ -94,6 +100,7 @@ public static class BackupHistoryStreams
             ct),
         row => ((Data.Entities.TlsReportIngest)row).IngestedAtUtc);
 
+    /// <summary>Every stream the offload pass ships, in shipping order.</summary>
     public static readonly IReadOnlyList<BackupHistoryStream> All =
     [
         AuditEvents, AlertEvents, DigestDeliveries, MailboxSyncRuns, ReportIngests, TlsReportIngests,

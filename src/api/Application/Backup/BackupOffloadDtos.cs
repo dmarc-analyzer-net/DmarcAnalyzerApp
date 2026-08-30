@@ -32,6 +32,7 @@ public sealed record BackupStatusDto(
     string? LastError,
     IReadOnlyList<BackupStreamStatusDto> Streams);
 
+/// <summary>One offload stream's watermark and last outcome, for the status card.</summary>
 public sealed record BackupStreamStatusDto(
     string Stream,
     DateTime? WatermarkUtc,

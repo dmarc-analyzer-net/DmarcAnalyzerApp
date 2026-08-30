@@ -1,5 +1,6 @@
 namespace DmarcAnalyzer.Api.Application.Analytics;
 
+/// <summary>The live TLS-RPT record check — see <see cref="TlsRptRecordChecker"/>.</summary>
 public interface ITlsRptRecordChecker
 {
     /// <summary>
@@ -21,6 +22,7 @@ public sealed class TlsRptRecordChecker(IDnsTxtResolver dns) : ITlsRptRecordChec
     private const string TlsRptVersion = "v=TLSRPTv1";
 
 
+    /// <inheritdoc />
     public async Task<TlsRptRecordDto> CheckAsync(
         string domainName, CancellationToken ct, bool bypassCache = false)
         => Parse(await dns.ResolveAsync($"_smtp._tls.{domainName}", ct, bypassCache));

@@ -1,5 +1,10 @@
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
+/// <summary>
+/// One polled source's health row: the protocol-specific checkpoint (IMAP
+/// UID+UIDVALIDITY, POP3 UIDL, or S3 object key — the unused ones are null)
+/// plus the latest run's status and counters.
+/// </summary>
 public sealed record ReportSourceHealthDto(
     Guid ReportSourceId,
     string Name,

@@ -5,8 +5,10 @@ using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Modules;
 
+/// <summary>The OIDC challenge/complete endpoints; the callback itself is handled by the OIDC middleware.</summary>
 public sealed class OidcAuthModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/v1/auth/providers", (IOptions<OidcOptions> oidc) =>

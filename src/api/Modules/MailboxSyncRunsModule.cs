@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Routing;
 
 namespace DmarcAnalyzer.Api.Modules;
 
+/// <summary>GET /api/v1/mailbox-sync-runs — the sync history table.</summary>
 public sealed class MailboxSyncRunsModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/v1/mailbox-sync-runs", async (

@@ -4,8 +4,10 @@ using Microsoft.AspNetCore.Routing;
 
 namespace DmarcAnalyzer.Api.Modules;
 
+/// <summary>GET /api/v1/mailbox-health — checkpoint and last-run state per polled source.</summary>
 public sealed class MailboxHealthModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/v1/mailbox-health", async (

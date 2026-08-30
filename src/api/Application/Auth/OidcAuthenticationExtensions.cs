@@ -13,10 +13,19 @@ namespace DmarcAnalyzer.Api.Application.Auth;
 /// </summary>
 public static class OidcAuthenticationExtensions
 {
+    /// <summary>The short-lived cookie scheme that carries the external principal between callback and completion.</summary>
     public const string TempScheme = "external-temp";
+
+    /// <summary>The challenge scheme the login endpoint redirects into.</summary>
     public const string OidcScheme = "oidc";
+
+    /// <summary>The redirect URI to register at the provider.</summary>
     public const string CallbackPath = "/api/v1/auth/oidc/callback";
 
+    /// <summary>
+    /// Wires the two schemes when OIDC is enabled; a no-op otherwise. Fails
+    /// startup when DisableLocalLogin would lock every user out.
+    /// </summary>
     public static IServiceCollection AddOidcAuthentication(this IServiceCollection services, IConfiguration configuration)
     {
         services.Configure<OidcOptions>(configuration.GetSection(OidcOptions.SectionName));

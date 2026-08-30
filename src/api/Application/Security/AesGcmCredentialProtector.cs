@@ -11,12 +11,14 @@ namespace DmarcAnalyzer.Api.Application.Security;
 /// </summary>
 public sealed class AesGcmCredentialProtector : ICredentialProtector
 {
+    /// <summary>Marks a stored value as encrypted, and versions the format.</summary>
     public const string Prefix = "enc:v1:";
     private const int NonceSize = 12;
     private const int TagSize = 16;
 
     private readonly byte[] _key;
 
+    /// <summary>Validates and decodes the base64 32-byte master key; anything else fails startup.</summary>
     public AesGcmCredentialProtector(string base64Key)
     {
         if (string.IsNullOrWhiteSpace(base64Key))
@@ -39,6 +41,7 @@ public sealed class AesGcmCredentialProtector : ICredentialProtector
         }
     }
 
+    /// <inheritdoc />
     public string Protect(string plaintext)
     {
         ArgumentNullException.ThrowIfNull(plaintext);
@@ -64,6 +67,7 @@ public sealed class AesGcmCredentialProtector : ICredentialProtector
         return Prefix + Convert.ToBase64String(payload);
     }
 
+    /// <inheritdoc />
     public string Unprotect(string stored)
     {
         ArgumentNullException.ThrowIfNull(stored);
@@ -99,6 +103,7 @@ public sealed class AesGcmCredentialProtector : ICredentialProtector
         return Encoding.UTF8.GetString(plainBytes);
     }
 
+    /// <inheritdoc />
     public bool IsProtected(string stored)
         => stored.StartsWith(Prefix, StringComparison.Ordinal);
 }

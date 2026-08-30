@@ -5,8 +5,10 @@ using MimeKit;
 
 namespace DmarcAnalyzer.Api.Application.Notifications;
 
+/// <summary>Outbound notification mail — see <see cref="EmailSender"/>.</summary>
 public interface IEmailSender
 {
+    /// <summary>False when no SMTP relay is configured; sends then no-op and log.</summary>
     bool IsConfigured { get; }
 
     /// <summary>Sends one message. Returns false if delivery is off or failed; never throws.</summary>
@@ -24,8 +26,10 @@ public sealed class EmailSender(IOptions<EmailOptions> options, ILogger<EmailSen
 {
     private readonly EmailOptions _options = options.Value;
 
+    /// <inheritdoc />
     public bool IsConfigured => _options.IsConfigured;
 
+    /// <inheritdoc />
     public async Task<bool> SendAsync(
         IReadOnlyCollection<string> to, string subject, string body, CancellationToken ct)
     {

@@ -1,7 +1,9 @@
 namespace DmarcAnalyzer.Api.Workers;
 
+/// <summary>The <c>Worker:*</c> settings. Every property here must have a row in docs/ops/configuration.md — a test enforces it.</summary>
 public sealed class WorkerOptions
 {
+    /// <summary>Seconds between worker loop iterations.</summary>
     public int ScheduleIntervalSeconds { get; set; } = 300;
 
     /// <summary>
@@ -90,14 +92,22 @@ public sealed class WorkerOptions
     /// only ever be reached by something that has gone wrong or gone hostile.
     /// </para>
     /// </summary>
+    /// <summary>Requests allowed per credential per window on the push endpoint.</summary>
     public int ReportIngestRateLimitPermits { get; set; } = 60;
 
     /// <summary>Window the permit count applies to.</summary>
     public int ReportIngestRateLimitWindowSeconds { get; set; } = 60;
 
+    /// <summary>How many times the scheduled loop attempts a failing sync before giving up until next interval.</summary>
     public int MaxRetryAttempts { get; set; } = 3;
+
+    /// <summary>First retry delay between those attempts; doubles per attempt.</summary>
     public int RetryBaseDelaySeconds { get; set; } = 2;
+
+    /// <summary>Age at which a run still marked running is presumed dead and closed as failed.</summary>
     public int StaleRunTimeoutMinutes { get; set; } = 30;
+
+    /// <summary>Hard cancellation for one sync run; the drain budget should stop it gracefully first.</summary>
     public int SyncRunTimeoutMinutes { get; set; } = 10;
 
     /// <summary>Master switch for retention purging.</summary>

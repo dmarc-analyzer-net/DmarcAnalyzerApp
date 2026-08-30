@@ -5,6 +5,7 @@ using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Application.MtaSts;
 
+/// <summary>Serves hosted policies to anonymous traffic — see <see cref="MtaStsPolicyHostService"/>.</summary>
 public interface IMtaStsPolicyHostService
 {
     /// <summary>
@@ -37,6 +38,7 @@ public sealed class MtaStsPolicyHostService(
     /// <summary>Shared with the admin service, whose saves evict it.</summary>
     public static string CacheKey(string domainName) => $"mta-sts:policy:{domainName}";
 
+    /// <inheritdoc />
     public async Task<string?> GetPolicyBodyForHostAsync(string? host, CancellationToken ct)
     {
         var domainName = TryMapHostToDomain(host);
@@ -70,6 +72,7 @@ public sealed class MtaStsPolicyHostService(
         return body;
     }
 
+    /// <inheritdoc />
     public async Task<bool> IsKnownPolicyHostAsync(string? host, CancellationToken ct)
         => await GetPolicyBodyForHostAsync(host, ct) is not null;
 

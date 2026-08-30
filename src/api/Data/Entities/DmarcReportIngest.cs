@@ -1,5 +1,10 @@
 namespace DmarcAnalyzer.Api.Data.Entities;
 
+/// <summary>
+/// The DMARC provenance ledger: one row per report per source saying where it
+/// came from and what became of it (inserted/duplicate/failed). Survives report
+/// deletion so retention does not erase the record that ingestion happened.
+/// </summary>
 public sealed class DmarcReportIngest
 {
     public Guid Id { get; set; } = Guid.NewGuid();

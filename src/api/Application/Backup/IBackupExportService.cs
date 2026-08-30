@@ -2,6 +2,7 @@ using DmarcAnalyzer.Api.Application.Common;
 
 namespace DmarcAnalyzer.Api.Application.Backup;
 
+/// <summary>Builds the configuration artifact — see <see cref="BackupExportService"/>.</summary>
 public interface IBackupExportService
 {
     /// <summary>

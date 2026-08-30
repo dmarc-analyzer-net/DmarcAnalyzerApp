@@ -45,6 +45,7 @@ public sealed class NetworkOptions
     public int ForwardLimit { get; set; } = 1;
 }
 
+/// <summary>Translates <c>Network__*</c> settings into the framework's forwarded-headers middleware.</summary>
 public static class ForwardedHeadersSetup
 {
     /// <summary>

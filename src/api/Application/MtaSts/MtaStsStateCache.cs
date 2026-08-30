@@ -9,6 +9,7 @@ namespace DmarcAnalyzer.Api.Application.MtaSts;
 /// <summary>How a check pass went, for the worker log.</summary>
 public sealed record MtaStsRefreshResult(int Checked, int Changed, int Failed);
 
+/// <summary>The persisted per-domain MTA-STS state — see <see cref="MtaStsStateCache"/>.</summary>
 public interface IMtaStsStateCache
 {
     /// <summary>
@@ -40,6 +41,7 @@ public sealed class MtaStsStateCache(
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    /// <inheritdoc />
     public async Task<MtaStsRefreshResult> RefreshAllAsync(CancellationToken ct)
     {
         var domains = await db.Domains
@@ -125,6 +127,7 @@ public sealed class MtaStsStateCache(
         return new MtaStsRefreshResult(domains.Count, changed, failed);
     }
 
+    /// <inheritdoc />
     public async Task<MtaStsState> ApplyAsync(Guid domainId, MtaStsCheckResult result, CancellationToken ct)
     {
         var state = await db.MtaStsStates.SingleOrDefaultAsync(s => s.DomainId == domainId, ct);

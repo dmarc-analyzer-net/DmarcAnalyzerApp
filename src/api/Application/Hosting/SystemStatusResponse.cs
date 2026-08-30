@@ -28,8 +28,10 @@ public sealed record SystemStatusResponse(
     string? Revision,
     DateTime TimestampUtc)
 {
+    /// <summary>The fixed <c>service</c> value in the payload.</summary>
     public const string ServiceName = "dmarc-analyzer-api";
 
+    /// <summary>Builds the payload from the resolved mode and build info.</summary>
     public static SystemStatusResponse For(AppMode mode, AppVersionInfo version, DateTime nowUtc)
         => new(ServiceName, mode.ToName(), version.Version, version.Revision, nowUtc);
 }

@@ -1,5 +1,10 @@
 namespace DmarcAnalyzer.Api.Data.Entities;
 
+/// <summary>
+/// One row of an aggregate report: a source IP's volume and its evaluated
+/// (aligned) DKIM/SPF verdicts. The denormalised ReportRangeBeginUtc is what
+/// analytics windows filter on without joining the report.
+/// </summary>
 public sealed class DmarcReportRecord
 {
     public Guid Id { get; set; } = Guid.NewGuid();

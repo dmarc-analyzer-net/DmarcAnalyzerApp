@@ -37,11 +37,17 @@ public sealed record MtaStsPolicyResponse(
 /// <summary>What an upsert did, for auditing and for the bulk response.</summary>
 public static class MtaStsPolicyOutcome
 {
+    /// <summary>No policy existed for the domain before.</summary>
     public const string Created = "created";
+
+    /// <summary>Content changed, so the policy id was bumped.</summary>
     public const string Updated = "updated";
+
+    /// <summary>Nothing about the rendered policy changed; the id stayed put.</summary>
     public const string Unchanged = "unchanged";
 }
 
+/// <summary>The upsert's outcome plus the previous policy id when one was replaced.</summary>
 public sealed record MtaStsPolicyUpsertResult(
     MtaStsPolicyResponse Response,
     string Outcome,
@@ -59,5 +65,6 @@ public sealed record MtaStsPolicyApplyOutcomeDto(
     string TxtRecordName,
     string TxtRecordValue);
 
+/// <summary>The bulk apply's per-domain outcomes, in request order.</summary>
 public sealed record MtaStsPolicyBulkApplyResponse(
     IReadOnlyList<MtaStsPolicyApplyOutcomeDto> Results);

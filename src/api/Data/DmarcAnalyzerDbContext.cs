@@ -3,6 +3,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Data;
 
+/// <summary>
+/// The one EF context. Mappings, keys, and cascade rules live in
+/// OnModelCreating; there are deliberately no global query filters — tenancy is
+/// enforced in the service layer, so nothing here saves a query that forgets it.
+/// </summary>
 public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbContext> options) : DbContext(options)
 {
     public DbSet<Client> Clients => Set<Client>();
@@ -32,6 +37,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<ApiCredential> ApiCredentials => Set<ApiCredential>();
     public DbSet<ReportIngestReceipt> ReportIngestReceipts => Set<ReportIngestReceipt>();
 
+    /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AgencyUser>(entity =>

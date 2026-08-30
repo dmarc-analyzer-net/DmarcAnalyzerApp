@@ -7,8 +7,10 @@ using Microsoft.AspNetCore.Routing;
 
 namespace DmarcAnalyzer.Api.Modules;
 
+/// <summary>Endpoints under /api/v1/domains, including the per-domain record/MTA-STS/TLS-RPT panels.</summary>
 public sealed class DomainsModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/v1/domains/{id:guid}", async (Guid id, IDomainService service, CancellationToken ct) =>

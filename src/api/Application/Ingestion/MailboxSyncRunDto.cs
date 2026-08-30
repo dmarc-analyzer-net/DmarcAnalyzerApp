@@ -1,5 +1,6 @@
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
+/// <summary>A mailbox_sync_run row as the console's history table reads it.</summary>
 public sealed record MailboxSyncRunDto(
     Guid Id,
     Guid ReportSourceId,

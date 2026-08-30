@@ -14,6 +14,7 @@ namespace DmarcAnalyzer.Api.Application.MtaSts;
 /// </summary>
 public static class MtaStsPublicEndpoints
 {
+    /// <summary>Maps /.well-known/mta-sts.txt (GET/HEAD) and the Caddy ask endpoint.</summary>
     public static IEndpointRouteBuilder MapMtaStsPublicEndpoints(this IEndpointRouteBuilder app)
     {
         // MapGet alone answers HEAD with 405, and uptime checkers HEAD this.

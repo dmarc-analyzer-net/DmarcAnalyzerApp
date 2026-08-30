@@ -15,8 +15,10 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 /// </summary>
 public sealed class ImapMailboxTransport(ILogger<ImapMailboxTransport> logger) : IPolledSourceTransport
 {
+    /// <inheritdoc />
     public string Protocol => ReportSourceProtocols.Imap;
 
+    /// <inheritdoc />
     public async Task<IPolledReadSession> OpenForReadAsync(
         ReportSource source, string password, CancellationToken ct)
     {
@@ -75,6 +77,7 @@ public sealed class ImapMailboxTransport(ILogger<ImapMailboxTransport> logger) :
         }
     }
 
+    /// <inheritdoc />
     public async Task<IPolledPruneSession> OpenForPruneAsync(
         ReportSource source, string password, DateTime cutoffUtc, bool dryRun, CancellationToken ct)
     {

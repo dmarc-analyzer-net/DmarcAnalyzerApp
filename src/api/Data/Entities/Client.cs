@@ -1,5 +1,6 @@
 namespace DmarcAnalyzer.Api.Data.Entities;
 
+/// <summary>The tenant root. Domains belong to a client; everything else derives tenancy through the domain.</summary>
 public sealed class Client
 {
     public Guid Id { get; set; } = Guid.NewGuid();

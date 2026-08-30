@@ -40,6 +40,7 @@ public sealed class WorkerSingleInstanceLock(
 
     private NpgsqlConnection? _connection;
 
+    /// <summary>Takes the advisory lock, or throws to stop this process from becoming a second worker.</summary>
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         if (!options.Value.EnforceSingleInstance)
@@ -88,6 +89,7 @@ public sealed class WorkerSingleInstanceLock(
         logger.LogInformation("Acquired the ingestion lock; this is the only worker on this database.");
     }
 
+    /// <summary>Nothing to do — the lock dies with the connection, which dies with the process.</summary>
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     /// <summary>

@@ -6,9 +6,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
+/// <summary>What became of one parsed DMARC report.</summary>
 public enum DmarcReportIngestOutcome
 {
+    /// <summary>Stored, with its records, auth results, and ledger row.</summary>
     Inserted,
+
+    /// <summary>Already stored (the domain/report-id/range unique index); nothing written.</summary>
     Duplicate,
 
     /// <summary>
@@ -18,6 +22,7 @@ public enum DmarcReportIngestOutcome
     ForeignDomainRefused,
 }
 
+/// <summary>Persists parsed DMARC reports — see <see cref="DmarcReportIngestor"/>.</summary>
 public interface IDmarcReportIngestor
 {
     /// <summary>
@@ -52,6 +57,7 @@ public sealed class DmarcReportIngestor(
     DmarcAnalyzerDbContext db,
     IDomainIngestResolver domainResolver) : IDmarcReportIngestor
 {
+    /// <inheritdoc />
     public async Task<DmarcReportIngestOutcome> IngestAsync(
         DmarcReportParseResult parsed, ReportSource source, CancellationToken ct)
     {

@@ -4,18 +4,25 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Analytics;
 
+/// <summary>The record-inspection card's read side — see <see cref="RecordInspectionService"/>.</summary>
 public interface IRecordInspectionService
 {
     /// <summary>Live DNS DMARC/SPF records for the domain, compared against what reporters observed.</summary>
     Task<RecordInspectionDto?> InspectAsync(Guid domainId, CancellationToken ct);
 }
 
+/// <summary>
+/// Performs the live-DNS half of the domain detail page: fetch and parse the
+/// DMARC/SPF records, resolve inheritance, and compare against the
+/// policy_published block reporters most recently echoed back.
+/// </summary>
 public sealed class RecordInspectionService(
     DmarcAnalyzerDbContext db,
     ICurrentUserContext currentUser,
     IDnsTxtResolver dns,
     IDmarcPolicyResolver policyResolver) : IRecordInspectionService
 {
+    /// <inheritdoc />
     public async Task<RecordInspectionDto?> InspectAsync(Guid domainId, CancellationToken ct)
     {
         var domain = await db.Domains
@@ -222,6 +229,11 @@ public sealed class RecordInspectionService(
         };
     }
 
+    /// <summary>
+    /// Parses the DMARC record out of the TXT strings at _dmarc.{domain}.
+    /// Null input means the lookup failed; no v=DMARC1 string means missing.
+    /// Static and side-effect free so tests can feed it records directly.
+    /// </summary>
     public static DnsDmarcRecordDto ParseDmarc(IReadOnlyList<string>? txts)
     {
         if (txts is null)
@@ -366,6 +378,11 @@ public sealed class RecordInspectionService(
 
     // --- SPF (RFC 7208) ---
 
+    /// <summary>
+    /// Parses the SPF record(s) out of a domain's TXT strings, counting
+    /// DNS-costing mechanisms against the RFC 7208 limit of 10. More than one
+    /// v=spf1 record is itself a permerror-level issue and is flagged.
+    /// </summary>
     public static DnsSpfRecordDto ParseSpf(IReadOnlyList<string>? txts)
     {
         if (txts is null)

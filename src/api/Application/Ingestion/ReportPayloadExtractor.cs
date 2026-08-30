@@ -64,6 +64,10 @@ public sealed class ReportPayloadTooLargeException(string limitName, long limitV
 /// </summary>
 public static class ReportPayloadExtractor
 {
+    /// <summary>
+    /// Decompresses one attachment into report payloads under the given limits.
+    /// Truncation is reported on the set, never silent.
+    /// </summary>
     public static async Task<ExtractedPayloadSet> ExtractAsync(
         MimeEntity attachment,
         ReportPayloadLimits limits,

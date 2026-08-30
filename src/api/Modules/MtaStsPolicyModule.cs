@@ -6,8 +6,10 @@ using DmarcAnalyzer.Api.Contracts.MtaSts;
 
 namespace DmarcAnalyzer.Api.Modules;
 
+/// <summary>Endpoints for hosted MTA-STS policies: per-domain CRUD and per-client bulk apply.</summary>
 public sealed class MtaStsPolicyModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/v1/domains/{domainId:guid}/mta-sts-policy", async (

@@ -50,8 +50,10 @@ public enum AppMode
 /// </summary>
 public sealed record AppRuntimeInfo(AppMode Mode);
 
+/// <summary>Parses and names the process mode — the one reader of <c>APP_MODE</c>.</summary>
 public static class AppRuntimeMode
 {
+    /// <summary>The variable a deployment sets to choose the mode.</summary>
     public const string EnvironmentVariable = "APP_MODE";
 
     /// <summary>

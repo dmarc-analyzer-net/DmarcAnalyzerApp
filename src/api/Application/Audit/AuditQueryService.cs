@@ -4,6 +4,11 @@ using Microsoft.EntityFrameworkCore;
 namespace DmarcAnalyzer.Api.Application.Audit;
 
 /// <summary>One audit-trail entry as the console reads it.</summary>
+/// <param name="ClientName">
+/// The client's name as recorded when the event happened. Falls back to the
+/// current name for rows written before that was captured, and is null when
+/// the event has no client or the client is gone and nothing was recorded.
+/// </param>
 public sealed record AuditEventDto(
     Guid Id,
     DateTime OccurredAtUtc,
@@ -14,11 +19,6 @@ public sealed record AuditEventDto(
     string? TargetType,
     Guid? TargetId,
     Guid? ClientId,
-    /// <summary>
-    /// The client's name as recorded when the event happened. Falls back to the
-    /// current name for rows written before that was captured, and is null when
-    /// the event has no client or the client is gone and nothing was recorded.
-    /// </summary>
     string? ClientName,
     string Summary,
     string? Details,
@@ -29,6 +29,11 @@ public sealed record AuditEventDto(
 /// "showing 100 of 4,812" instead of leaving the reader to guess.</summary>
 public sealed record AuditEventPageDto(int Total, IReadOnlyList<AuditEventDto> Items);
 
+/// <summary>
+/// The audit filter as the endpoint binds it. Actor is a case-insensitive
+/// substring of the actor email; EventType matches exactly or as a dotted
+/// prefix, so <c>client</c> finds client.created and client.updated.
+/// </summary>
 public sealed record AuditQuery(
     int? Days = null,
     string? EventType = null,
@@ -43,10 +48,16 @@ public sealed record AuditQuery(
 /// </summary>
 public sealed class AuditQueryService(DmarcAnalyzerDbContext db)
 {
+    /// <summary>Page size when the request names none.</summary>
     public const int DefaultLimit = 200;
+
+    /// <summary>Hard cap on one page, whatever the request asks for.</summary>
     public const int MaxLimit = 1000;
+
+    /// <summary>The furthest back a query may reach (two years).</summary>
     public const int MaxDays = 730;
 
+    /// <summary>One page of the trail, newest first, plus the unpaged total.</summary>
     public async Task<AuditEventPageDto> QueryAsync(AuditQuery request, CancellationToken ct)
     {
         var since = DateTime.UtcNow.AddDays(-Math.Clamp(request.Days ?? 30, 1, MaxDays));

@@ -1,5 +1,6 @@
 namespace DmarcAnalyzer.Api.Contracts.ReportSources;
 
+/// <summary>Body of PATCH /report-sources/{id}; null fields stay unchanged, an omitted secret keeps the stored one.</summary>
 public sealed class UpdateReportSourceRequest
 {
     public string? Name { get; set; }

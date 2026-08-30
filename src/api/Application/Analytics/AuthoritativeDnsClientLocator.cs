@@ -4,6 +4,7 @@ using DnsClient.Protocol;
 
 namespace DmarcAnalyzer.Api.Application.Analytics;
 
+/// <summary>Locates a domain's authoritative nameserver for cache-bypassing lookups.</summary>
 public interface IAuthoritativeDnsClientLocator
 {
     /// <summary>
@@ -45,6 +46,7 @@ public sealed class AuthoritativeDnsClientLocator(ILogger<AuthoritativeDnsClient
         UseCache = false,
     });
 
+    /// <inheritdoc />
     public async Task<LookupClient?> LocateAsync(string name, CancellationToken ct)
     {
         IReadOnlyList<NsRecord>? ns = null;

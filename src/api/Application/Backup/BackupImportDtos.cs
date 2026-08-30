@@ -59,6 +59,7 @@ public static class BackupImportModes
         return false;
     }
 
+    /// <summary>The wire spelling of a mode, for echoing back in responses.</summary>
     public static string ToWireValue(BackupImportMode mode)
         => mode == BackupImportMode.Restore ? Restore : Merge;
 }

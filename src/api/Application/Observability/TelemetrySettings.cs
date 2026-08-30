@@ -3,8 +3,13 @@ namespace DmarcAnalyzer.Api.Application.Observability;
 /// <summary>Where one signal is sent, if anywhere.</summary>
 public enum TelemetrySink
 {
+    /// <summary>Not exported; the pipeline for this signal is not even built.</summary>
     None,
+
+    /// <summary>OTLP to the endpoint the OTEL_* variables name.</summary>
     Otlp,
+
+    /// <summary>Stdout, for debugging what would be exported.</summary>
     Console,
 }
 
@@ -29,6 +34,7 @@ public sealed record TelemetrySettings(
     TelemetrySink Metrics,
     TelemetrySink Logs)
 {
+    /// <summary>service.name when OTEL_SERVICE_NAME is unset.</summary>
     public const string DefaultServiceName = "dmarc-analyzer";
 
     /// <summary>True when at least one signal has somewhere to go.</summary>

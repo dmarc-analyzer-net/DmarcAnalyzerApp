@@ -53,6 +53,12 @@ public static class ReportSourceProtocols
     public static bool IsMailbox(string protocol) => protocol is Imap or Pop3;
 }
 
+/// <summary>
+/// Where reports come from: a polled mailbox (imap/pop3), a polled bucket (s3),
+/// or a push endpoint (api). One row carries the union of the protocols'
+/// connection and checkpoint fields; the protocol decides which mean anything.
+/// New domains seen in its reports are created under DefaultClientId.
+/// </summary>
 public sealed class ReportSource
 {
     public Guid Id { get; set; } = Guid.NewGuid();

@@ -26,16 +26,27 @@ public sealed record ApiCredentialDto(
 /// </summary>
 public sealed record IssuedApiCredentialDto(ApiCredentialDto Credential, string Token);
 
+/// <summary>Issues, lists, and revokes the bearer tokens that authenticate pushed-report ingestion.</summary>
 public interface IApiCredentialService
 {
+    /// <summary>All credentials, newest first, optionally only those bound to one report source.</summary>
     Task<IReadOnlyList<ApiCredentialDto>> ListAsync(Guid? reportSourceId, CancellationToken ct);
+
+    /// <summary>
+    /// Mints a credential for a push source. The returned token exists only in
+    /// this response — the database keeps a hash.
+    /// </summary>
     Task<ServiceResult<IssuedApiCredentialDto>> IssueAsync(
         Guid reportSourceId, string name, DateTime? expiresAtUtc, Guid? createdByUserId, CancellationToken ct);
+
+    /// <summary>Revokes a credential. Idempotent — a second revoke succeeds and changes nothing.</summary>
     Task<ServiceResult<ApiCredentialDto>> RevokeAsync(Guid id, CancellationToken ct);
 }
 
+/// <summary>EF-backed <see cref="IApiCredentialService"/>. Token generation and hashing live in <see cref="Security.MachineToken"/>.</summary>
 public sealed class ApiCredentialService(DmarcAnalyzerDbContext db) : IApiCredentialService
 {
+    /// <inheritdoc />
     public async Task<IReadOnlyList<ApiCredentialDto>> ListAsync(Guid? reportSourceId, CancellationToken ct)
     {
         var query = db.ApiCredentials.AsNoTracking();
@@ -61,6 +72,7 @@ public sealed class ApiCredentialService(DmarcAnalyzerDbContext db) : IApiCreden
             x.RevokedAtUtc is null && (x.ExpiresAtUtc is null || x.ExpiresAtUtc > now)))];
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<IssuedApiCredentialDto>> IssueAsync(
         Guid reportSourceId, string name, DateTime? expiresAtUtc, Guid? createdByUserId, CancellationToken ct)
     {
@@ -107,6 +119,7 @@ public sealed class ApiCredentialService(DmarcAnalyzerDbContext db) : IApiCreden
         return ServiceResult<IssuedApiCredentialDto>.Success(new IssuedApiCredentialDto(dto, issued.Presented));
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<ApiCredentialDto>> RevokeAsync(Guid id, CancellationToken ct)
     {
         var credential = await db.ApiCredentials

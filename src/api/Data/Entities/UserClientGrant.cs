@@ -1,5 +1,6 @@
 namespace DmarcAnalyzer.Api.Data.Entities;
 
+/// <summary>Grants a client_viewer user one client. Absent rows are the deny; staff roles bypass grants entirely.</summary>
 public sealed class UserClientGrant
 {
     public Guid Id { get; set; } = Guid.NewGuid();

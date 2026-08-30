@@ -1,10 +1,14 @@
 namespace DmarcAnalyzer.Api.Data.Entities;
 
+/// <summary>One sync attempt of one polled source: trigger, status, counters, and error if it failed.</summary>
 public sealed class MailboxSyncRun
 {
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid ReportSourceId { get; set; }
+    /// <summary>scheduled (the worker loop), manual (the console button), or unknown.</summary>
     public string Trigger { get; set; } = "scheduled";
+
+    /// <summary>running → success, partial (timed out mid-drain but checkpointed), or failed.</summary>
     public string Status { get; set; } = "running";
     public DateTime StartedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime? FinishedAtUtc { get; set; }

@@ -14,6 +14,7 @@ public sealed record TlsRptParseResult(
     IReadOnlyList<TlsRptPolicyParseResult> Policies,
     IReadOnlyList<string> ValidationMessages);
 
+/// <summary>One policy block of a TLS report: which policy was applied to a domain, and its session counts.</summary>
 public sealed record TlsRptPolicyParseResult(
     string PolicyType,
     string PolicyDomain,
@@ -23,6 +24,7 @@ public sealed record TlsRptPolicyParseResult(
     long FailureSessionCount,
     IReadOnlyList<TlsRptFailureDetailParseResult> FailureDetails);
 
+/// <summary>One failure-details entry: a result-type and where it was observed.</summary>
 public sealed record TlsRptFailureDetailParseResult(
     string ResultType,
     string? SendingMtaIp,

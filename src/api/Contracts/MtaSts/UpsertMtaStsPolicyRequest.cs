@@ -1,5 +1,6 @@
 namespace DmarcAnalyzer.Api.Contracts.MtaSts;
 
+/// <summary>Body of PUT /domains/{id}/mta-sts/policy — the desired hosted policy.</summary>
 public sealed class UpsertMtaStsPolicyRequest
 {
     public bool Enabled { get; set; } = true;

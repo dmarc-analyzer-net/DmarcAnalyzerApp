@@ -9,9 +9,16 @@ namespace DmarcAnalyzer.Api.Application.Reports;
 /// </summary>
 public static class TlsRptFailureClassifier
 {
+    /// <summary>The domain's own MTA-STS policy caused the failure — the promotion gate's signal.</summary>
     public const string Sts = "sts";
+
+    /// <summary>DANE/TLSA validation failed.</summary>
     public const string Dane = "dane";
+
+    /// <summary>The TLS session itself failed — a receiving MX problem, not the domain's policy.</summary>
     public const string Transport = "transport";
+
+    /// <summary>A result-type outside the RFC's list, stored raw.</summary>
     public const string Other = "other";
 
     /// <summary>

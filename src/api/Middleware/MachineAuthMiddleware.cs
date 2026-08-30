@@ -31,6 +31,7 @@ public sealed class MachineAuthMiddleware(RequestDelegate next)
     /// </summary>
     private static readonly TimeSpan LastUsedWriteInterval = TimeSpan.FromHours(1);
 
+    /// <summary>Authenticates a bearer token if one is presented; never rejects — that is the authorizer's job.</summary>
     public async Task InvokeAsync(
         HttpContext context, DmarcAnalyzerDbContext db, MachineCallerContext machineCaller)
     {

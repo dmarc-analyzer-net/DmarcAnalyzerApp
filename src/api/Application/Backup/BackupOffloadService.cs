@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Application.Backup;
 
+/// <summary>The scheduled S3 offload — see <see cref="BackupOffloadService"/>.</summary>
 public interface IBackupOffloadService
 {
     /// <summary>
@@ -17,6 +18,7 @@ public interface IBackupOffloadService
     /// </summary>
     Task<BackupOffloadResult> RunAsync(CancellationToken ct);
 
+    /// <summary>What the console's backup card shows: configuration, watermarks, last errors.</summary>
     Task<BackupStatusDto> GetStatusAsync(CancellationToken ct);
 }
 
@@ -42,6 +44,7 @@ public sealed class BackupOffloadService(
 
     private readonly BackupOptions _options = options.Value;
 
+    /// <inheritdoc />
     public async Task<BackupOffloadResult> RunAsync(CancellationToken ct)
     {
         if (!storage.IsConfigured)
@@ -242,6 +245,7 @@ public sealed class BackupOffloadService(
         WriteIndented = false,
     };
 
+    /// <inheritdoc />
     public async Task<BackupStatusDto> GetStatusAsync(CancellationToken ct)
     {
         var states = await db.BackupStreamStates.AsNoTracking().OrderBy(x => x.Stream).ToListAsync(ct);

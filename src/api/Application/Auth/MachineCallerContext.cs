@@ -13,21 +13,41 @@ namespace DmarcAnalyzer.Api.Application.Auth;
 /// </summary>
 public interface IMachineCallerContext
 {
+    /// <summary>True once a bearer token has been verified for this request.</summary>
     bool IsAuthenticated { get; }
+
+    /// <summary>The api_credential row that authenticated, for auditing.</summary>
     Guid CredentialId { get; }
+
+    /// <summary>The operator-chosen credential name, for auditing.</summary>
     string CredentialName { get; }
+
+    /// <summary>The credential kind (e.g. report_push) — endpoints require a specific one.</summary>
     string Kind { get; }
 
     /// <summary>The source this credential ingests for, and therefore the client its data lands under.</summary>
     Guid ReportSourceId { get; }
 }
 
+/// <summary>
+/// The request-scoped <see cref="IMachineCallerContext"/>. Starts unauthenticated;
+/// the bearer-token middleware calls <c>Set</c> once the credential checks out.
+/// </summary>
 public sealed class MachineCallerContext : IMachineCallerContext
 {
+    /// <inheritdoc />
     public bool IsAuthenticated { get; private set; }
+
+    /// <inheritdoc />
     public Guid CredentialId { get; private set; }
+
+    /// <inheritdoc />
     public string CredentialName { get; private set; } = string.Empty;
+
+    /// <inheritdoc />
     public string Kind { get; private set; } = string.Empty;
+
+    /// <inheritdoc />
     public Guid ReportSourceId { get; private set; }
 
     internal void Set(Guid credentialId, string credentialName, string kind, Guid reportSourceId)

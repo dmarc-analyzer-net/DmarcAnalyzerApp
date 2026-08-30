@@ -1,5 +1,6 @@
 namespace DmarcAnalyzer.Api.Data.Entities;
 
+/// <summary>A raw SPF check under one record — checked domain, helo/mfrom scope, result.</summary>
 public sealed class DmarcReportRecordSpfAuthResult
 {
     public Guid Id { get; set; } = Guid.NewGuid();

@@ -19,6 +19,7 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
     private readonly ILogger<S3ObjectStorage> _logger;
     private readonly AmazonS3Client? _client;
 
+    /// <summary>Builds the client once from options; no bucket configured means a permanently inert instance.</summary>
     public S3ObjectStorage(IOptions<BackupOptions> options, ILogger<S3ObjectStorage> logger)
     {
         _options = options.Value;
@@ -59,13 +60,16 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
                 new BasicAWSCredentials(_options.AccessKeyId, _options.SecretAccessKey), config);
     }
 
+    /// <inheritdoc />
     public bool IsConfigured => _client is not null;
 
+    /// <inheritdoc />
     public string Describe()
         => string.IsNullOrWhiteSpace(_options.Endpoint)
             ? $"s3://{_options.Bucket} ({_options.Region})"
             : $"{_options.Endpoint.TrimEnd('/')}/{_options.Bucket}";
 
+    /// <inheritdoc />
     public async Task PutAsync(string key, byte[] content, string contentType, CancellationToken ct)
     {
         var client = Require();
@@ -84,6 +88,7 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
         }, ct);
     }
 
+    /// <inheritdoc />
     public async Task<long?> GetLengthAsync(string key, CancellationToken ct)
     {
         var client = Require();
@@ -104,6 +109,7 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
         }
     }
 
+    /// <inheritdoc />
     public async Task<byte[]?> GetAsync(string key, CancellationToken ct)
     {
         var client = Require();
@@ -127,6 +133,7 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
         }
     }
 
+    /// <inheritdoc />
     public async Task CopyAsync(string sourceKey, string destinationKey, CancellationToken ct)
     {
         var client = Require();
@@ -146,6 +153,7 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
     /// and several S3-compatible backends report versioning inconsistently or deny the
     /// call outright.
     /// </summary>
+    /// <inheritdoc />
     public async Task<ObjectStorageVersioning> GetVersioningAsync(CancellationToken ct)
     {
         if (_client is null)
@@ -178,5 +186,6 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
         => _client ?? throw new InvalidOperationException(
             "Backup:Bucket is not configured; check IsConfigured before using object storage.");
 
+    /// <summary>Disposes the pooled S3 client.</summary>
     public void Dispose() => _client?.Dispose();
 }

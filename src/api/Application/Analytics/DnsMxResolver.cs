@@ -6,6 +6,7 @@ namespace DmarcAnalyzer.Api.Application.Analytics;
 /// <summary>A single MX record: preference and the exchange host, trailing dot stripped.</summary>
 public sealed record MxHost(int Preference, string Host);
 
+/// <summary>MX lookups with a short cache — see <see cref="DnsMxResolver"/>.</summary>
 public interface IDnsMxResolver
 {
     /// <summary>
@@ -35,6 +36,7 @@ public sealed class DnsMxResolver(
         UseCache = false, // IMemoryCache above is the cache; keep layers single-purpose
     });
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<MxHost>?> ResolveAsync(string domain, CancellationToken ct, bool bypassCache = false)
     {
         var key = $"dns-mx:{domain.ToLowerInvariant()}";

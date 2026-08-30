@@ -13,6 +13,11 @@ using System.Threading.Tasks;
 
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
+/// <summary>
+/// The polled-ingestion loop behind <see cref="IMailboxSyncService"/>: transport-
+/// agnostic since the protocol seam was extracted, batch-checkpointed, and
+/// bounded by the per-run timeout in <see cref="Workers.WorkerOptions"/>.
+/// </summary>
 public sealed class MailboxSyncService(
     DmarcAnalyzerDbContext db,
     IReportPayloadIngestor payloadIngestor,
@@ -24,9 +29,11 @@ public sealed class MailboxSyncService(
 {
     private readonly WorkerOptions _options = options.Value;
 
+    /// <inheritdoc />
     public async Task<ServiceResult<MailboxSyncResult>> SyncReportSourceAsync(Guid reportSourceId, CancellationToken ct)
         => await SyncReportSourceAsync(reportSourceId, "manual", ct);
 
+    /// <inheritdoc />
     public async Task<ServiceResult<MailboxSyncResult>> SyncReportSourceAsync(Guid reportSourceId, string trigger, CancellationToken ct)
     {
         var startedAtUtc = DateTime.UtcNow;

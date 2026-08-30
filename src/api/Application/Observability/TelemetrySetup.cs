@@ -9,6 +9,7 @@ using OpenTelemetry.Trace;
 
 namespace DmarcAnalyzer.Api.Application.Observability;
 
+/// <summary>OpenTelemetry wiring, shared by every APP_MODE host.</summary>
 public static class TelemetrySetup
 {
     /// <summary>Meter Npgsql publishes: connection pool state, command duration.</summary>

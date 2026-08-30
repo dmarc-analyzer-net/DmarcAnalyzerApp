@@ -5,6 +5,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Analytics;
 
+/// <summary>
+/// Computes DMARC analytics with EF-composed aggregates — grouping happens in
+/// PostgreSQL, not in memory. "Compliant" throughout means the record's
+/// evaluated DKIM or SPF result was pass (DMARC pass with alignment).
+/// </summary>
 public sealed class AnalyticsQueryService(
     DmarcAnalyzerDbContext db,
     ICurrentUserContext currentUser,
@@ -48,6 +53,7 @@ public sealed class AnalyticsQueryService(
         return effective;
     }
 
+    /// <inheritdoc />
     public async Task<AnalyticsSummaryDto> GetSummaryAsync(int days, CancellationToken ct)
     {
         days = ClampDays(days);
@@ -183,6 +189,7 @@ public sealed class AnalyticsQueryService(
             mailboxes);
     }
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<DomainAnalyticsDto>> ListDomainAnalyticsAsync(int days, CancellationToken ct)
     {
         days = ClampDays(days);
@@ -298,6 +305,7 @@ public sealed class AnalyticsQueryService(
     }
 
 
+    /// <inheritdoc />
     public async Task<DomainDrilldownDto?> GetDomainDrilldownAsync(Guid domainId, int days, CancellationToken ct)
     {
         days = ClampDays(days);
@@ -363,6 +371,7 @@ public sealed class AnalyticsQueryService(
         return new DomainDrilldownDto(domain, window, totals, await TrendAsync(records, ct));
     }
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<DomainSourceDto>?> ListDomainSourcesAsync(Guid domainId, int days, CancellationToken ct)
     {
         days = ClampDays(days);
@@ -420,6 +429,7 @@ public sealed class AnalyticsQueryService(
             .ToArray();
     }
 
+    /// <inheritdoc />
     public async Task<SourceDetailDto?> GetSourceDetailAsync(Guid domainId, string sourceIp, int days, CancellationToken ct)
     {
         days = ClampDays(days);
@@ -535,6 +545,7 @@ public sealed class AnalyticsQueryService(
             await TrendAsync(records, ct));
     }
 
+    /// <inheritdoc />
     public async Task<EnforcementGuidanceDto?> GetEnforcementGuidanceAsync(Guid domainId, int days, CancellationToken ct)
     {
         days = ClampDays(days);
@@ -631,6 +642,7 @@ public sealed class AnalyticsQueryService(
             blocking.Take(20).ToArray());
     }
 
+    /// <inheritdoc />
     public async Task<ThreatFeedDto> GetThreatFeedAsync(int days, int limit, Guid? clientId, CancellationToken ct)
     {
         days = ClampDays(days);

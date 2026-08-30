@@ -7,8 +7,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Modules;
 
+/// <summary>Admin endpoints under /api/v1/admin/database: migration status and apply-now.</summary>
 public sealed class DatabaseModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         app.MapPost("/api/v1/admin/database/migrate", async (DmarcAnalyzerDbContext db, IAuditLog audit, CancellationToken ct) =>
