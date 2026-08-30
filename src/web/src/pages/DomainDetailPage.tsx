@@ -191,7 +191,36 @@ function EvaluatedChip({ combo }: { combo: EvaluatedCombo }) {
   )
 }
 
-function ValueList({ items, emptyText }: { items: ValueCount[]; emptyText: string }) {
+/**
+ * `<>` is not a missing value and not a rendering artifact: it is the RFC 5321 null
+ * reverse-path, which a reporter sends when the source's envelope sender was empty —
+ * what bounces, delivery status notifications and auto-replies use. Rendered raw it is
+ * a glyph nobody outside SMTP recognises (#196).
+ *
+ * It is deliberately not labelled "none" or "empty", which is what the issue asked for:
+ * that is the *other* case, the reporter not sending the element at all, and those rows
+ * are dropped from this list upstream. Collapsing the two would say a source sent no
+ * envelope sender when what it actually sent was a bounce.
+ */
+const NULL_REVERSE_PATH = '<>'
+const NULL_REVERSE_PATH_HINT =
+  'Empty envelope sender (RFC 5321 null reverse-path) — bounces, delivery status notifications and auto-replies'
+
+/**
+ * `nullSender` is opt-in per list rather than applied to every value, because the null
+ * reverse-path is a property of the SMTP envelope. This same component also renders
+ * header-from, where `<>` is not a null sender but a malformed `From:` — labelling it
+ * would assert the source sent bounces on the evidence of a broken reporter.
+ */
+export function ValueList({
+  items,
+  emptyText,
+  nullSender = false,
+}: {
+  items: ValueCount[]
+  emptyText: string
+  nullSender?: boolean
+}) {
   if (items.length === 0) {
     return <p className="mt-2 text-sm text-secondary">{emptyText}</p>
   }
@@ -199,7 +228,13 @@ function ValueList({ items, emptyText }: { items: ValueCount[]; emptyText: strin
     <ul className="mt-2 space-y-1.5">
       {items.map((item) => (
         <li key={item.value} className="flex items-baseline justify-between gap-3">
-          <span className="min-w-0 break-all font-mono text-xs text-body">{item.value}</span>
+          {nullSender && item.value.trim() === NULL_REVERSE_PATH ? (
+            <span className="min-w-0 break-all text-xs text-body" title={NULL_REVERSE_PATH_HINT}>
+              null sender <span className="font-mono text-secondary">{NULL_REVERSE_PATH}</span>
+            </span>
+          ) : (
+            <span className="min-w-0 break-all font-mono text-xs text-body">{item.value}</span>
+          )}
           <span className="text-xs tabular-nums text-secondary">{formatCompact(item.messages)}</span>
         </li>
       ))}
@@ -1744,7 +1779,7 @@ function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPanelProps)
         </section>
         <section className="rounded-md border border-border bg-surface-card p-3">
           <PanelSectionTitle>Envelope from</PanelSectionTitle>
-          <ValueList items={detail.envelopeFroms} emptyText="No envelope-from domains reported." />
+          <ValueList items={detail.envelopeFroms} emptyText="No envelope-from domains reported." nullSender />
         </section>
         <section className="rounded-md border border-border bg-surface-card p-3">
           <PanelSectionTitle>Reporters</PanelSectionTitle>
