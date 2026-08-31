@@ -20,17 +20,17 @@
     <PackageReference Include="DnsClient" Version="1.8.0" />
     <PackageReference Include="DmarcRua" Version="2.1.0" />
     <PackageReference Include="MailKit" Version="4.17.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.10" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.10" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore" Version="10.0.11" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.11">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <!-- Pulled in transitively, but referenced explicitly so the 10.0.10 pin reaches
+    <!-- Pulled in transitively, but referenced explicitly so the 10.0.11 pin reaches
          the test project too: EntityFrameworkCore.Design carries the same pin and is
          PrivateAssets=all, so without this the tests build against the Npgsql
-         provider's 10.0.0 floor while the API builds against 10.0.10. -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.10" />
+         provider's 10.0.0 floor while the API builds against 10.0.11. -->
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.11" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.3" />
     <PackageReference Include="Npgsql.OpenTelemetry" Version="10.0.3" />
     <PackageReference Include="OpenTelemetry.Exporter.Console" Version="1.18.0" />
