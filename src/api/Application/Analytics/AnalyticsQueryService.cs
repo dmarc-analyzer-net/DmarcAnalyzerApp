@@ -6,9 +6,10 @@ using Microsoft.EntityFrameworkCore;
 namespace DmarcAnalyzer.Api.Application.Analytics;
 
 /// <summary>
-/// Computes DMARC analytics with EF-composed aggregates — grouping happens in
-/// PostgreSQL, not in memory. "Compliant" throughout means the record's
-/// evaluated DKIM or SPF result was pass (DMARC pass with alignment).
+/// Computes DMARC analytics database-side — EF-composed aggregates for most
+/// paths, raw SQL where EF cannot express the shape (per-source aggregation).
+/// "Compliant" throughout means the record's evaluated DKIM or SPF result was
+/// pass (DMARC pass with alignment).
 /// </summary>
 public sealed class AnalyticsQueryService(
     DmarcAnalyzerDbContext db,

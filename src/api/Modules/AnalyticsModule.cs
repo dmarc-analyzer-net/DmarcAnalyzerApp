@@ -5,7 +5,7 @@ using DmarcAnalyzer.Api.Application.MtaSts;
 
 namespace DmarcAnalyzer.Api.Modules;
 
-/// <summary>Endpoints under /api/v1/analytics and /api/v1/threats — the read-only analytics surface.</summary>
+/// <summary>Endpoints under /api/v1/analytics — the read-only analytics surface, including the threats feed.</summary>
 public sealed class AnalyticsModule : ICarterModule
 {
     /// <inheritdoc />

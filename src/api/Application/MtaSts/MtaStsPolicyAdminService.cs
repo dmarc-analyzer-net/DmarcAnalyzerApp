@@ -22,7 +22,7 @@ public interface IMtaStsPolicyAdminService
     /// <summary>Removes the hosted policy — "we no longer host this". 404 when there is none.</summary>
     Task<ServiceResult<MtaStsPolicyResponse>> DeleteAsync(Guid domainId, CancellationToken ct);
 
-    /// <summary>Applies one policy shape to every domain of a client, reporting per-domain outcomes.</summary>
+    /// <summary>Applies one policy shape to the requested domains of a client — or all its active domains — reporting per-domain outcomes.</summary>
     Task<ServiceResult<MtaStsPolicyBulkApplyResponse>> BulkApplyAsync(
         Guid clientId, BulkApplyMtaStsPolicyRequest request, CancellationToken ct);
 }

@@ -66,7 +66,7 @@ public sealed class ApiCredentialsModule : ICarterModule
     }
 }
 
-/// <summary>Body of POST /api-credentials.</summary>
+/// <summary>Body of POST /api/v1/api-credentials.</summary>
 public sealed class IssueApiCredentialRequest
 {
     public Guid ReportSourceId { get; set; }

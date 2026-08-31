@@ -14,7 +14,7 @@ public interface IOidcSignInService
     Task<OidcSignInResult> SignInAsync(ClaimsPrincipal principal, string? ipAddress, string? userAgent, CancellationToken ct);
 }
 
-/// <summary>Either a minted session or an error code for the login page's ?error= query.</summary>
+/// <summary>Either a minted session or an error code for the login page's ?loginError= query.</summary>
 public sealed record OidcSignInResult(string? CookieId, string? ErrorCode)
 {
     /// <summary>True when a session was minted and <see cref="CookieId"/> is set.</summary>

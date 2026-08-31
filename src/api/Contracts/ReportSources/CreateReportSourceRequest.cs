@@ -1,6 +1,6 @@
 namespace DmarcAnalyzer.Api.Contracts.ReportSources;
 
-/// <summary>Body of POST /report-sources. Which fields are required depends on the protocol.</summary>
+/// <summary>Body of POST /api/v1/report-sources. Which fields are required depends on the protocol.</summary>
 public sealed class CreateReportSourceRequest
 {
     public string Name { get; set; } = string.Empty;

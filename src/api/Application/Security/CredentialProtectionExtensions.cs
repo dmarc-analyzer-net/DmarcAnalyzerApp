@@ -36,12 +36,12 @@ public static class CredentialProtectionExtensions
 /// <summary>Passthrough used when no encryption key is configured (dev fallback).</summary>
 public sealed class NullCredentialProtector : ICredentialProtector
 {
-    /// <inheritdoc />
+    /// <summary>Returns the plaintext unchanged — nothing is encrypted without a key.</summary>
     public string Protect(string plaintext) => plaintext;
 
-    /// <inheritdoc />
+    /// <summary>Returns the stored value unchanged.</summary>
     public string Unprotect(string stored) => stored;
 
-    /// <inheritdoc />
+    /// <summary>Always false — this implementation never protects anything.</summary>
     public bool IsProtected(string stored) => false;
 }

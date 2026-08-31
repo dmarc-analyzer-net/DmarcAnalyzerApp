@@ -27,7 +27,7 @@ public static class ReportIngestRateLimiting
     /// <summary>The policy name the ingest endpoint opts into.</summary>
     public const string PolicyName = "report-ingest";
 
-    /// <summary>Registers the per-credential token-bucket policy; limits come from WorkerOptions.</summary>
+    /// <summary>Registers the per-credential fixed-window policy; limits come from WorkerOptions.</summary>
     public static IServiceCollection AddReportIngestRateLimiter(this IServiceCollection services)
     {
         services.AddRateLimiter(limiter =>

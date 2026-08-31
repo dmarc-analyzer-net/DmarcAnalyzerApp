@@ -92,7 +92,6 @@ public sealed class WorkerOptions
     /// only ever be reached by something that has gone wrong or gone hostile.
     /// </para>
     /// </summary>
-    /// <summary>Requests allowed per credential per window on the push endpoint.</summary>
     public int ReportIngestRateLimitPermits { get; set; } = 60;
 
     /// <summary>Window the permit count applies to.</summary>

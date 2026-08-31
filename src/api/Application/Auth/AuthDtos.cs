@@ -16,7 +16,10 @@ public sealed record LoginResultDto(
     UserDto User,
     string CookieId);
 
-/// <summary>The /auth/me payload: who is signed in and, for client viewers, which clients they may see.</summary>
+/// <summary>
+/// The session-resolution result SessionAuthMiddleware scopes each request
+/// with: the user plus, for client viewers, their granted clients.
+/// </summary>
 public sealed record SessionUserDto(
     UserDto User,
     IReadOnlyList<Guid> GrantedClientIds);

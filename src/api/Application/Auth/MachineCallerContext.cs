@@ -22,7 +22,7 @@ public interface IMachineCallerContext
     /// <summary>The operator-chosen credential name, for auditing.</summary>
     string CredentialName { get; }
 
-    /// <summary>The credential kind (e.g. report_push) — endpoints require a specific one.</summary>
+    /// <summary>The credential kind (e.g. report_ingest) — endpoints require a specific one.</summary>
     string Kind { get; }
 
     /// <summary>The source this credential ingests for, and therefore the client its data lands under.</summary>

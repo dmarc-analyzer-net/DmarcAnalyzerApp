@@ -120,14 +120,14 @@ public static class EnforcementStatus
     /// <summary>Unprotected (p=none or no policy) with failing volume — spoofing goes undisturbed.</summary>
     public const string Spoofing = "spoofing";
 
-    /// <summary>p=none but compliant or low volume — observing, nothing alarming yet.</summary>
+    /// <summary>Unenforcing (p=none, or no/unknown policy) but compliant or low volume — observing, nothing alarming yet.</summary>
     public const string Monitoring = "monitoring";
 
     /// <summary>
     /// Derives the status from the *effective* published policy plus observed
-    /// compliance. The policy decides between enforced/ramping; only an
-    /// unenforcing policy falls through to the compliance split, where under
-    /// 98% reads as spoofing.
+    /// compliance. The policy decides between enforced/ramping; anything else —
+    /// p=none, no policy, an unknown value, a failed lookup — falls through to
+    /// the compliance split, where under 98% reads as spoofing.
     /// </summary>
     public static string Resolve(long messages, double complianceRate, string? publishedPolicy)
     {
@@ -148,7 +148,7 @@ public static class EnforcementStatus
 
 /// <summary>
 /// One domain's totals over the window. Status is the compliance-only rating
-/// (aligned / issues / failing / no_data), distinct from the policy-aware
+/// (aligned / issues / critical / no_data), distinct from the policy-aware
 /// <see cref="EnforcementStatus"/>.
 /// </summary>
 public sealed record DomainDrilldownTotalsDto(

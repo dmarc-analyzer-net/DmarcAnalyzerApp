@@ -1,6 +1,6 @@
 namespace DmarcAnalyzer.Api.Contracts.Users;
 
-/// <summary>Body of PATCH /users/{id}; null fields stay unchanged.</summary>
+/// <summary>Body of PATCH /api/v1/users/{id}; null fields stay unchanged.</summary>
 public sealed class UpdateUserRequest
 {
     public string? DisplayName { get; set; }

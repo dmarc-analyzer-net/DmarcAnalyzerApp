@@ -4,9 +4,9 @@ using DmarcAnalyzer.Api.Contracts.Auth;
 namespace DmarcAnalyzer.Api.Application.Auth;
 
 /// <summary>
-/// Local (password) authentication and the session store both login paths share —
-/// OIDC completion also lands in <see cref="LoginWithExternalIdentityAsync"/> and
-/// mints the same session row.
+/// Password authentication, plus the session store both login paths share:
+/// OIDC completion lands in <see cref="LoginWithExternalIdentityAsync"/> and
+/// mints the same session row a password login does.
 /// </summary>
 public interface IAuthService
 {

@@ -15,7 +15,7 @@ public sealed record MtaStsReadinessInput(
     int ReportCount,
     DateTime NowUtc);
 
-/// <summary>One named gate check (record, fetch, validity, MX match, evidence) and how it went.</summary>
+/// <summary>One named gate check (TXT record, policy fetch, policy syntax, MX coverage) and how it went.</summary>
 public sealed record MtaStsReadinessCheckDto(string Name, string Status, string? Detail);
 
 /// <summary>
@@ -48,7 +48,7 @@ public static class MtaStsReadinessStatus
     /// <summary>Nothing wrong, but not enough evidence yet — keep waiting.</summary>
     public const string InsufficientData = "insufficient_data";
 
-    /// <summary>The policy is not in testing (already enforce, or mode none/disabled).</summary>
+    /// <summary>Already in enforce — nothing to promote. (Mode none or hosting off report not_ready instead.)</summary>
     public const string NotApplicable = "not_applicable";
 }
 

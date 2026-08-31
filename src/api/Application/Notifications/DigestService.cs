@@ -25,7 +25,7 @@ public sealed record DigestSummary(
     int AlertsRaised,
     IReadOnlyList<DigestDomainLine> WorstDomains);
 
-/// <summary>How a send pass went; Skipped counts clients already delivered for the period or with no recipients.</summary>
+/// <summary>How a send pass went; Skipped counts clients already attempted for the period, with no recipients, or with nothing to summarize.</summary>
 public sealed record DigestSendResult(int ClientsConsidered, int Sent, int Skipped, IReadOnlyList<string> SentTo);
 
 /// <summary>The monthly digest — see <see cref="DigestService"/>.</summary>

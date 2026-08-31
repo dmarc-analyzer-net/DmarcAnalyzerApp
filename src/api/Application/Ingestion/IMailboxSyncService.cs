@@ -9,9 +9,9 @@ namespace DmarcAnalyzer.Api.Application.Ingestion;
 /// </summary>
 public interface IMailboxSyncService
 {
-    /// <summary>Sync recorded with the default (scheduled) trigger.</summary>
+    /// <summary>Sync recorded with the "manual" trigger — the console button's path.</summary>
     Task<ServiceResult<MailboxSyncResult>> SyncReportSourceAsync(Guid reportSourceId, CancellationToken ct);
 
-    /// <summary>Same, with the trigger recorded on the run row — "manual" for the console button.</summary>
+    /// <summary>Same, with the caller's trigger recorded on the run row — the worker passes "scheduled".</summary>
     Task<ServiceResult<MailboxSyncResult>> SyncReportSourceAsync(Guid reportSourceId, string trigger, CancellationToken ct);
 }

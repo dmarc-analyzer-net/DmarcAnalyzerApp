@@ -1,6 +1,6 @@
 namespace DmarcAnalyzer.Api.Contracts.Clients;
 
-/// <summary>Body of POST /clients. The 27-month retention default covers two full DMARC year-over-years.</summary>
+/// <summary>Body of POST /api/v1/clients. The 27-month retention default covers two full DMARC year-over-years.</summary>
 public sealed class CreateClientRequest
 {
     public string Name { get; set; } = string.Empty;

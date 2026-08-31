@@ -10,13 +10,13 @@ public interface ICurrentUserContext
     /// <summary>False for anonymous requests — and for worker passes, which run as <see cref="SystemUserContext"/>.</summary>
     bool IsAuthenticated { get; }
 
-    /// <summary>The signed-in user's id; <see cref="Guid.Empty"/> when unauthenticated.</summary>
+    /// <summary>The signed-in user's id; <see cref="Guid.Empty"/> for anonymous requests and worker passes.</summary>
     Guid UserId { get; }
 
-    /// <summary>The signed-in user's email, or empty when unauthenticated.</summary>
+    /// <summary>The signed-in user's email. Empty for anonymous requests; "system" in a worker pass.</summary>
     string Email { get; }
 
-    /// <summary>One of <see cref="Roles.All"/>, or empty when unauthenticated.</summary>
+    /// <summary>One of <see cref="Roles.All"/>. Empty for anonymous requests; a worker pass reports agency_admin.</summary>
     string Role { get; }
 
     /// <summary>agency_admin only.</summary>

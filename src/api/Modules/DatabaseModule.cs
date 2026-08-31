@@ -7,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Modules;
 
-/// <summary>Admin endpoints under /api/v1/admin/database: migration status and apply-now.</summary>
+/// <summary>POST /api/v1/admin/database/migrate — apply pending migrations on demand.</summary>
 public sealed class DatabaseModule : ICarterModule
 {
     /// <inheritdoc />

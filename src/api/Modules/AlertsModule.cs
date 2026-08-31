@@ -8,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Modules;
 
-/// <summary>Body of PATCH /alerts/{id}/status.</summary>
+/// <summary>Body of PATCH /api/v1/alerts/{id}.</summary>
 public sealed record UpdateAlertStatusRequest(string? Status);
 
 /// <summary>
@@ -31,7 +31,10 @@ public static class AlertStatuses
     public static readonly string[] All = [Open, Acknowledged, Closed];
 }
 
-/// <summary>Endpoints under /api/v1/alerts: list history and change an alert's status.</summary>
+/// <summary>
+/// Endpoints under /api/v1/alerts (list history, change status) plus the admin
+/// triggers: evaluate alerts now, preview/send the digest, send a test mail.
+/// </summary>
 public sealed class AlertsModule : ICarterModule
 {
     /// <inheritdoc />

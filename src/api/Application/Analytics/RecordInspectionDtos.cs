@@ -13,7 +13,7 @@ public static class RecordLookupStatus
     /// </summary>
     public const string Inherited = "inherited";
 
-    /// <summary>Nothing published here or at any ancestor — genuinely unprotected.</summary>
+    /// <summary>Definitively not published — unlike <see cref="LookupFailed"/>, this is an answer.</summary>
     public const string Missing = "missing";
 
     /// <summary>The DNS query itself failed (timeout/servfail) — says nothing about the record.</summary>
@@ -92,7 +92,7 @@ public sealed record RecordComparisonDto(
 /// <summary>Whether a rua/ruf destination outside this domain has authorized receiving its reports.</summary>
 public static class ExternalDestinationAuthStatus
 {
-    /// <summary>The destination publishes the {domain}._report._dmarc opt-in record.</summary>
+    /// <summary>The destination publishes the {domain}._report._dmarc.{destination} opt-in record.</summary>
     public const string Authorized = "authorized";
 
     /// <summary>No opt-in record — conforming receivers silently drop reports sent there.</summary>

@@ -40,7 +40,12 @@ public sealed class WorkerSingleInstanceLock(
 
     private NpgsqlConnection? _connection;
 
-    /// <summary>Takes the advisory lock, or throws to stop this process from becoming a second worker.</summary>
+    /// <summary>
+    /// Takes the advisory lock, or throws to stop this process from becoming a
+    /// second worker. Returns without acquiring anything when enforcement is
+    /// off (warned) or no connection string is configured (the loop is about to
+    /// fail on that with a clearer message).
+    /// </summary>
     public async Task StartAsync(CancellationToken cancellationToken)
     {
         if (!options.Value.EnforceSingleInstance)

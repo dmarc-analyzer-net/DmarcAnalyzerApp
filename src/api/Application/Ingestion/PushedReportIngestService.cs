@@ -17,8 +17,8 @@ public sealed record PushedReportOutcome(string SourceName, string Kind, string 
 
 /// <summary>
 /// The push endpoint's response. Replay is true when this exact body (by hash)
-/// was posted before — answered idempotently rather than as an error, because
-/// pipelines retry.
+/// was already posted to this report source — answered idempotently rather
+/// than as an error, because pipelines retry.
 /// </summary>
 public sealed record PushedReportResult(
     string PayloadSha256,

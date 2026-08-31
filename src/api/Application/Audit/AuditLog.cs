@@ -100,8 +100,9 @@ public interface IAuditLog
 
 /// <summary>
 /// Appends audit_event rows, resolving the actor from the current session and
-/// the caller's IP/User-Agent from the request. Failures are swallowed and
-/// logged — auditing must never turn a succeeding operation into a 500.
+/// the caller's IP/User-Agent from the request. Non-cancellation failures are
+/// swallowed and logged — auditing must never turn a succeeding operation into
+/// a 500.
 /// </summary>
 public sealed class AuditLog(
     DmarcAnalyzerDbContext db,
