@@ -1,5 +1,9 @@
 namespace DmarcAnalyzer.Api.Data.Entities;
 
+/// <summary>
+/// A monitored domain. Names are globally unique — that is what lets ingestion
+/// route a report to the right client from the domain string alone.
+/// </summary>
 public sealed class Domain
 {
     public Guid Id { get; set; } = Guid.NewGuid();

@@ -17,6 +17,7 @@ namespace DmarcAnalyzer.Api.Application.Backup;
 /// <param name="Uid">The message's own name within that scope: an IMAP UID, or a POP3 UIDL.</param>
 public readonly record struct ReportMailIdentity(string Generation, string Uid)
 {
+    /// <summary>An IMAP message, named by UID within its UIDVALIDITY generation.</summary>
     public static ReportMailIdentity ForImap(uint uid, long uidValidity)
         => new(uidValidity.ToString(System.Globalization.CultureInfo.InvariantCulture),
                uid.ToString(System.Globalization.CultureInfo.InvariantCulture));
@@ -62,6 +63,7 @@ public readonly record struct ReportMailIdentity(string Generation, string Uid)
         => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 }
 
+/// <summary>Archives raw report mail to the bucket before deletion — see <see cref="ReportMailArchive"/>.</summary>
 public interface IReportMailArchive
 {
     /// <summary>False when archiving is off or no bucket is configured.</summary>
@@ -113,8 +115,10 @@ public sealed class ReportMailArchive(
 {
     private readonly BackupOptions _options = options.Value;
 
+    /// <inheritdoc />
     public bool IsEnabled => _options.ArchiveReportMail && storage.IsConfigured;
 
+    /// <inheritdoc />
     public async Task<bool> TryArchiveAsync(
         MimeMessage message,
         Guid reportSourceId,
@@ -158,6 +162,7 @@ public sealed class ReportMailArchive(
         }
     }
 
+    /// <inheritdoc />
     public async Task<bool> ExistsAsync(
         Guid reportSourceId,
         ReportMailIdentity identity,

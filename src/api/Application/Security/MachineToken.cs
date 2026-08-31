@@ -21,11 +21,13 @@ namespace DmarcAnalyzer.Api.Application.Security;
 /// </summary>
 public static class MachineToken
 {
+    /// <summary>The greppable, scanner-recognisable first segment of every issued token.</summary>
     public const string Prefix = "dmarcanalyzer";
 
     private const int TokenIdBytes = 12;   // 24 chars of hex — an identifier, not a secret
     private const int SecretBytes = 32;    // 256 bits, which is what makes SHA-256 the right hash
 
+    /// <summary>A freshly minted token: the indexable id, the full presented string, and the hash to store.</summary>
     public sealed record Issued(string TokenId, string Presented, string Hash);
 
     /// <summary>
@@ -72,6 +74,7 @@ public static class MachineToken
         return true;
     }
 
+    /// <summary>SHA-256 of the secret half — what the database stores and verification recomputes.</summary>
     public static string HashSecret(string secret)
         => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(secret)));
 

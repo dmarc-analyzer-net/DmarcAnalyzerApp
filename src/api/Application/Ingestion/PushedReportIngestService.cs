@@ -12,8 +12,14 @@ using MimeKit;
 
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
+/// <summary>What one payload inside a pushed body became: its extractor-assigned name, format, and outcome.</summary>
 public sealed record PushedReportOutcome(string SourceName, string Kind, string Result);
 
+/// <summary>
+/// The push endpoint's response. Replay is true when this exact body (by hash)
+/// was already posted to this report source — answered idempotently rather
+/// than as an error, because pipelines retry.
+/// </summary>
 public sealed record PushedReportResult(
     string PayloadSha256,
     bool Replay,
@@ -22,8 +28,10 @@ public sealed record PushedReportResult(
     int Failed,
     IReadOnlyList<PushedReportOutcome> Payloads);
 
+/// <summary>HTTP report ingestion — see <see cref="PushedReportIngestService"/>.</summary>
 public interface IPushedReportIngestService
 {
+    /// <summary>Extracts and ingests every report payload in one posted body.</summary>
     Task<ServiceResult<PushedReportResult>> IngestAsync(
         Guid reportSourceId, byte[] body, string? fileName, string? contentType,
         string? provenance, CancellationToken ct);
@@ -49,6 +57,7 @@ public sealed class PushedReportIngestService(
     /// <summary>Cap on the provenance document. It is a label, not a payload.</summary>
     private const int MaxProvenanceBytes = 4096;
 
+    /// <inheritdoc />
     public async Task<ServiceResult<PushedReportResult>> IngestAsync(
         Guid reportSourceId, byte[] body, string? fileName, string? contentType,
         string? provenance, CancellationToken ct)

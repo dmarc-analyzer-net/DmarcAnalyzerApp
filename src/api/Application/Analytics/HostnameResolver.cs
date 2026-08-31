@@ -3,12 +3,19 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace DmarcAnalyzer.Api.Application.Analytics;
 
+/// <summary>Reverse-DNS (PTR) lookups for source IPs — see <see cref="HostnameResolver"/>.</summary>
 public interface IHostnameResolver
 {
     /// <summary>Reverse-DNS lookups for a set of IPs. Unresolvable IPs map to null.</summary>
     Task<IReadOnlyDictionary<string, string?>> ResolveAsync(IReadOnlyCollection<string> ips, CancellationToken ct);
 }
 
+/// <summary>
+/// Batched, concurrency-capped reverse lookups with a long success cache and a
+/// shorter failure cache — most source IPs repeat across pages, and PTR records
+/// rarely change. Best-effort by design: an unresolvable IP is a null hostname,
+/// never an error the page has to handle.
+/// </summary>
 public sealed class HostnameResolver(IMemoryCache cache, ILogger<HostnameResolver> logger) : IHostnameResolver
 {
     private static readonly TimeSpan LookupTimeout = TimeSpan.FromSeconds(1.5);
@@ -16,6 +23,7 @@ public sealed class HostnameResolver(IMemoryCache cache, ILogger<HostnameResolve
     private static readonly TimeSpan FailureTtl = TimeSpan.FromHours(1);
     private static readonly SemaphoreSlim Concurrency = new(8);
 
+    /// <inheritdoc />
     public async Task<IReadOnlyDictionary<string, string?>> ResolveAsync(IReadOnlyCollection<string> ips, CancellationToken ct)
     {
         // The address as the caller spelled it, mapped to its canonical form. Report

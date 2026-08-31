@@ -12,6 +12,7 @@ public sealed class DmarcAnalyzerDbContextFactory : IDesignTimeDbContextFactory<
     /// <summary>Matches the startup and admin-endpoint migration paths.</summary>
     private const int MigrationCommandTimeoutSeconds = 600;
 
+    /// <inheritdoc />
     public DmarcAnalyzerDbContext CreateDbContext(string[] args)
     {
         var databaseUrl = Environment.GetEnvironmentVariable("DATABASE_URL");

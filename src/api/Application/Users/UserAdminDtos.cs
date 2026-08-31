@@ -1,5 +1,6 @@
 namespace DmarcAnalyzer.Api.Application.Users;
 
+/// <summary>A user as the admin page reads one, including grants and whether password sign-in is possible.</summary>
 public sealed record UserAdminDto(
     Guid Id,
     string Email,

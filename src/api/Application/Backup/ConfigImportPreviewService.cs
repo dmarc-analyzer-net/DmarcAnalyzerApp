@@ -8,8 +8,10 @@ using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Application.Backup;
 
+/// <summary>Pre-import safety information for the console — see <see cref="ConfigImportPreviewService"/>.</summary>
 public interface IConfigImportPreviewService
 {
+    /// <summary>Whether this install is pristine, whether a key is configured, and what the bucket holds.</summary>
     Task<ConfigImportPreviewDto> PreviewAsync(CancellationToken ct);
 
     /// <summary>
@@ -38,6 +40,7 @@ public sealed class ConfigImportPreviewService(
 {
     private readonly BackupOptions _options = options.Value;
 
+    /// <inheritdoc />
     public async Task<ConfigImportPreviewDto> PreviewAsync(CancellationToken ct)
     {
         // The same rule the import itself enforces, deliberately shared rather than restated:
@@ -85,6 +88,7 @@ public sealed class ConfigImportPreviewService(
             Bucket: bucket);
     }
 
+    /// <inheritdoc />
     public async Task<BackupArtifact?> ReadLatestFromBucketAsync(CancellationToken ct)
     {
         if (!storage.IsConfigured)

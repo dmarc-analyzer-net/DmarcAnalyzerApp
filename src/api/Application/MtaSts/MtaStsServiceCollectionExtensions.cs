@@ -3,6 +3,7 @@ using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Application.MtaSts;
 
+/// <summary>DI registration for the MTA-STS feature set.</summary>
 public static class MtaStsServiceCollectionExtensions
 {
     /// <summary>

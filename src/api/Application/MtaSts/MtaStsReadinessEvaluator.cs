@@ -15,6 +15,7 @@ public sealed record MtaStsReadinessInput(
     int ReportCount,
     DateTime NowUtc);
 
+/// <summary>One named gate check (TXT record, policy fetch, policy syntax, MX coverage) and how it went.</summary>
 public sealed record MtaStsReadinessCheckDto(string Name, string Status, string? Detail);
 
 /// <summary>
@@ -35,18 +36,32 @@ public sealed record MtaStsReadinessDto(
     int ReportCount,
     IReadOnlyList<MtaStsReadinessCheckDto> Checks);
 
+/// <summary>The gate's verdict values.</summary>
 public static class MtaStsReadinessStatus
 {
+    /// <summary>Every check passed — safe to promote to enforce.</summary>
     public const string Ready = "ready";
+
+    /// <summary>Something is actively wrong; BlockedReason says what.</summary>
     public const string NotReady = "not_ready";
+
+    /// <summary>Nothing wrong, but not enough evidence yet — keep waiting.</summary>
     public const string InsufficientData = "insufficient_data";
+
+    /// <summary>Already in enforce — nothing to promote. (Mode none or hosting off report not_ready instead.)</summary>
     public const string NotApplicable = "not_applicable";
 }
 
+/// <summary>What the verdict rests on — see <see cref="MtaStsReadinessDto"/>.</summary>
 public static class MtaStsReadinessEvidence
 {
+    /// <summary>Reporters covered the gate window and saw no STS failures.</summary>
     public const string TlsRpt = "tls_rpt";
+
+    /// <summary>No reporters cover the domain; clean checks over a longer clock stand in.</summary>
     public const string TimeInTesting = "time_in_testing";
+
+    /// <summary>No basis — the gate did not reach the evidence stage.</summary>
     public const string None = "none";
 }
 
@@ -76,6 +91,7 @@ public static class MtaStsReadinessEvaluator
     /// </summary>
     public const int NoDataMinDaysInTesting = 28;
 
+    /// <summary>Runs the gate over one domain's persisted state and TLS-RPT sample.</summary>
     public static MtaStsReadinessDto Evaluate(MtaStsReadinessInput input)
     {
         var daysInTesting = input.ModeChangedAtUtc is { } since

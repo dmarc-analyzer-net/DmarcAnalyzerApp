@@ -11,6 +11,7 @@ public sealed record RoleRequirementMetadata(RoleRequirement Requirement);
 /// </summary>
 public sealed record MachineCredentialRequirementMetadata(string Kind);
 
+/// <summary>What an endpoint demands of the session role — enforced centrally, deny-by-default.</summary>
 public enum RoleRequirement
 {
     /// <summary>Admin and analyst only. This is also the default for endpoints without metadata.</summary>
@@ -23,14 +24,21 @@ public enum RoleRequirement
     AnyAuthenticated,
 }
 
+/// <summary>How endpoints declare their role requirement to RoleAuthorizationMiddleware.</summary>
 public static class EndpointAuthExtensions
 {
+    /// <summary>Restricts the endpoint to agency_admin.</summary>
     public static TBuilder RequireAgencyAdmin<TBuilder>(this TBuilder builder) where TBuilder : IEndpointConventionBuilder
         => builder.WithMetadata(new RoleRequirementMetadata(RoleRequirement.AgencyAdmin));
 
+    /// <summary>States the default (admin + analyst) explicitly, for endpoints worth reading that on.</summary>
     public static TBuilder RequireAgencyStaff<TBuilder>(this TBuilder builder) where TBuilder : IEndpointConventionBuilder
         => builder.WithMetadata(new RoleRequirementMetadata(RoleRequirement.AgencyStaff));
 
+    /// <summary>
+    /// Opts the endpoint in for client_viewer sessions — the service behind it
+    /// must scope its data through <see cref="ICurrentUserContext.CanAccessClient"/>.
+    /// </summary>
     public static TBuilder AllowClientViewer<TBuilder>(this TBuilder builder) where TBuilder : IEndpointConventionBuilder
         => builder.WithMetadata(new RoleRequirementMetadata(RoleRequirement.AnyAuthenticated));
 

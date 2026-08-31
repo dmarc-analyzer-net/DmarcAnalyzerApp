@@ -6,6 +6,7 @@ namespace DmarcAnalyzer.Api.Application.Analytics;
 /// <summary>How a refresh pass went, for the worker log.</summary>
 public sealed record DnsPolicyRefreshResult(int Checked, int Changed, int Failed);
 
+/// <summary>The per-domain cached DMARC policy — see <see cref="DnsPolicyCache"/>.</summary>
 public interface IDnsPolicyCache
 {
     /// <summary>
@@ -36,6 +37,7 @@ public sealed class DnsPolicyCache(
     IDmarcPolicyResolver policyResolver,
     ILogger<DnsPolicyCache> logger) : IDnsPolicyCache
 {
+    /// <inheritdoc />
     public async Task<DnsPolicyRefreshResult> RefreshAllAsync(CancellationToken ct)
     {
         var domains = await db.Domains
@@ -82,6 +84,7 @@ public sealed class DnsPolicyCache(
         return new DnsPolicyRefreshResult(domains.Count, changed, failed);
     }
 
+    /// <inheritdoc />
     public async Task WriteBackAsync(Guid domainId, EffectiveDmarcPolicy effective, CancellationToken ct)
     {
         var domain = await db.Domains.FirstOrDefaultAsync(x => x.Id == domainId, ct);

@@ -4,6 +4,14 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Emit the XML doc file so the compiler *checks* doc comments: without it,
+         a summary written on a record positional parameter is silently discarded
+         (CS1587) and a cref pointing at a renamed member never breaks (CS1574).
+         CS1591/CS1573 (member or parameter without a comment) stay off on
+         purpose — the house style documents what is surprising, not every
+         ClientName property. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

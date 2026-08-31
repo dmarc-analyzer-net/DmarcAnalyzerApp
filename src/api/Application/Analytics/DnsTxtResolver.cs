@@ -3,6 +3,7 @@ using Microsoft.Extensions.Caching.Memory;
 
 namespace DmarcAnalyzer.Api.Application.Analytics;
 
+/// <summary>TXT lookups with a short cache — see <see cref="DnsTxtResolver"/>.</summary>
 public interface IDnsTxtResolver
 {
     /// <summary>
@@ -41,6 +42,7 @@ public sealed class DnsTxtResolver(
         UseCache = false, // IMemoryCache above is the cache; keep layers single-purpose
     });
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<string>?> ResolveAsync(string name, CancellationToken ct, bool bypassCache = false)
     {
         var key = $"dns-txt:{name.ToLowerInvariant()}";

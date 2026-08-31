@@ -22,8 +22,14 @@ public sealed record EffectiveDmarcPolicy(
     string Status,
     string? InheritedFrom);
 
+/// <summary>Resolves the DMARC policy a receiver would apply to a domain — see <see cref="DmarcPolicyResolver"/>.</summary>
 public interface IDmarcPolicyResolver
 {
+    /// <summary>
+    /// The effective policy for <paramref name="domainName"/>: its own record, or the
+    /// nearest ancestor's via the DNS tree walk. Never throws on DNS failure — that
+    /// comes back as status <c>lookup_failed</c>.
+    /// </summary>
     Task<EffectiveDmarcPolicy> ResolveAsync(string domainName, CancellationToken ct);
 }
 
@@ -57,6 +63,7 @@ public sealed class DmarcPolicyResolver(IDnsTxtResolver dns) : IDmarcPolicyResol
     /// </summary>
     private const int MaxAncestors = 5;
 
+    /// <inheritdoc />
     public async Task<EffectiveDmarcPolicy> ResolveAsync(string domainName, CancellationToken ct)
     {
         var name = (domainName ?? string.Empty).Trim().Trim('.');

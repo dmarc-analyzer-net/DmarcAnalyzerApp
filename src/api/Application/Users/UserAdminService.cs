@@ -7,8 +7,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Users;
 
+/// <summary>EF-backed <see cref="IUserAdminService"/>.</summary>
 public sealed class UserAdminService(DmarcAnalyzerDbContext db, ICurrentUserContext currentUser) : IUserAdminService
 {
+    /// <inheritdoc />
     public async Task<IReadOnlyList<UserAdminDto>> ListAsync(CancellationToken ct)
     {
         var users = await db.AgencyUsers
@@ -29,6 +31,7 @@ public sealed class UserAdminService(DmarcAnalyzerDbContext db, ICurrentUserCont
             .ToArray();
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<UserAdminDto>> CreateAsync(CreateUserRequest request, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Email) ||
@@ -76,6 +79,7 @@ public sealed class UserAdminService(DmarcAnalyzerDbContext db, ICurrentUserCont
         return ServiceResult<UserAdminDto>.Success(ToDto(user, []));
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<UserAdminDto>> UpdateAsync(Guid id, UpdateUserRequest request, CancellationToken ct)
     {
         var user = await db.AgencyUsers.SingleOrDefaultAsync(x => x.Id == id, ct);
@@ -154,6 +158,7 @@ public sealed class UserAdminService(DmarcAnalyzerDbContext db, ICurrentUserCont
         return ServiceResult<UserAdminDto>.Success(ToDto(user, await GrantsForAsync(user.Id, ct)));
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<UserAdminDto>> ReplaceGrantsAsync(Guid id, ReplaceUserGrantsRequest request, CancellationToken ct)
     {
         var user = await db.AgencyUsers.SingleOrDefaultAsync(x => x.Id == id, ct);
@@ -196,6 +201,7 @@ public sealed class UserAdminService(DmarcAnalyzerDbContext db, ICurrentUserCont
         return ServiceResult<UserAdminDto>.Success(ToDto(user, requestedIds));
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<UserAdminDto>> DeleteAsync(Guid id, CancellationToken ct)
     {
         var user = await db.AgencyUsers.SingleOrDefaultAsync(x => x.Id == id, ct);

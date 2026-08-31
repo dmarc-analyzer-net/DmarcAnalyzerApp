@@ -3,13 +3,25 @@ namespace DmarcAnalyzer.Api.Application.Auth;
 /// <summary>Configuration for the optional OIDC login front door ("Auth:Oidc" section).</summary>
 public sealed class OidcOptions
 {
+    /// <summary>Where this binds from in configuration.</summary>
     public const string SectionName = "Auth:Oidc";
 
+    /// <summary>Master switch; everything below is ignored while false.</summary>
     public bool Enabled { get; set; }
+
+    /// <summary>The issuer URL discovery runs against (e.g. https://login.example.com).</summary>
     public string Authority { get; set; } = string.Empty;
+
+    /// <summary>OAuth client id registered at the provider.</summary>
     public string ClientId { get; set; } = string.Empty;
+
+    /// <summary>OAuth client secret; confidential code flow only.</summary>
     public string ClientSecret { get; set; } = string.Empty;
+
+    /// <summary>Scopes to request; the default asks for the profile and email claims the app maps.</summary>
     public string[] Scopes { get; set; } = ["openid", "profile", "email"];
+
+    /// <summary>What the login button calls the provider.</summary>
     public string DisplayName { get; set; } = "SSO";
 
     /// <summary>Role given to auto-provisioned users. Least privilege by default.</summary>
@@ -40,6 +52,7 @@ public sealed class OidcOptions
     /// </summary>
     public bool TrustUnverifiedEmail { get; set; }
 
+    /// <summary>Allow plain-HTTP discovery only for a dev IdP on localhost; never in production.</summary>
     public bool RequireHttpsMetadata { get; set; } = true;
 
     /// <summary>

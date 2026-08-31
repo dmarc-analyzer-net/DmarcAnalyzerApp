@@ -1,5 +1,7 @@
 namespace DmarcAnalyzer.Api.Application.Reports;
 
+/// <summary>One parsed RUA aggregate report: header, published policy, and its rows.</summary>
+/// <param name="SubdomainPolicy">null when the reporter sent no sp tag — subdomains inherit p.</param>
 public sealed record DmarcReportParseResult(
     string OrganizationName,
     string ReportId,
@@ -12,7 +14,6 @@ public sealed record DmarcReportParseResult(
     bool HasValidationErrors,
     IReadOnlyList<string> ValidationMessages,
     string PublishedPolicy,
-    /// <summary>null when the reporter sent no sp tag — subdomains inherit p.</summary>
     string? SubdomainPolicy,
     int PublishedPct,
     string DkimAlignment,

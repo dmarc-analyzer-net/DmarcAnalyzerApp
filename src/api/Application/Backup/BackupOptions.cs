@@ -42,6 +42,7 @@ public sealed class BackupOptions
     /// </summary>
     public string AccessKeyId { get; set; } = string.Empty;
 
+    /// <summary>The other half of <see cref="AccessKeyId"/>; same empty-means-ambient rule.</summary>
     public string SecretAccessKey { get; set; } = string.Empty;
 
     /// <summary>Key prefix, so one bucket can hold more than one install.</summary>

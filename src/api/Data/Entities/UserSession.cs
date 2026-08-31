@@ -1,5 +1,11 @@
 namespace DmarcAnalyzer.Api.Data.Entities;
 
+/// <summary>
+/// A server-side session, named by the random CookieId the dmarc_session cookie
+/// carries. Two clocks, both checked on every request: ExpiresAtUtc is the
+/// absolute cap fixed at login, and LastSeenAtUtc drives the idle timeout.
+/// RevokedAtUtc kills a session before either.
+/// </summary>
 public sealed class UserSession
 {
     public Guid Id { get; set; } = Guid.NewGuid();

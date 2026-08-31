@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Analytics;
 
+/// <summary>TLS-RPT analytics for the domain detail page — see <see cref="TlsRptQueryService"/>.</summary>
 public interface ITlsRptQueryService
 {
     /// <summary>
@@ -31,6 +32,7 @@ public sealed class TlsRptQueryService(
     ICurrentUserContext currentUser,
     ITlsRptRecordChecker recordChecker) : ITlsRptQueryService
 {
+    /// <inheritdoc />
     public async Task<TlsRptDomainSummaryDto?> GetDomainSummaryAsync(
         Guid domainId, int days, CancellationToken ct)
     {
@@ -117,6 +119,7 @@ public sealed class TlsRptQueryService(
             await recordTask);
     }
 
+    /// <inheritdoc />
     public async Task<TlsRptGateSample> GetGateSampleAsync(
         Guid domainId, DateTime sinceUtc, CancellationToken ct)
     {

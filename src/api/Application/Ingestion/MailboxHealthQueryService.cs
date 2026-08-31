@@ -4,8 +4,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
+/// <summary>EF-backed <see cref="IMailboxHealthQueryService"/>.</summary>
 public sealed class MailboxHealthQueryService(DmarcAnalyzerDbContext db) : IMailboxHealthQueryService
 {
+    /// <inheritdoc />
     public async Task<IReadOnlyList<ReportSourceHealthDto>> ListAsync(Guid? reportSourceId, CancellationToken ct)
     {
         // Mailbox health, and only a polled source has a mailbox. A pushed source has no

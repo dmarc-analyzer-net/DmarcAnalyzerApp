@@ -22,5 +22,6 @@ public sealed class EmailOptions
     /// <summary>Absolute base URL used to build links in emails, e.g. https://dmarc.example.com.</summary>
     public string BaseUrl { get; set; } = string.Empty;
 
+    /// <summary>The send gate: a host and a from-address are the minimum a relay needs.</summary>
     public bool IsConfigured => !string.IsNullOrWhiteSpace(Host) && !string.IsNullOrWhiteSpace(FromAddress);
 }

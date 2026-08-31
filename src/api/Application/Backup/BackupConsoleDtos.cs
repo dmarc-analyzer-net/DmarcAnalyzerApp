@@ -55,6 +55,7 @@ public sealed record ConfigImportBucketArtifactDto(
     bool CarriesSignedInUser,
     IReadOnlyList<ConfigImportEntityCountDto> Entities);
 
+/// <summary>Row count of one entity table inside an artifact, for the preview.</summary>
 public sealed record ConfigImportEntityCountDto(string Entity, int InArtifact);
 
 /// <summary>
@@ -82,6 +83,7 @@ public sealed record ConfigImportResponseDto(
     IReadOnlyList<string> Conflicts,
     IReadOnlyList<string> Warnings);
 
+/// <summary>Per-table created/updated/skipped counts of an import (or its preview).</summary>
 public sealed record ConfigImportEntityResultDto(
     string Entity,
     int Created,

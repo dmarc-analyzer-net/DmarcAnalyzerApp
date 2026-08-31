@@ -8,6 +8,7 @@ using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Application.MtaSts;
 
+/// <summary>Fetches the policy file over HTTPS — see <see cref="MtaStsPolicyFetcher"/>.</summary>
 public interface IMtaStsPolicyFetcher
 {
     /// <summary>
@@ -27,6 +28,7 @@ public sealed class MtaStsPolicyFetcher(
     IHttpClientFactory httpClientFactory,
     ILogger<MtaStsPolicyFetcher> logger) : IMtaStsPolicyFetcher
 {
+    /// <summary>The named HttpClient carrying the no-redirect, cert-capturing handler.</summary>
     public const string ClientName = "mta-sts";
 
     /// <summary>
@@ -44,6 +46,7 @@ public sealed class MtaStsPolicyFetcher(
     /// </summary>
     private static readonly AsyncLocal<StrongBox<string?>?> CertFailure = new();
 
+    /// <inheritdoc />
     public async Task<MtaStsPolicyFetchResult> FetchAsync(string domain, CancellationToken ct)
     {
         var url = $"https://mta-sts.{domain}/.well-known/mta-sts.txt";

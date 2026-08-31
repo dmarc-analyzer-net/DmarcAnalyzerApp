@@ -1,5 +1,10 @@
 namespace DmarcAnalyzer.Api.Data.Entities;
 
+/// <summary>
+/// One DMARC aggregate report. Deduped by the (DomainId, ReportId,
+/// RangeBeginUtc, RangeEndUtc) unique index; deleting one cascades to its
+/// records and their auth results.
+/// </summary>
 public sealed class DmarcReport
 {
     public Guid Id { get; set; } = Guid.NewGuid();

@@ -69,6 +69,7 @@ public interface IPolledReadSession : IAsyncDisposable
     /// </summary>
     DateTime? OldestMessageAtUtc { get; }
 
+    /// <summary>Downloads one item as a MIME message.</summary>
     Task<MimeMessage> FetchAsync(PolledItemRef item, CancellationToken ct);
 
     /// <summary>
@@ -84,6 +85,7 @@ public interface IPolledReadSession : IAsyncDisposable
     /// </summary>
     void ApplyCheckpoint(ReportSource source, PolledItemRef handled);
 
+    /// <summary>Graceful protocol goodbye; disposal alone just drops the connection.</summary>
     Task CloseAsync(CancellationToken ct);
 }
 
@@ -114,6 +116,7 @@ public interface IPolledPruneSession : IAsyncDisposable
     /// </summary>
     Task<DateTime?> GetOldestMessageAtUtcAsync(CancellationToken ct);
 
+    /// <summary>Graceful protocol goodbye — for POP3 also the moment deletions take effect.</summary>
     Task CloseAsync(CancellationToken ct);
 }
 
@@ -169,11 +172,13 @@ public interface IPolledSourceTransportFactory
     IPolledSourceTransport? For(string protocol);
 }
 
+/// <summary>Dictionary-backed <see cref="IPolledSourceTransportFactory"/> over the DI-registered transports.</summary>
 public sealed class PolledSourceTransportFactory(IEnumerable<IPolledSourceTransport> transports) : IPolledSourceTransportFactory
 {
     private readonly Dictionary<string, IPolledSourceTransport> _byProtocol =
         transports.ToDictionary(x => x.Protocol, StringComparer.OrdinalIgnoreCase);
 
+    /// <inheritdoc />
     public IPolledSourceTransport? For(string protocol)
         => _byProtocol.TryGetValue(protocol?.Trim() ?? string.Empty, out var transport) ? transport : null;
 }

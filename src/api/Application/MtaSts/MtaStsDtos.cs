@@ -11,32 +11,54 @@ namespace DmarcAnalyzer.Api.Application.MtaSts;
 /// </summary>
 public static class MtaStsRecordStatus
 {
+    /// <summary>Exactly one valid STSv1 record.</summary>
     public const string Found = RecordLookupStatus.Found;
+
+    /// <summary>No STSv1 record published.</summary>
     public const string Missing = RecordLookupStatus.Missing;
+
+    /// <summary>The DNS query failed — not evidence either way.</summary>
     public const string LookupFailed = RecordLookupStatus.LookupFailed;
+
+    /// <summary>Published but unusable (duplicates, or unparseable) — senders treat it as no policy.</summary>
     public const string Invalid = "invalid";
 }
 
 /// <summary>Outcome of fetching the policy file over HTTPS.</summary>
 public static class MtaStsFetchStatus
 {
+    /// <summary>200 with a body within the size cap.</summary>
     public const string Ok = "ok";
 
     /// <summary>RFC 8461 §3.3: senders must not follow redirects, so a 3xx is a broken policy host.</summary>
     public const string Redirected = "redirected";
 
+    /// <summary>A non-2xx, non-3xx response.</summary>
     public const string HttpError = "http_error";
+
+    /// <summary>Certificate or TLS handshake failure — for MTA-STS a first-class finding, not noise.</summary>
     public const string TlsFailed = "tls_failed";
+
+    /// <summary>No connection to the policy host at all.</summary>
     public const string ConnectFailed = "connect_failed";
+
+    /// <summary>The fetch ran out of time.</summary>
     public const string Timeout = "timeout";
+
+    /// <summary>Body exceeded the size cap; refused rather than truncated.</summary>
     public const string TooLarge = "too_large";
 }
 
 /// <summary>MX lookup outcome for the cross-check: found, missing or lookup_failed.</summary>
 public static class MtaStsMxStatus
 {
+    /// <summary>At least one MX record.</summary>
     public const string Found = RecordLookupStatus.Found;
+
+    /// <summary>NXDOMAIN or no MX records.</summary>
     public const string Missing = RecordLookupStatus.Missing;
+
+    /// <summary>The MX query failed.</summary>
     public const string LookupFailed = RecordLookupStatus.LookupFailed;
 }
 
@@ -99,6 +121,7 @@ public sealed record MtaStsLiveMxDto(string Status, IReadOnlyList<MxHost> Hosts)
 /// is false (and every nullable field null) for a domain the pass has not
 /// reached yet — distinct from missing, which is a definitive answer.
 /// </summary>
+/// <param name="Readiness">The promotion gate; null when no policy is hosted here.</param>
 public sealed record MtaStsStateDto(
     Guid DomainId,
     string Name,
@@ -121,5 +144,4 @@ public sealed record MtaStsStateDto(
     IReadOnlyList<string> Issues,
     DateTime? LastCheckedAtUtc,
     DateTime? LastChangedAtUtc,
-    /// <summary>The promotion gate; null when no policy is hosted here.</summary>
     MtaStsReadinessDto? Readiness = null);

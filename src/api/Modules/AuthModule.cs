@@ -7,8 +7,10 @@ using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Modules;
 
+/// <summary>Endpoints under /api/v1/auth: bootstrap, login/logout, session introspection.</summary>
 public sealed class AuthModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         // Deliberately not gated by Auth:Oidc:DisableLocalLogin: RegisterAsync already

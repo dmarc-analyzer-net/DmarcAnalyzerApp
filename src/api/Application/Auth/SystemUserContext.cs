@@ -8,12 +8,27 @@ namespace DmarcAnalyzer.Api.Application.Auth;
 /// </summary>
 public sealed class SystemUserContext : ICurrentUserContext
 {
+    /// <inheritdoc />
     public bool IsAuthenticated => false;
+
+    /// <inheritdoc />
     public Guid UserId => Guid.Empty;
+
+    /// <inheritdoc />
     public string Email => "system";
+
+    /// <inheritdoc />
     public string Role => Roles.AgencyAdmin;
+
+    /// <inheritdoc />
     public bool IsAdmin => true;
+
+    /// <inheritdoc />
     public bool IsAgencyStaff => true;
+
+    /// <inheritdoc />
     public IReadOnlyCollection<Guid> AllowedClientIds => [];
+
+    /// <inheritdoc />
     public bool CanAccessClient(Guid clientId) => true;
 }

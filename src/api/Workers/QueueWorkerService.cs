@@ -12,6 +12,14 @@ using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Workers;
 
+/// <summary>
+/// The worker loop: every interval it syncs each active polled source in turn,
+/// then runs the periodic passes (DNS refresh, MTA-STS checks, alerts, digest,
+/// database retention, mailbox retention, backup offload) when they come due.
+/// There is no job queue and no claim path — one worker per database, enforced
+/// by <see cref="WorkerSingleInstanceLock"/> while
+/// <c>Worker:EnforceSingleInstance</c> is on (the default).
+/// </summary>
 public sealed class QueueWorkerService(
     IServiceScopeFactory scopeFactory,
     IOptions<WorkerOptions> options,
@@ -23,6 +31,7 @@ public sealed class QueueWorkerService(
 
     private const int MinDelaySeconds = 15;
 
+    /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         logger.LogInformation("Queue worker started.");

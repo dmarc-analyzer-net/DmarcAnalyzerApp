@@ -7,15 +7,26 @@ using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Application.Notifications;
 
+/// <summary>Rule-type values stored on alert_event rows — see <see cref="AlertEvaluationService"/> for what each means.</summary>
 public static class AlertRuleTypes
 {
+    /// <summary>The newest day of data is markedly less compliant than its baseline.</summary>
     public const string FailureSpike = "failure_spike";
+
+    /// <summary>A domain's published DMARC policy got weaker.</summary>
     public const string PolicyRegression = "policy_regression";
+
+    /// <summary>The MTA-STS policy id moved — expected after an edit, suspicious otherwise.</summary>
     public const string MtaStsPolicyChange = "mta_sts_policy_change";
+
+    /// <summary>The advertised MTA-STS policy is broken; mail-breaking under enforce.</summary>
     public const string MtaStsBroken = "mta_sts_broken";
+
+    /// <summary>A live MX host is not covered by the policy's mx patterns.</summary>
     public const string MtaStsMxMismatch = "mta_sts_mx_mismatch";
 }
 
+/// <summary>One evaluation pass's counters, for the worker log and the console's "evaluate now".</summary>
 public sealed record AlertEvaluationResult(
     int ClientsEvaluated,
     int AlertsRaised,
@@ -23,8 +34,10 @@ public sealed record AlertEvaluationResult(
     int EmailsSent,
     IReadOnlyList<string> Raised);
 
+/// <summary>The alert rules — see <see cref="AlertEvaluationService"/>.</summary>
 public interface IAlertEvaluationService
 {
+    /// <summary>Evaluates every enabled client's rules, suppresses repeats within the cooldown window, and emails recipients.</summary>
     Task<AlertEvaluationResult> EvaluateAsync(CancellationToken ct);
 }
 
@@ -60,6 +73,7 @@ public sealed class AlertEvaluationService(
     private readonly AlertOptions _options = alertOptions.Value;
     private readonly EmailOptions _email = emailOptions.Value;
 
+    /// <inheritdoc />
     public async Task<AlertEvaluationResult> EvaluateAsync(CancellationToken ct)
     {
         if (!_options.Enabled)

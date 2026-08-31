@@ -3,6 +3,7 @@ namespace DmarcAnalyzer.Api.Application.Auth;
 /// <summary>The app session cookie, shared by password login and OIDC completion.</summary>
 public static class SessionCookie
 {
+    /// <summary>The cookie name both login paths set and SessionAuthMiddleware reads.</summary>
     public const string Name = "dmarc_session";
 
     /// <summary>

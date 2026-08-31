@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.ReportSources;
 
+/// <summary>EF-backed <see cref="IReportSourceService"/>.</summary>
 public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialProtector credentialProtector) : IReportSourceService
 {
     /// <summary>
@@ -52,6 +53,7 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
     /// </summary>
     private static bool IsBucket(string protocol) => protocol == ReportSourceProtocols.S3;
 
+    /// <inheritdoc />
     public async Task<IReadOnlyList<ReportSourceDto>> ListAsync(CancellationToken ct)
     {
         return await db.ReportSources
@@ -62,6 +64,7 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
             .ToListAsync(ct);
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<ReportSourceDto>> CreateAsync(CreateReportSourceRequest request, CancellationToken ct)
     {
         var protocol = request.Protocol.Trim().ToLowerInvariant();
@@ -171,6 +174,7 @@ public sealed class ReportSourceService(DmarcAnalyzerDbContext db, ICredentialPr
         return ServiceResult<ReportSourceDto>.Success(ToDto(source, null));
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<ReportSourceDto>> UpdateAsync(Guid id, UpdateReportSourceRequest request, CancellationToken ct)
     {
         var source = await db.ReportSources.SingleOrDefaultAsync(x => x.Id == id, ct);

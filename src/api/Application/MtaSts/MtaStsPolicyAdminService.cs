@@ -9,17 +9,20 @@ using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Application.MtaSts;
 
+/// <summary>Hosted MTA-STS policy administration — see <see cref="MtaStsPolicyAdminService"/>.</summary>
 public interface IMtaStsPolicyAdminService
 {
     /// <summary>The domain's hosted policy (or null Policy when none) — tenancy-scoped; null for unknown/cross-tenant ids.</summary>
     Task<MtaStsPolicyResponse?> GetAsync(Guid domainId, CancellationToken ct);
 
+    /// <summary>Creates or updates the hosted policy, bumping the policy id only when the rendered content changed.</summary>
     Task<ServiceResult<MtaStsPolicyUpsertResult>> UpsertAsync(
         Guid domainId, UpsertMtaStsPolicyRequest request, CancellationToken ct);
 
     /// <summary>Removes the hosted policy — "we no longer host this". 404 when there is none.</summary>
     Task<ServiceResult<MtaStsPolicyResponse>> DeleteAsync(Guid domainId, CancellationToken ct);
 
+    /// <summary>Applies one policy shape to the requested domains of a client — or all its active domains — reporting per-domain outcomes.</summary>
     Task<ServiceResult<MtaStsPolicyBulkApplyResponse>> BulkApplyAsync(
         Guid clientId, BulkApplyMtaStsPolicyRequest request, CancellationToken ct);
 }
@@ -39,6 +42,7 @@ public sealed class MtaStsPolicyAdminService(
 {
     private static readonly string[] ValidModes = ["enforce", "testing", "none"];
 
+    /// <inheritdoc />
     public async Task<MtaStsPolicyResponse?> GetAsync(Guid domainId, CancellationToken ct)
     {
         var domain = await db.Domains
@@ -60,6 +64,7 @@ public sealed class MtaStsPolicyAdminService(
         return ToResponse(domain.Id, domain.Name, domain.ClientId, policy);
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<MtaStsPolicyUpsertResult>> UpsertAsync(
         Guid domainId, UpsertMtaStsPolicyRequest request, CancellationToken ct)
     {
@@ -98,6 +103,7 @@ public sealed class MtaStsPolicyAdminService(
             ToResponse(domain.Id, domain.Name, domain.ClientId, policy), outcome, previousPolicyId));
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<MtaStsPolicyResponse>> DeleteAsync(Guid domainId, CancellationToken ct)
     {
         var domain = await db.Domains
@@ -125,6 +131,7 @@ public sealed class MtaStsPolicyAdminService(
             ToResponse(domain.Id, domain.Name, domain.ClientId, null));
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<MtaStsPolicyBulkApplyResponse>> BulkApplyAsync(
         Guid clientId, BulkApplyMtaStsPolicyRequest request, CancellationToken ct)
     {

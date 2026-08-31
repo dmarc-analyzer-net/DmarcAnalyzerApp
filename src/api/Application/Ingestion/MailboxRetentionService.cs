@@ -22,12 +22,15 @@ public sealed record MailboxRetentionSourceResult(
     int SkippedUnarchived,
     string? Error);
 
+/// <summary>A whole pass: whether it was a dry run, and what happened per source.</summary>
 public sealed record MailboxRetentionRunResult(
     bool DryRun,
     IReadOnlyList<MailboxRetentionSourceResult> Sources);
 
+/// <summary>Deletes aged report mail from source mailboxes — see <see cref="MailboxRetentionService"/>.</summary>
 public interface IMailboxRetentionService
 {
+    /// <summary>Executes (or previews, when <paramref name="dryRun"/>) the planner's current plan.</summary>
     Task<MailboxRetentionRunResult> RunAsync(bool dryRun, CancellationToken ct);
 }
 
@@ -55,6 +58,7 @@ public sealed class MailboxRetentionService(
     IAuditLog audit,
     ILogger<MailboxRetentionService> logger) : IMailboxRetentionService
 {
+    /// <inheritdoc />
     public async Task<MailboxRetentionRunResult> RunAsync(bool dryRun, CancellationToken ct)
     {
         var plans = await planner.PlanAsync(ct);

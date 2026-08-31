@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Domains;
 
+/// <summary>The shared create-or-get for report domains — see <see cref="DomainIngestResolver"/>.</summary>
 public interface IDomainIngestResolver
 {
     /// <summary>
@@ -14,15 +15,6 @@ public interface IDomainIngestResolver
 }
 
 /// <summary>
-/// Hoisted verbatim from MailboxSyncService so DMARC and TLS ingestion share
-/// one create-or-get. Domain names are globally unique, so an existing domain
-/// keeps whatever client it already has — the default client only applies at
-/// creation. Uses raw ON CONFLICT SQL (InMemory tests cannot exercise it), and
-/// callers run it outside their report transaction on purpose: a domain is
-/// shared by every report for it, so rolling it back with one failed report
-/// would be wrong.
-/// </summary>
-/// <summary>
 /// A resolved domain and the client that owns it.
 /// <para>
 /// The owner is returned rather than assumed because it is not always the client that
@@ -33,8 +25,18 @@ public interface IDomainIngestResolver
 /// </summary>
 public sealed record ResolvedDomain(Guid DomainId, Guid OwnerClientId);
 
+/// <summary>
+/// Hoisted verbatim from MailboxSyncService so DMARC and TLS ingestion share
+/// one create-or-get. Domain names are globally unique, so an existing domain
+/// keeps whatever client it already has — the default client only applies at
+/// creation. Uses raw ON CONFLICT SQL (InMemory tests cannot exercise it), and
+/// callers run it outside their report transaction on purpose: a domain is
+/// shared by every report for it, so rolling it back with one failed report
+/// would be wrong.
+/// </summary>
 public sealed class DomainIngestResolver(DmarcAnalyzerDbContext db) : IDomainIngestResolver
 {
+    /// <inheritdoc />
     public async Task<ResolvedDomain> ResolveOrCreateAsync(
         Guid defaultClientId, string normalizedDomain, CancellationToken ct)
     {

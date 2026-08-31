@@ -7,8 +7,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Domains;
 
+/// <summary>EF-backed <see cref="IDomainService"/>.</summary>
 public sealed class DomainService(DmarcAnalyzerDbContext db, ICurrentUserContext currentUser) : IDomainService
 {
+    /// <inheritdoc />
     public async Task<IReadOnlyList<DomainDto>> ListAsync(Guid? clientId, CancellationToken ct)
     {
         var query = db.Domains
@@ -33,6 +35,7 @@ public sealed class DomainService(DmarcAnalyzerDbContext db, ICurrentUserContext
             .ToListAsync(ct);
     }
 
+    /// <inheritdoc />
     public async Task<DomainDto?> GetAsync(Guid id, CancellationToken ct)
     {
         var query = db.Domains
@@ -51,6 +54,7 @@ public sealed class DomainService(DmarcAnalyzerDbContext db, ICurrentUserContext
             .SingleOrDefaultAsync(ct);
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<DomainDto>> CreateAsync(CreateDomainRequest request, CancellationToken ct)
     {
         if (request.ClientId == Guid.Empty || string.IsNullOrWhiteSpace(request.Name))
@@ -87,6 +91,7 @@ public sealed class DomainService(DmarcAnalyzerDbContext db, ICurrentUserContext
         return ServiceResult<DomainDto>.Success(ToDto(domain, null));
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<DomainDto>> UpdateAsync(Guid id, UpdateDomainRequest request, CancellationToken ct)
     {
         var domain = await db.Domains.SingleOrDefaultAsync(x => x.Id == id, ct);

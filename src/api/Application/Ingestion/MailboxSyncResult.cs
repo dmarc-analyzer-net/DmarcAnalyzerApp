@@ -1,5 +1,10 @@
 namespace DmarcAnalyzer.Api.Application.Ingestion;
 
+/// <summary>
+/// One sync's counters, as returned to the caller that triggered it. The same
+/// numbers land on the mailbox_sync_run row; duplicates and parse failures are
+/// counted, never errors.
+/// </summary>
 public sealed record MailboxSyncResult(
     Guid ReportSourceId,
     int MessagesScanned,

@@ -72,11 +72,13 @@ public sealed class S3ReportSourceTransport(
 
     private readonly int _maxKeysPerPass = maxKeysPerPass;
 
+    /// <inheritdoc />
     public string Protocol => ReportSourceProtocols.S3;
 
     /// <summary>One object in the bucket, as much of it as a pass needs.</summary>
     public sealed record S3ObjectRef(string Key, DateTime LastModifiedUtc);
 
+    /// <inheritdoc />
     public async Task<IPolledReadSession> OpenForReadAsync(
         ReportSource source, string secret, CancellationToken ct)
     {
@@ -112,6 +114,7 @@ public sealed class S3ReportSourceTransport(
         }
     }
 
+    /// <inheritdoc />
     public async Task<IPolledPruneSession> OpenForPruneAsync(
         ReportSource source, string secret, DateTime cutoffUtc, bool dryRun, CancellationToken ct)
     {

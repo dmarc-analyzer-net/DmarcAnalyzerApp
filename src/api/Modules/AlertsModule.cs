@@ -8,19 +8,36 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Modules;
 
+/// <summary>Body of PATCH /api/v1/alerts/{id}.</summary>
 public sealed record UpdateAlertStatusRequest(string? Status);
 
+/// <summary>
+/// The alert lifecycle — operator workflow only. Re-raising is suppressed by
+/// the evaluator's time-based cooldown, not by status, so closing an alert
+/// does not invite an immediate repeat.
+/// </summary>
 public static class AlertStatuses
 {
+    /// <summary>Raised and unhandled.</summary>
     public const string Open = "open";
+
+    /// <summary>Someone has seen it and is on it.</summary>
     public const string Acknowledged = "acknowledged";
+
+    /// <summary>Resolved or dismissed.</summary>
     public const string Closed = "closed";
 
+    /// <summary>Every valid status value.</summary>
     public static readonly string[] All = [Open, Acknowledged, Closed];
 }
 
+/// <summary>
+/// Endpoints under /api/v1/alerts (list history, change status) plus the admin
+/// triggers: evaluate alerts now, preview/send the digest, send a test mail.
+/// </summary>
 public sealed class AlertsModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         // Alert history. Client viewers see only their granted clients' alerts.

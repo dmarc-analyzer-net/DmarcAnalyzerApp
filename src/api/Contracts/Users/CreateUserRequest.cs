@@ -1,5 +1,6 @@
 namespace DmarcAnalyzer.Api.Contracts.Users;
 
+/// <summary>Body of POST /api/v1/users.</summary>
 public sealed class CreateUserRequest
 {
     public string Email { get; set; } = string.Empty;

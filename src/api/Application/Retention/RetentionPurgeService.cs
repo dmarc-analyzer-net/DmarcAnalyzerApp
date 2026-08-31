@@ -16,6 +16,7 @@ public sealed record ClientPurgeResult(
     int TlsIngestRowsDeleted,
     bool SkippedForLegalHold);
 
+/// <summary>A whole purge pass: totals plus the per-client breakdown.</summary>
 public sealed record PurgeRunResult(
     bool DryRun,
     DateTime StartedAtUtc,
@@ -29,6 +30,7 @@ public sealed record PurgeRunResult(
     int AuditEventsDeleted,
     IReadOnlyList<ClientPurgeResult> PerClient);
 
+/// <summary>The retention purge — see <see cref="RetentionPurgeService"/>.</summary>
 public interface IRetentionPurgeService
 {
     /// <summary>
@@ -54,8 +56,10 @@ public sealed class RetentionPurgeService(
     IOptions<RetentionOptions> options,
     ILogger<RetentionPurgeService> logger) : IRetentionPurgeService
 {
+    /// <summary>Reports deleted per round trip — bounds transaction size on large backlogs.</summary>
     public const int DefaultBatchSize = 500;
 
+    /// <inheritdoc />
     public async Task<PurgeRunResult> PurgeAsync(bool dryRun, int batchSize, CancellationToken ct)
     {
         batchSize = batchSize <= 0 ? DefaultBatchSize : Math.Min(batchSize, 5000);

@@ -46,6 +46,7 @@ public static class BackupJson
         PropertyNameCaseInsensitive = true,
     };
 
+    /// <summary>The artifact as indented camelCase JSON — the format on disk and in the bucket.</summary>
     public static string Serialize(BackupArtifact artifact)
         => JsonSerializer.Serialize(artifact, Options);
 }

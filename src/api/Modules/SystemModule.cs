@@ -6,8 +6,10 @@ using Microsoft.AspNetCore.Routing;
 
 namespace DmarcAnalyzer.Api.Modules;
 
+/// <summary>GET /api/v1/system/status — build, mode, and revision.</summary>
 public sealed class SystemModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         // AppRuntimeInfo is bound from services rather than read from the environment

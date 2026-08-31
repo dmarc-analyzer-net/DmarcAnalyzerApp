@@ -6,8 +6,10 @@ public enum ObjectStorageVersioning
     /// <summary>Could not be determined — the credential may lack the permission to ask.</summary>
     Unknown,
 
+    /// <summary>Overwrites keep the previous version recoverable.</summary>
     Enabled,
 
+    /// <summary>An overwritten snapshot is gone; the console warns about this.</summary>
     Disabled,
 }
 
@@ -27,6 +29,7 @@ public interface IObjectStorage
     /// <summary>Describes the destination for logs and the console, without secrets.</summary>
     string Describe();
 
+    /// <summary>Writes an object, overwriting any existing one at the key.</summary>
     Task PutAsync(string key, byte[] content, string contentType, CancellationToken ct);
 
     /// <summary>Size of a stored object, or null when it does not exist.</summary>
@@ -39,7 +42,9 @@ public interface IObjectStorage
     /// </summary>
     Task<byte[]?> GetAsync(string key, CancellationToken ct);
 
+    /// <summary>Server-side copy, used to keep a dated snapshot beside config/latest.json.</summary>
     Task CopyAsync(string sourceKey, string destinationKey, CancellationToken ct);
 
+    /// <summary>Whether the bucket versions overwrites — surfaced on the status card.</summary>
     Task<ObjectStorageVersioning> GetVersioningAsync(CancellationToken ct);
 }

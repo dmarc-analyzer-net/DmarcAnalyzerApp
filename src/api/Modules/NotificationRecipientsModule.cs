@@ -8,12 +8,15 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Modules;
 
+/// <summary>Body of POST /api/v1/notification-recipients (create only — a duplicate is a 409). Null ClientId means agency-wide; Kind is alert, digest or both.</summary>
 public sealed record UpsertRecipientRequest(Guid? ClientId, string Email, string? Kind, bool? IsActive);
 
+/// <summary>Endpoints under /api/v1/notification-recipients — who gets alert and digest mail.</summary>
 public sealed class NotificationRecipientsModule : ICarterModule
 {
     private static readonly string[] Kinds = ["alert", "digest", "both"];
 
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/v1/notification-recipients", async (

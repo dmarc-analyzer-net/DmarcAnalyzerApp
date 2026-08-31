@@ -63,6 +63,7 @@ public sealed class ApiCredential
 
     public ReportSource? ReportSource { get; set; }
 
+    /// <summary>Not revoked and not expired — the whole gate; there is no disabled flag.</summary>
     public bool IsUsable(DateTime nowUtc)
         => RevokedAtUtc is null && (ExpiresAtUtc is null || ExpiresAtUtc > nowUtc);
 }
@@ -73,7 +74,9 @@ public sealed class ApiCredential
 /// </summary>
 public static class MachineCredentialKinds
 {
+    /// <summary>May POST reports to the ingest endpoint for its bound source.</summary>
     public const string ReportIngest = "report_ingest";
 
+    /// <summary>Guards kind values arriving from requests.</summary>
     public static bool IsKnown(string kind) => kind == ReportIngest;
 }

@@ -3,6 +3,7 @@ namespace DmarcAnalyzer.Api.Application.Analytics;
 /// <summary>Outcome of a live DNS check: found, missing, or the lookup itself failed.</summary>
 public static class RecordLookupStatus
 {
+    /// <summary>The domain publishes its own record.</summary>
     public const string Found = "found";
 
     /// <summary>
@@ -12,11 +13,17 @@ public static class RecordLookupStatus
     /// </summary>
     public const string Inherited = "inherited";
 
+    /// <summary>Definitively not published — unlike <see cref="LookupFailed"/>, this is an answer.</summary>
     public const string Missing = "missing";
+
+    /// <summary>The DNS query itself failed (timeout/servfail) — says nothing about the record.</summary>
     public const string LookupFailed = "lookup_failed";
 }
 
 /// <summary>The live DMARC record at _dmarc.{domain}, parsed tag by tag.</summary>
+/// <param name="Testing">Testing mode (RFC 9989) — y/n, null when not published. Default is n.</param>
+/// <param name="PublicSuffixDomain">Public suffix domain flag (RFC 9989) — y/n/u, null when not published. Default is u.</param>
+/// <param name="NonExistentSubdomainPolicy">Policy for non-existent subdomains (RFC 9989, promoted from experimental RFC 9091).</param>
 public sealed record DnsDmarcRecordDto(
     string Status,
     string? Raw,
@@ -28,11 +35,8 @@ public sealed record DnsDmarcRecordDto(
     string? DkimAlignment,
     string? SpfAlignment,
     IReadOnlyList<string> Issues,
-    /// <summary>Testing mode (RFC 9989) — y/n, null when not published. Default is n.</summary>
     string? Testing = null,
-    /// <summary>Public suffix domain flag (RFC 9989) — y/n/u, null when not published. Default is u.</summary>
     string? PublicSuffixDomain = null,
-    /// <summary>Policy for non-existent subdomains (RFC 9989, promoted from experimental RFC 9091).</summary>
     string? NonExistentSubdomainPolicy = null);
 
 /// <summary>
@@ -61,7 +65,10 @@ public sealed record ObservedPolicyDto(
 /// <summary>How a published tag lines up with what the reporter echoed back.</summary>
 public static class RecordComparisonStatus
 {
+    /// <summary>Published and observed agree.</summary>
     public const string Match = "match";
+
+    /// <summary>Reporters echo a different value — usually a propagating or regional DNS change.</summary>
     public const string Differs = "differs";
 
     /// <summary>Not published, so RFC 7489 derives it — nothing to disagree with.</summary>
@@ -85,8 +92,13 @@ public sealed record RecordComparisonDto(
 /// <summary>Whether a rua/ruf destination outside this domain has authorized receiving its reports.</summary>
 public static class ExternalDestinationAuthStatus
 {
+    /// <summary>The destination publishes the {domain}._report._dmarc.{destination} opt-in record.</summary>
     public const string Authorized = "authorized";
+
+    /// <summary>No opt-in record — conforming receivers silently drop reports sent there.</summary>
     public const string NotAuthorized = "not_authorized";
+
+    /// <summary>The authorization check itself failed — not evidence either way.</summary>
     public const string LookupFailed = "lookup_failed";
 }
 
@@ -101,6 +113,10 @@ public sealed record ExternalDestinationAuthDto(
     string Status,
     string Detail);
 
+/// <summary>
+/// The record-inspection card: live DMARC and SPF records, the policy reporters
+/// last observed, field-by-field comparison, and external rua/ruf authorization.
+/// </summary>
 public sealed record RecordInspectionDto(
     Guid DomainId,
     string Name,

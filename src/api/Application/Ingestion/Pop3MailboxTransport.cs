@@ -48,8 +48,10 @@ public sealed class Pop3MailboxTransport(ILogger<Pop3MailboxTransport> logger) :
     /// </summary>
     private const int HeaderBatchSize = 200;
 
+    /// <inheritdoc />
     public string Protocol => ReportSourceProtocols.Pop3;
 
+    /// <inheritdoc />
     public async Task<IPolledReadSession> OpenForReadAsync(
         ReportSource source, string password, CancellationToken ct)
     {
@@ -101,6 +103,7 @@ public sealed class Pop3MailboxTransport(ILogger<Pop3MailboxTransport> logger) :
         }
     }
 
+    /// <inheritdoc />
     public async Task<IPolledPruneSession> OpenForPruneAsync(
         ReportSource source, string password, DateTime cutoffUtc, bool dryRun, CancellationToken ct)
     {

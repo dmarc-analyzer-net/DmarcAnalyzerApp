@@ -70,6 +70,7 @@ public static class AuditEvents
     public const string MailboxRetentionDeleted = "mailbox_source.retention.deleted";
 }
 
+/// <summary>Writes the audit trail — see <see cref="AuditLog"/>.</summary>
 public interface IAuditLog
 {
     /// <summary>
@@ -97,12 +98,19 @@ public interface IAuditLog
         CancellationToken ct = default);
 }
 
+/// <summary>
+/// Appends audit_event rows, resolving the actor from the current session and
+/// the caller's IP/User-Agent from the request. Non-cancellation failures are
+/// swallowed and logged — auditing must never turn a succeeding operation into
+/// a 500.
+/// </summary>
 public sealed class AuditLog(
     DmarcAnalyzerDbContext db,
     ICurrentUserContext currentUser,
     IHttpContextAccessor httpContextAccessor,
     ILogger<AuditLog> logger) : IAuditLog
 {
+    /// <inheritdoc />
     public Task RecordAsync(
         string eventType,
         string summary,
@@ -132,6 +140,7 @@ public sealed class AuditLog(
         }, ct);
     }
 
+    /// <inheritdoc />
     public Task RecordSystemAsync(
         string eventType, string summary, string? details = null, Guid? clientId = null,
         CancellationToken ct = default)

@@ -8,14 +8,17 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.Auth;
 
+/// <summary>EF-backed <see cref="IAuthService"/>; passwords are handled by <see cref="PasswordHasher"/>.</summary>
 public sealed class AuthService(DmarcAnalyzerDbContext db) : IAuthService
 {
     private static readonly TimeSpan IdleTimeout = TimeSpan.FromHours(12);
     private static readonly TimeSpan AbsoluteMax = TimeSpan.FromDays(7);
 
+    /// <inheritdoc />
     public async Task<bool> RequiresBootstrapAsync(CancellationToken ct)
         => !await db.AgencyUsers.AnyAsync(ct);
 
+    /// <inheritdoc />
     public async Task<ServiceResult<UserDto>> RegisterAsync(RegisterRequest request, CancellationToken ct)
     {
         // Registration only bootstraps the very first account (forced admin);
@@ -64,6 +67,7 @@ public sealed class AuthService(DmarcAnalyzerDbContext db) : IAuthService
         return ServiceResult<UserDto>.Success(ToDto(user));
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<LoginResultDto>> LoginAsync(LoginRequest request, string? ipAddress, string? userAgent, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(request.Email) || string.IsNullOrWhiteSpace(request.Password))
@@ -82,6 +86,7 @@ public sealed class AuthService(DmarcAnalyzerDbContext db) : IAuthService
         return await LoginWithExternalIdentityAsync(user.Id, ipAddress, userAgent, ct);
     }
 
+    /// <inheritdoc />
     public async Task<ServiceResult<LoginResultDto>> LoginWithExternalIdentityAsync(Guid userId, string? ipAddress, string? userAgent, CancellationToken ct)
     {
         var user = await db.AgencyUsers.SingleOrDefaultAsync(x => x.Id == userId, ct);
@@ -116,6 +121,7 @@ public sealed class AuthService(DmarcAnalyzerDbContext db) : IAuthService
         return ServiceResult<LoginResultDto>.Success(new LoginResultDto(ToDto(user), session.CookieId));
     }
 
+    /// <inheritdoc />
     public async Task LogoutAsync(string cookieId, CancellationToken ct)
     {
         var session = await db.UserSessions.SingleOrDefaultAsync(x => x.CookieId == cookieId, ct);
@@ -126,9 +132,11 @@ public sealed class AuthService(DmarcAnalyzerDbContext db) : IAuthService
         }
     }
 
+    /// <inheritdoc />
     public async Task<UserDto?> GetCurrentUserAsync(string cookieId, CancellationToken ct)
         => (await GetSessionUserAsync(cookieId, ct))?.User;
 
+    /// <inheritdoc />
     public async Task<SessionUserDto?> GetSessionUserAsync(string cookieId, CancellationToken ct)
     {
         var session = await db.UserSessions

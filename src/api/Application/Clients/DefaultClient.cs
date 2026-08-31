@@ -13,7 +13,10 @@ namespace DmarcAnalyzer.Api.Application.Clients;
 /// </summary>
 public static class DefaultClient
 {
+    /// <summary>Display name of the bootstrap client.</summary>
     public const string Name = "Default";
+
+    /// <summary>Its fixed slug — how "still under the catch-all" is detected.</summary>
     public const string Slug = "default";
 
     /// <summary>

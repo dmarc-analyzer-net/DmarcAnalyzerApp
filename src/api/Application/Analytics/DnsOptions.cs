@@ -3,6 +3,7 @@ namespace DmarcAnalyzer.Api.Application.Analytics;
 /// <summary>Controls the worker pass that refreshes each domain's cached DMARC policy.</summary>
 public sealed class DnsOptions
 {
+    /// <summary>Turns the refresh pass off entirely; page-view write-back still corrects what gets looked at.</summary>
     public bool Enabled { get; set; } = true;
 
     /// <summary>

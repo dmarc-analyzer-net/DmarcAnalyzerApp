@@ -1,5 +1,6 @@
 namespace DmarcAnalyzer.Api.Contracts.Auth;
 
+/// <summary>Body of POST /api/v1/auth/register — the one-time bootstrap of the first admin.</summary>
 public sealed class RegisterRequest
 {
     public string Email { get; set; } = string.Empty;

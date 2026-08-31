@@ -2,6 +2,7 @@ using DmarcAnalyzer.Api.Application.Analytics;
 
 namespace DmarcAnalyzer.Api.Application.MtaSts;
 
+/// <summary>The live MTA-STS check — see <see cref="MtaStsCheckService"/>.</summary>
 public interface IMtaStsCheckService
 {
     /// <summary>
@@ -27,6 +28,7 @@ public sealed class MtaStsCheckService(
     IDnsMxResolver mxResolver,
     IMtaStsPolicyFetcher policyFetcher) : IMtaStsCheckService
 {
+    /// <inheritdoc />
     public async Task<MtaStsCheckResult> CheckAsync(string domainName, CancellationToken ct, bool bypassCache = false)
     {
         var txts = await txtResolver.ResolveAsync($"_mta-sts.{domainName}", ct, bypassCache);

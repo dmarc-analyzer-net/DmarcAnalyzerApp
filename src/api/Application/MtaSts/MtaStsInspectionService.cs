@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace DmarcAnalyzer.Api.Application.MtaSts;
 
+/// <summary>The MTA-STS panel's read/recheck API — see <see cref="MtaStsInspectionService"/>.</summary>
 public interface IMtaStsInspectionService
 {
     /// <summary>
@@ -30,6 +31,7 @@ public interface IMtaStsInspectionService
     Task<MtaStsLiveMxDto?> GetLiveMxAsync(Guid domainId, CancellationToken ct);
 }
 
+/// <summary>Tenancy-checked orchestration over the check service, state cache, and readiness gate.</summary>
 public sealed class MtaStsInspectionService(
     DmarcAnalyzerDbContext db,
     ICurrentUserContext currentUser,
@@ -40,6 +42,7 @@ public sealed class MtaStsInspectionService(
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
+    /// <inheritdoc />
     public async Task<MtaStsStateDto?> GetAsync(Guid domainId, CancellationToken ct)
     {
         var domain = await ResolveAccessibleDomainAsync(domainId, ct);
@@ -56,6 +59,7 @@ public sealed class MtaStsInspectionService(
             await readiness.GetForDomainAsync(domainId, ct));
     }
 
+    /// <inheritdoc />
     public async Task<MtaStsStateDto?> RecheckAsync(Guid domainId, CancellationToken ct)
     {
         var domain = await ResolveAccessibleDomainAsync(domainId, ct);
@@ -73,6 +77,7 @@ public sealed class MtaStsInspectionService(
             await readiness.GetForDomainAsync(domainId, ct));
     }
 
+    /// <inheritdoc />
     public async Task<MtaStsLiveMxDto?> GetLiveMxAsync(Guid domainId, CancellationToken ct)
     {
         var domain = await ResolveAccessibleDomainAsync(domainId, ct);

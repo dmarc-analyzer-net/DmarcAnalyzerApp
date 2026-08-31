@@ -11,6 +11,7 @@ namespace DmarcAnalyzer.Api.Modules;
 /// </summary>
 public sealed class ApiCredentialsModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/v1/api-credentials", async (
@@ -65,6 +66,7 @@ public sealed class ApiCredentialsModule : ICarterModule
     }
 }
 
+/// <summary>Body of POST /api/v1/api-credentials.</summary>
 public sealed class IssueApiCredentialRequest
 {
     public Guid ReportSourceId { get; set; }

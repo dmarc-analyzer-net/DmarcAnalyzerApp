@@ -31,6 +31,11 @@ public sealed class MachineAuthMiddleware(RequestDelegate next)
     /// </summary>
     private static readonly TimeSpan LastUsedWriteInterval = TimeSpan.FromHours(1);
 
+    /// <summary>
+    /// Passes non-bearer requests through untouched. A presented machine token
+    /// either authenticates or is answered 401 here; whether the endpoint
+    /// accepts a machine caller at all stays the authorizer's decision.
+    /// </summary>
     public async Task InvokeAsync(
         HttpContext context, DmarcAnalyzerDbContext db, MachineCallerContext machineCaller)
     {

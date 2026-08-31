@@ -1,17 +1,21 @@
 namespace DmarcAnalyzer.Api.Application.Analytics;
 
+/// <summary>Session counts split by the reporter's policy-type (sts / tlsa / no-policy-found).</summary>
 public sealed record TlsRptPolicyTypeStatDto(
     string PolicyType,
     long SuccessfulSessions,
     long FailedSessions);
 
+/// <summary>Failed sessions per failure category — sts (the domain's policy) vs transport (the receiving MX).</summary>
 public sealed record TlsRptCategoryStatDto(string Category, long FailedSessions);
 
+/// <summary>Failed sessions per RFC 8460 result-type, with the category it rolls up into.</summary>
 public sealed record TlsRptFailureTypeStatDto(
     string ResultType,
     string Category,
     long FailedSessions);
 
+/// <summary>Failures grouped by the receiving MX host — points at which hop is breaking TLS.</summary>
 public sealed record TlsRptMxHostStatDto(
     string ReceivingMxHostname,
     long FailedSessions,
@@ -22,6 +26,12 @@ public sealed record TlsRptMxHostStatDto(
 /// encrypted, and when they fail, is that the domain's MTA-STS policy breaking
 /// delivery (sts) or a receiving MX misconfigured (transport)?
 /// </summary>
+/// <param name="Record">
+/// The live <c>_smtp._tls</c> record. Here rather than on the record-inspection
+/// card because the counts above are unreadable without it: zero sessions
+/// means "no reporter was asked" when this is missing and "no reporter
+/// answered" when it is published, and those call for opposite advice.
+/// </param>
 public sealed record TlsRptDomainSummaryDto(
     AnalyticsWindowDto Window,
     long TotalSessions,
@@ -34,12 +44,6 @@ public sealed record TlsRptDomainSummaryDto(
     IReadOnlyList<TlsRptCategoryStatDto> FailuresByCategory,
     IReadOnlyList<TlsRptFailureTypeStatDto> FailuresByType,
     IReadOnlyList<TlsRptMxHostStatDto> ByReceivingMx,
-    /// <summary>
-    /// The live `_smtp._tls` record. Here rather than on the record-inspection
-    /// card because the counts above are unreadable without it: zero sessions
-    /// means "no reporter was asked" when this is missing and "no reporter
-    /// answered" when it is published, and those call for opposite advice.
-    /// </summary>
     TlsRptRecordDto Record);
 
 /// <summary>
@@ -61,9 +65,16 @@ public sealed record TlsRptGateSample(
 /// </summary>
 public static class TlsRptRecordStatus
 {
+    /// <summary>Exactly one v=TLSRPTv1 record with a usable rua.</summary>
     public const string Found = RecordLookupStatus.Found;
+
+    /// <summary>No v=TLSRPTv1 record published.</summary>
     public const string Missing = RecordLookupStatus.Missing;
+
+    /// <summary>The DNS query failed — not evidence either way.</summary>
     public const string LookupFailed = RecordLookupStatus.LookupFailed;
+
+    /// <summary>Published but unusable (duplicates, or no rua) — senders treat it as not implementing TLS-RPT.</summary>
     public const string Invalid = "invalid";
 }
 

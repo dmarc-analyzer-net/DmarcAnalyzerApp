@@ -5,6 +5,7 @@ namespace DmarcAnalyzer.Api.Application.Auth;
 /// <summary>PBKDF2-SHA256 password hashing (16-byte salt + 32-byte hash, base64).</summary>
 public static class PasswordHasher
 {
+    /// <summary>Hashes with a fresh random salt; output encodes salt + hash together.</summary>
     public static string Hash(string password)
     {
         var salt = RandomNumberGenerator.GetBytes(16);
@@ -15,6 +16,7 @@ public static class PasswordHasher
         return Convert.ToBase64String(combined);
     }
 
+    /// <summary>Constant-time comparison; malformed stored hashes verify as false rather than throwing.</summary>
     public static bool Verify(string password, string storedHash)
     {
         byte[] combined;

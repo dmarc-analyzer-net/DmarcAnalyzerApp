@@ -8,8 +8,10 @@ using Microsoft.AspNetCore.Routing;
 
 namespace DmarcAnalyzer.Api.Modules;
 
+/// <summary>Endpoints under /api/v1/report-sources, including the manual sync trigger.</summary>
 public sealed class ReportSourcesModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/v1/report-sources", async (IReportSourceService service, CancellationToken ct) =>

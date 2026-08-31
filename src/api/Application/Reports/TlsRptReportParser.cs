@@ -2,6 +2,7 @@ using System.Text.Json;
 
 namespace DmarcAnalyzer.Api.Application.Reports;
 
+/// <summary>Parses SMTP TLS-RPT JSON — see <see cref="TlsRptReportParser"/>.</summary>
 public interface ITlsRptReportParser
 {
     /// <summary>
@@ -22,6 +23,7 @@ public interface ITlsRptReportParser
 /// </summary>
 public sealed class TlsRptReportParser : ITlsRptReportParser
 {
+    /// <inheritdoc />
     public TlsRptParseResult Parse(Stream jsonStream)
     {
         using var document = ParseDocument(jsonStream);

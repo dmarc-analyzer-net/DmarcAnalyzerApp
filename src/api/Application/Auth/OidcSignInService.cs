@@ -7,26 +7,39 @@ using Microsoft.Extensions.Options;
 
 namespace DmarcAnalyzer.Api.Application.Auth;
 
+/// <summary>The identity-resolution half of OIDC login — see <see cref="OidcSignInService"/>.</summary>
 public interface IOidcSignInService
 {
     /// <summary>Resolves an authenticated external principal to a local session. Returns an error code on failure.</summary>
     Task<OidcSignInResult> SignInAsync(ClaimsPrincipal principal, string? ipAddress, string? userAgent, CancellationToken ct);
 }
 
+/// <summary>Either a minted session or an error code for the login page's ?loginError= query.</summary>
 public sealed record OidcSignInResult(string? CookieId, string? ErrorCode)
 {
+    /// <summary>True when a session was minted and <see cref="CookieId"/> is set.</summary>
     public bool IsSuccess => CookieId is not null;
 
+    /// <summary>A successful result carrying the session id.</summary>
     public static OidcSignInResult Success(string cookieId) => new(cookieId, null);
+
+    /// <summary>A failed result; the code is user-safe and deliberately vague.</summary>
     public static OidcSignInResult Failure(string errorCode) => new(null, errorCode);
 }
 
+/// <summary>
+/// Turns a validated external principal into a local session: known identity →
+/// sign in; unknown identity → link to a local account by email if assurance
+/// allows; otherwise auto-provision if enabled, else refuse. Email-linking
+/// assurance rules live in <see cref="OidcOptions.TrustUnverifiedEmail"/>.
+/// </summary>
 public sealed class OidcSignInService(
     DmarcAnalyzerDbContext db,
     IAuthService authService,
     IOptions<OidcOptions> options,
     ILogger<OidcSignInService> logger) : IOidcSignInService
 {
+    /// <inheritdoc />
     public async Task<OidcSignInResult> SignInAsync(ClaimsPrincipal principal, string? ipAddress, string? userAgent, CancellationToken ct)
     {
         // The issuer is the provider we configured, not a principal claim (the

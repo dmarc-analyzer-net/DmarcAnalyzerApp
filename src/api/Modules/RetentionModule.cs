@@ -12,6 +12,7 @@ namespace DmarcAnalyzer.Api.Modules;
 /// </summary>
 public sealed class RetentionModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         // Non-destructive: reports what the next purge would remove, per client.

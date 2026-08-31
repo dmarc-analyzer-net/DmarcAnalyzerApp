@@ -35,6 +35,7 @@ public sealed class BackupExportService(
         "smtp_tls_failure_detail",
     ];
 
+    /// <inheritdoc />
     public async Task<ServiceResult<BackupArtifact>> ExportAsync(
         bool allowPlaintextCredentials,
         CancellationToken ct)

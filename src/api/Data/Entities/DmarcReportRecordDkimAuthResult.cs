@@ -1,5 +1,6 @@
 namespace DmarcAnalyzer.Api.Data.Entities;
 
+/// <summary>A raw DKIM verification under one record — signing domain, selector, result.</summary>
 public sealed class DmarcReportRecordDkimAuthResult
 {
     public Guid Id { get; set; } = Guid.NewGuid();

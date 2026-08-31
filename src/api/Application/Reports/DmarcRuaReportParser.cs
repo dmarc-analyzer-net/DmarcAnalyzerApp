@@ -6,6 +6,11 @@ using System.Xml.Linq;
 
 namespace DmarcAnalyzer.Api.Application.Reports;
 
+/// <summary>
+/// The RUA parser: DmarcRua for the classic RFC 7489 namespace, plus native
+/// handling of the DMARCbis (dmarc-2.0) namespace and repair of the
+/// out-of-vocabulary values real reporters send.
+/// </summary>
 public sealed class DmarcRuaReportParser : IDmarcReportParser
 {
     private const string DmarcBisNamespace = "urn:ietf:params:xml:ns:dmarc-2.0";
@@ -13,6 +18,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
     private static readonly string[] DmarcBisActionDispositions =
         ["none", "pass", "quarantine", "reject"];
 
+    /// <inheritdoc />
     public DmarcReportParseResult Parse(Stream xmlStream)
     {
         ArgumentNullException.ThrowIfNull(xmlStream);

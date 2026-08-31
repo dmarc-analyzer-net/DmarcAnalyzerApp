@@ -6,8 +6,10 @@ using DmarcAnalyzer.Api.Contracts.Users;
 
 namespace DmarcAnalyzer.Api.Modules;
 
+/// <summary>Admin endpoints under /api/v1/users: CRUD and grant replacement.</summary>
 public sealed class UsersModule : ICarterModule
 {
+    /// <inheritdoc />
     public void AddRoutes(IEndpointRouteBuilder app)
     {
         app.MapGet("/api/v1/users", async (IUserAdminService service, CancellationToken ct) =>

@@ -1,5 +1,6 @@
 namespace DmarcAnalyzer.Api.Contracts.Domains;
 
+/// <summary>Body of PATCH /api/v1/domains/{id}; null fields stay unchanged.</summary>
 public sealed class UpdateDomainRequest
 {
     public Guid? ClientId { get; set; }
