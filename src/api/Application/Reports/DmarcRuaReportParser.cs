@@ -129,8 +129,8 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             MapDisposition(policyPublished.P),
             hasSubdomainPolicy ? MapDisposition(policyPublished.Sp) : null,
             ParsePercent(policyPublished.Percent),
-            MapAlignment(policyPublished.AdkimRaw),
-            MapAlignment(policyPublished.AspfRaw));
+            MapAlignment(policyPublished.Adkim),
+            MapAlignment(policyPublished.Aspf));
     }
 
     /// <summary>
@@ -176,47 +176,27 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
     };
 
     /// <summary>
-    /// adkim/aspf, read from DmarcRua's raw strings rather than its <c>Adkim</c>/<c>Aspf</c>.
+    /// adkim/aspf, defaulting to relaxed when the reporter does not usably state one.
     /// <para>
-    /// 2.0.1 replaced those two settable <c>AlignmentType?</c> properties with get-only ones
-    /// computed from new <c>AdkimRaw</c>/<c>AspfRaw</c> strings, and the helper behind them
-    /// calls <c>Regex.Replace</c> on the raw value with no null check. Both tags are
-    /// <c>minOccurs="0"</c> in DmarcRua's own schema, so a reporter that just omits them
-    /// leaves the raw string null and merely *reading* the property throws
-    /// ArgumentNullException — after deserialization has already succeeded, so it surfaces
-    /// here rather than as a parse error. That is 1.5% of the 3241 real reports vendored in
-    /// 2.0.1's own test resources, Mail.Ru and Fastmail among them; every report from such a
-    /// reporter would fail ingestion outright, where 2.0.0 returned null and fell to the
-    /// default below.
+    /// Absent means "relaxed" here, and that is this method's decision rather than the
+    /// library's: unlike sp, adkim and aspf have fixed RFC 7489 §6.3 defaults, so collapsing
+    /// an absent tag to its default is correct and needs no HasSubdomainPolicyTag-style
+    /// presence sniff. DmarcRua returns null for absent, empty and unrecognised alike, and
+    /// all three land on relaxed — an unparseable alignment is not a reason to claim the
+    /// stricter policy.
     /// </para>
     /// <para>
-    /// Reading the raw string keeps 2.0.0's behaviour and does not wait on an upstream fix.
-    /// Absent means "relaxed": unlike sp, adkim and aspf have fixed RFC 7489 §6.3 defaults,
-    /// so collapsing an absent tag to its default is correct and needs no
-    /// HasSubdomainPolicyTag-style presence sniff. Do not simplify this back to
-    /// <c>.Adkim</c>/<c>.Aspf</c>.
-    /// </para>
-    /// <para>
-    /// Reported upstream as danielsen/DmarcRua#11. If a later release fixes it, this can
-    /// go back to the properties — but check first that an absent tag returns null rather
-    /// than throwing, and that the library has not changed what absent *means*: "relaxed"
-    /// is this method's decision to make, not the library's.
-    /// </para>
-    /// <para>
-    /// Trimming, lowercasing and dropping non-alphanumerics mirrors what 2.0.1 does to these
-    /// values — that much of its change is a real improvement, so '&#160;S&#160;' still reads
-    /// as strict instead of silently becoming relaxed.
+    /// This read the raw <c>AdkimRaw</c>/<c>AspfRaw</c> strings between 2.0.1 and 2.1.0,
+    /// because 2.0.1's computed properties called <c>Regex.Replace</c> on a value that can be
+    /// null and threw ArgumentNullException on merely *reading* an absent tag — after
+    /// deserialization had already succeeded, so it surfaced here rather than as a parse
+    /// error. 2.1.0 null-guards the helper (danielsen/DmarcRua#11), so the properties are
+    /// safe again and carry the library's own trimming and case folding, which is why
+    /// '&#160;S&#160;' still reads as strict.
     /// </para>
     /// </summary>
-    private static string MapAlignment(string? alignment)
-    {
-        var cleaned = (alignment ?? string.Empty)
-            .ToLowerInvariant()
-            .Where(char.IsAsciiLetterOrDigit)
-            .ToArray();
-
-        return cleaned is ['s'] ? "strict" : "relaxed";
-    }
+    private static string MapAlignment(AlignmentType? alignment)
+        => alignment == AlignmentType.Strict ? "strict" : "relaxed";
 
     /// <summary>
     /// Read-through only, per the DMARCbis (RFC 9989/9990/9991) impact report: np,
