@@ -506,14 +506,15 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   of the 3241 real reports vendored in 2.0.1's own test resources, Mail.Ru and
   Fastmail among them, and it would have failed ingestion for every report from
   those reporters where 2.0.0 quietly returned null.
-  - `DmarcRuaReportParser` therefore reads `AdkimRaw`/`AspfRaw` and maps them
-    itself, which preserves 2.0.0's behaviour and does not wait on an upstream fix.
+  - `DmarcRuaReportParser` therefore read `AdkimRaw`/`AspfRaw` and mapped them
+    itself, which preserved 2.0.0's behaviour without waiting on an upstream fix.
     Absent means `relaxed`, the fixed RFC 7489 §6.3 default for both tags. Reported
-    upstream as [danielsen/DmarcRua#11](https://github.com/danielsen/DmarcRua/issues/11).
-    Note the library merges contributions by reimplementing them in its own commits
-    rather than by merging pull requests — every PR since 2022 is closed unmerged,
-    including one of ours — so treat a fix as arriving whenever it arrives, and keep
-    the workaround until a release actually carries one.
+    upstream as [danielsen/DmarcRua#11](https://github.com/danielsen/DmarcRua/issues/11)
+    and fixed in 2.1.0, at which point the workaround was retired — see below. Note the
+    library merges contributions by reimplementing them in its own commits rather than
+    by merging pull requests — every PR since 2022 is closed unmerged, including one of
+    ours — so treat a fix as arriving whenever it arrives, and keep a workaround until a
+    release actually carries one.
   - the upgrade was verified by running the parser over all 3242 reports in that
     corpus on both versions: no regressions, identical output on every report both
     parse, and one report gained — a `trusted_forwarder` report that 2.0.0 discarded
@@ -548,9 +549,14 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   all 61 `DmarcRuaReportParser` tests pass against it untouched.
   - **#11 is fixed.** `CleanOutStringSpecials` now null-guards, so an omitted
     `<adkim>`/`<aspf>` returns null from `.Adkim`/`.Aspf` instead of throwing.
-    Verified against the published package, not inferred from the diff. `MapAlignment`
-    can therefore go back to the properties — both conditions its doc comment sets out
-    now hold — but that is a separate change from the version bump.
+    Verified against the published package, not inferred from the diff. Both conditions
+    the old `MapAlignment` comment set out therefore hold — an absent tag returns null
+    rather than throwing, and the library still does not decide what absent *means* — so
+    the workaround was retired in a follow-up and `MapAlignment` now takes the
+    `AlignmentType?` directly. Relaxed stays this project's reading of null, which
+    DmarcRua returns for absent, empty and unrecognised alike. The theory that covers
+    those three cases is the one guarding it: every other parser test supplies both
+    tags, which is how 2.0.1 went green here while production would have broken.
   - **#12 is half-fixed, and the missing half matters.**
     `PolicyEvaluatedType.Disposition` is now an `ActionDispositionType`, so RFC 9990's
     `pass` deserializes and reads back as `pass`. But `rua.xsd` still types that

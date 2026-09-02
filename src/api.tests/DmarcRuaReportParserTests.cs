@@ -517,11 +517,16 @@ public sealed class DmarcRuaReportParserTests
 
     /// <summary>
     /// Both alignment tags are optional, and real reporters omit them — Mail.Ru and Fastmail
-    /// among them, 1.5% of the reports vendored in DmarcRua 2.0.1's own test resources. On
-    /// 2.0.1 that is not merely a default to fill in: reading its computed Adkim/Aspf
-    /// properties throws ArgumentNullException on an absent tag, which would have failed
-    /// ingestion for every report from those reporters. Every other test here supplies both
-    /// tags, so the suite went green on that upgrade while production would have broken.
+    /// among them, 1.5% of the reports vendored in DmarcRua's own test resources. Every other
+    /// test here supplies both tags, so without these cases the suite goes green on an
+    /// upgrade that would break production: that is exactly what 2.0.1 did, where reading the
+    /// computed Adkim/Aspf properties threw ArgumentNullException on an absent tag.
+    ///
+    /// 2.1.0 fixed that (danielsen/DmarcRua#11) and the parser reads those properties again,
+    /// so this now guards the library rather than a workaround around it. The cases that
+    /// matter most are the ones where DmarcRua returns null for three different reasons —
+    /// absent, present-but-empty, and unrecognised — because relaxed is this project's
+    /// reading of all three, not something the library decides.
     /// </summary>
     [Theory]
     [InlineData("", "", "relaxed", "relaxed")]                                  // both omitted
