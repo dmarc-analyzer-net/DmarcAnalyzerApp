@@ -1,6 +1,14 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-alpine AS web-build
+# Built on the host's own architecture, whatever the target image is. The output
+# is static files (the Vite bundle), so nothing about it is platform-specific — but
+# without --platform, a linux/arm64 image build runs this whole stage under QEMU
+# on an amd64 runner, and `npm ci` there is both slow (90s vs 18s native) and
+# prone to hanging outright: on 2026-09-23 two consecutive main builds sat in it
+# for six hours until the runner killed them, with identical inputs to a build
+# that had passed the day before. Emulate only the stages that produce
+# platform-specific artifacts.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS web-build
 WORKDIR /web
 RUN npm install -g npm@11.6.2
 COPY src/web/package*.json ./
