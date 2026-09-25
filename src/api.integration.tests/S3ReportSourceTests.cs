@@ -23,7 +23,7 @@ namespace DmarcAnalyzer.Api.IntegrationTests;
 /// <summary>
 /// A real S3-compatible bucket, real objects, a real database.
 /// <para>
-/// MinIO rather than a mocked <c>IAmazonS3</c>, for the reason the POP3 suite uses a real mail
+/// A real S3 server rather than a mocked <c>IAmazonS3</c>, for the reason the POP3 suite uses a real mail
 /// server: what is under test is mostly not this application's logic but its agreement with a
 /// service — that a listing pages, that <c>LastModified</c> comes back in UTC, that a delete
 /// is effective when it returns, that the SDK's path-style addressing is what a compatible
@@ -33,11 +33,19 @@ namespace DmarcAnalyzer.Api.IntegrationTests;
 /// It is also the closest thing to the shipped configuration: an S3 source pointed at a custom
 /// endpoint with a per-source key is exactly what an operator using MinIO, R2 or B2 will have.
 /// </para>
+/// <para>
+/// The server is Versity's S3 gateway over a directory in the container. It was MinIO until
+/// September 2026, when MinIO deleted its images from Docker Hub (around the 12th) and then
+/// made the quay.io copies unpullable too (between the 22nd and the 25th) — the pinned tag
+/// went from working to "unauthorized" with no change on this side. The gateway is
+/// Apache-2.0, published on GHCR and Docker Hub, and pinned by digest below so the tag
+/// being re-pointed or deleted cannot change what this suite runs against.
+/// </para>
 /// </summary>
 [Collection(nameof(PostgresCollection))]
 public sealed class S3ReportSourceTests(PostgresFixture postgres) : IAsyncLifetime
 {
-    private const int MinioPort = 9000;
+    private const int S3Port = 7070;
     private const string AccessKey = "dmarcanalyzer";
     private const string SecretKey = "dmarcanalyzer-secret";
     private const string Bucket = "reports";
@@ -45,22 +53,28 @@ public sealed class S3ReportSourceTests(PostgresFixture postgres) : IAsyncLifeti
     private static readonly Guid ClientId = Guid.Parse("55555555-5555-5555-5555-555555555555");
     private static readonly Guid SourceId = Guid.Parse("66666666-6666-6666-6666-666666666666");
 
-    private readonly IContainer _minio = new ContainerBuilder("quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z")
-        .WithEnvironment("MINIO_ROOT_USER", AccessKey)
-        .WithEnvironment("MINIO_ROOT_PASSWORD", SecretKey)
-        .WithCommand("server", "/data")
-        .WithPortBinding(MinioPort, true)
+    // v1.8.0. The --health flag is what makes the unauthenticated readiness route exist at
+    // all; without it every path is an S3 request and answers 403 before the server is ready.
+    private readonly IContainer _s3Server = new ContainerBuilder(
+            "ghcr.io/versity/versitygw:v1.8.0@sha256:30292fc2eeacc67a36993b01f7a7a5e3361a19cced0e80c1d71cfa2a4b0a2499")
+        .WithEnvironment("ROOT_ACCESS_KEY", AccessKey)
+        .WithEnvironment("ROOT_SECRET_KEY", SecretKey)
+        .WithCommand("--health", "/_/health", "posix", "/data")
+        // The posix backend chdirs into its root and exits if it is missing; the image ships no
+        // data directory. A tmpfs is the cheapest way to make one, and nothing needs to survive.
+        .WithTmpfsMount("/data")
+        .WithPortBinding(S3Port, true)
         .WithWaitStrategy(Wait.ForUnixContainer().UntilHttpRequestIsSucceeded(r =>
-            r.ForPort(MinioPort).ForPath("/minio/health/live")))
+            r.ForPort(S3Port).ForPath("/_/health")))
         .Build();
 
     private AmazonS3Client _s3 = null!;
 
-    private string Endpoint => $"http://{_minio.Hostname}:{_minio.GetMappedPublicPort(MinioPort)}";
+    private string Endpoint => $"http://{_s3Server.Hostname}:{_s3Server.GetMappedPublicPort(S3Port)}";
 
     public async Task InitializeAsync()
     {
-        await _minio.StartAsync();
+        await _s3Server.StartAsync();
 
         _s3 = new AmazonS3Client(AccessKey, SecretKey, new AmazonS3Config
         {
@@ -99,7 +113,7 @@ public sealed class S3ReportSourceTests(PostgresFixture postgres) : IAsyncLifeti
     public async Task DisposeAsync()
     {
         _s3?.Dispose();
-        await _minio.DisposeAsync();
+        await _s3Server.DisposeAsync();
     }
 
     [Fact]
@@ -185,6 +199,12 @@ public sealed class S3ReportSourceTests(PostgresFixture postgres) : IAsyncLifeti
         await PutAsync("zzz-first.xml.gz", GzipReport("report-1", "acme.test"));
         await SyncAsync();
 
+        // The listing's LastModified is whole seconds — on the gateway as on S3 itself; MinIO's
+        // millisecond stamps were the odd one out. Two writes inside one second tie on time,
+        // and a tie is broken by key, which for "aaa" against a "zzz" checkpoint reads as
+        // already done. That is a separate question from the one this test asks, so let the
+        // clock move on before the second write, as the retention tests do.
+        await Task.Delay(1100);
         await PutAsync("aaa-second.xml.gz", GzipReport("report-2", "acme.test"));
         var second = await SyncAsync();
 
@@ -256,7 +276,7 @@ public sealed class S3ReportSourceTests(PostgresFixture postgres) : IAsyncLifeti
     [Fact]
     public async Task RetentionDeletesOnlyObjectsPastTheCutoffAndTheyAreActuallyGone()
     {
-        // MinIO stamps LastModified at upload, so an "old" object cannot be created by
+        // The server stamps LastModified at upload, so an "old" object cannot be created by
         // writing one — the cutoff is moved instead, which tests the same comparison from
         // the other side.
         await PutAsync("reports/old.xml.gz", GzipReport("report-1", "acme.test"));
