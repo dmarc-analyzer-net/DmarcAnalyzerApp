@@ -110,7 +110,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
 
       # A syntactically valid throwaway key. It has to be real base64 for 32 bytes:
       # values.schema.json checks the shape, so a placeholder like "dummy" fails
@@ -426,7 +426,7 @@ jobs:
         if: github.ref_type == 'tag' && steps.dockerhub.outputs.enabled == 'true'
         continue-on-error: true
         id: dockerhub_description
-        uses: peter-evans/dockerhub-description@432a30c9e07499fd01da9f8a49f0faf9e0ca5b77 # v4.0.2
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
         with:
           username: ${{ vars.DOCKERHUB_USERNAME || 'dmarcanalyzernet' }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
