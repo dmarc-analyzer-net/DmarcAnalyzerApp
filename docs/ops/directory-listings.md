@@ -115,15 +115,12 @@ Reading of it:
   2026-07-28**, checked against the Docker Hub API, with `description` and
   `full_description` both empty.
 
-  The sync is not missing, it is *failing*. `ci.yml` runs
-  `peter-evans/dockerhub-description` on a tag, and on v0.2.2 it returned
-  **Forbidden** — `DOCKERHUB_TOKEN` can push images (Read/Write is enough for the
-  registry) but cannot edit repository metadata, which needs broader account
-  access. The step is `continue-on-error` and emits a warning, deliberately, so a
-  cosmetic failure cannot take a green release red. That means **it will keep
-  failing silently until someone widens the token** — nothing else will complain.
-  Two ways out: widen the token, or paste `deploy/dockerhub-readme.md` into the
-  Docker Hub UI by hand once.
+  Nothing syncs it. `ci.yml` used to run `peter-evans/dockerhub-description` on
+  a tag, but on v0.2.2 it returned **Forbidden**: `DOCKERHUB_TOKEN` can push
+  images (Read/Write is enough for the registry) but cannot edit repository
+  metadata. It never succeeded, so it was removed rather than kept failing
+  quietly. The fix is to paste `deploy/dockerhub-readme.md` into the Docker Hub
+  UI by hand once.
 - **The compose-based app stores are the largest untapped audience.** CasaOS and
   Umbrel have 560 apps between them and not one DMARC tool. Both take an app
   definition wrapping a compose file, which we already ship. This is the obvious

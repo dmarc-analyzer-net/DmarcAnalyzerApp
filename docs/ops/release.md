@@ -42,15 +42,11 @@ rollback ambiguous.
 
 ### The Docker Hub description
 
-`deploy/dockerhub-readme.md` is synced to the Docker Hub page by the `image` job on
-a tag. It is **`continue-on-error`** — a listing nicety must not be able to fail a
-release, which it did once on v0.2.2 after the image and chart had already
-published.
-
-If the run logs `Docker Hub description not updated`, `DOCKERHUB_TOKEN` cannot edit
-repository metadata. Pushing images needs only Read/Write; this endpoint wants a
-token with broader account access. Nothing about the release is affected — the page
-just stays as it was.
+Docker Hub does not read the image's OCI labels, so its page has to be set
+separately. `deploy/dockerhub-readme.md` is the text for it. Nothing syncs it: CI
+used to, on a tag, but `DOCKERHUB_TOKEN` can push images and cannot edit
+repository metadata, so the step only ever returned Forbidden, and it was removed.
+When the readme changes, paste it into the Docker Hub UI by hand.
 
 ### Listing it on Artifact Hub
 
