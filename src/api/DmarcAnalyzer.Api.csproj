@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <PackageReference Include="AWSSDK.S3" Version="4.0.102.4" />
+    <PackageReference Include="AWSSDK.SecurityToken" Version="4.0.101.1" />
     <PackageReference Include="Carter" Version="10.0.0" />
     <PackageReference Include="DnsClient" Version="1.8.0" />
     <PackageReference Include="DmarcRua" Version="2.1.0" />

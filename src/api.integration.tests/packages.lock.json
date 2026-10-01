@@ -40,8 +40,8 @@
       },
       "AWSSDK.Core": {
         "type": "Transitive",
-        "resolved": "4.0.102.1",
-        "contentHash": "vsf+/o+S/euH/wG7bO1cha+OWaHvjgvpDeGFO6l3Vcdio9GlSfXkZDD2BogMuAJ+/jDyqqSgqmYVolPKV9ie/A=="
+        "resolved": "4.0.102.8",
+        "contentHash": "90B9Skhl+ORbtWNXrrmGdGhGvAfZiPmZafRYrB/xHelZjePIwPvXioqz9UiiF1vo21eDLzTnXh5EC4RjbNWsFQ=="
       },
       "AWSSDK.S3": {
         "type": "Transitive",
@@ -49,6 +49,14 @@
         "contentHash": "rfUhmzlQifO7Uk3AErPweV1FbwZYI+OuogPjfS/7mbVKVWCYYCLkkLozh2mS/qaHPNGPGFeSFAR1NbWnQyd2pQ==",
         "dependencies": {
           "AWSSDK.Core": "[4.0.102.1, 5.0.0)"
+        }
+      },
+      "AWSSDK.SecurityToken": {
+        "type": "Transitive",
+        "resolved": "4.0.101.1",
+        "contentHash": "rZnMaqiYwDzbvTqeO7dWhqxEn96RleyR9KN6GYeWispPt9NQPRDUcfYZarvG7Eba5NvDNomhpcQJSNO+VoteGQ==",
+        "dependencies": {
+          "AWSSDK.Core": "[4.0.102.8, 5.0.0)"
         }
       },
       "BouncyCastle.Cryptography": {
@@ -659,6 +667,7 @@
         "type": "Project",
         "dependencies": {
           "AWSSDK.S3": "[4.0.102.4, )",
+          "AWSSDK.SecurityToken": "[4.0.101.1, )",
           "Carter": "[10.0.0, )",
           "DmarcRua": "[2.1.0, )",
           "DnsClient": "[1.8.0, )",
