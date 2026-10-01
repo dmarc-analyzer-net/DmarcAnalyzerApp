@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
@@ -196,6 +197,8 @@ public sealed class ReportMailArchive(
         Guid reportSourceId,
         ReportMailIdentity identity,
         DateTime receivedAtUtc)
-        => $"{prefix.Trim().Trim('/')}/reports/{receivedAtUtc:yyyy}/{receivedAtUtc:MM}/{receivedAtUtc:dd}/" +
-           $"{reportSourceId}/{identity.Generation}-{identity.Uid}.eml.gz";
+        => string.Create(
+            CultureInfo.InvariantCulture,
+            $"{prefix.Trim().Trim('/')}/reports/{receivedAtUtc:yyyy}/{receivedAtUtc:MM}/{receivedAtUtc:dd}/" +
+            $"{reportSourceId}/{identity.Generation}-{identity.Uid}.eml.gz");
 }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using DmarcAnalyzer.Api.Application.Security;
@@ -149,7 +150,7 @@ public sealed class BackupOffloadService(
             // latest.json is what fails.
             await storage.CopyAsync(
                 stagingKey,
-                $"{prefix}/config/{artifact.Manifest.ExportedAtUtc:yyyy-MM-dd}.json",
+                string.Create(CultureInfo.InvariantCulture, $"{prefix}/config/{artifact.Manifest.ExportedAtUtc:yyyy-MM-dd}.json"),
                 ct);
         }
 
@@ -222,7 +223,9 @@ public sealed class BackupOffloadService(
         }
 
         var now = DateTime.UtcNow;
-        var key = $"{prefix}/history/{stream.Name}/{now:yyyy}/{now:MM}/{now:yyyy-MM-ddTHHmm}.jsonl";
+        var key = string.Create(
+            CultureInfo.InvariantCulture,
+            $"{prefix}/history/{stream.Name}/{now:yyyy}/{now:MM}/{now:yyyy-MM-ddTHHmm}.jsonl");
 
         await storage.PutAsync(key, Encoding.UTF8.GetBytes(builder.ToString()), "application/x-ndjson", ct);
 
