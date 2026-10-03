@@ -15,6 +15,25 @@ describe('parentOf', () => {
     expect(parentOf('example.dk')).toBeNull()
     expect(parentOf('example')).toBeNull()
   })
+
+  it('does not climb into a multi-label public suffix', () => {
+    expect(parentOf('example.co.uk')).toBeNull()
+    expect(parentOf('example.com.au')).toBeNull()
+    expect(parentOf('a.example.co.uk')).toBe('example.co.uk')
+  })
+})
+
+describe('groupBySharedParent under a public suffix', () => {
+  it('does not group unrelated .co.uk apex domains', () => {
+    const items = groupBySharedParent(rows('example.co.uk', 'other.co.uk'))
+    expect(items.every((i) => i.kind === 'row')).toBe(true)
+  })
+
+  it('groups subdomains under their registrable domain', () => {
+    const items = groupBySharedParent(rows('a.example.co.uk', 'b.example.co.uk'))
+    expect(items).toHaveLength(1)
+    expect(items[0]).toMatchObject({ kind: 'group', parent: 'example.co.uk' })
+  })
 })
 
 describe('groupBySharedParent', () => {
