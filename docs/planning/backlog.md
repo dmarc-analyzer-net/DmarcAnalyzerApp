@@ -148,8 +148,9 @@ design system.) See the categorized lists below for the full inventory.
       (`SELECT … FOR UPDATE SKIP LOCKED`, or reinstate the `running` row *and* the
       partial unique index and write it before the IMAP connect); a unique
       constraint on `alert_event` over client/domain/rule/cooldown-bucket with the
-      insert committed before the send; the digest `SendAsync` moved to after a
-      successful `DigestDelivery` insert; the retention purge switched to
+      insert committed before the send; the digest needs nothing further (its
+      `DigestDelivery` row is now claimed before the send, on a unique index with
+      nulls not distinct); the retention purge switched to
       `ExecuteDeleteAsync` on a bounded subquery so a 0-row delete is not an error;
       and a conditional checkpoint write (`WHERE "LastProcessedUid" < @new`) so it
       can only move forward. Nothing here is needed for a single worker.
@@ -214,6 +215,8 @@ design system.) See the categorized lists below for the full inventory.
 - [ ] (todo) Add Kubernetes deployment assets — Helm chart(s) with health checks and stateless service patterns, supporting both self-contained (bundled PostgreSQL, local auth) and bring-your-own deployments (external managed PostgreSQL, external OIDC), toggled via chart values.
 - [ ] (todo) Add branded PDF report generation (server-side HTML to PDF) with agency logo/colors/footer.
 - [x] (done) Add monthly email digest delivery and SMTP relay configuration (`DigestService`, previous-whole-month period, `digest_delivery` for idempotency, worker check pass, admin preview/send endpoints).
+- [x] (done) **Make the digest worth reading.** The first version was one plain-text mail per client to every recipient, so an agency-wide address got nine mails on the 1st; its space-padded columns came out ragged in any proportional font; "domains needing attention" had no threshold and listed a 99.9% `p=reject` domain; failing sources were summed per domain (one IP failing twice counted twice) and never named; and the one link went to the unscoped domain list. Now: HTML with a plain-text part and an instance brand (`Branding:*`); a verdict in the subject; configurable attention triggers (`Digest:*` defaults, per-client overrides on the Clients page — pass rate below, drop on last month, reports that stopped, and a ready-for-a-stricter-policy suggestion); failing sources grouped by IP with PTR hostname and "new this month"; links scoped to the client and each domain. Routing is per address: a several-clients recipient gets one roll-up plus a mail of its own for each client set to separate, and "off" also stops that client's alerts (`notification_recipient_client`, `NotificationRouting`). Two triggers were narrowed after running against a real 795k-record month: "no reports" flagged 26 seasonal and parked domains, so it now fires only when reports *stop*; and one forwarding service filled three of five source slots, hence grouping by IP. Upgrade notes: existing agency-wide recipients move to a single roll-up; rows already sent under the old scheme still count, so the upgrade re-sends nothing.
+- [ ] (todo) **Creating a client ignores the alert settings in the form.** `ClientsPage` sends `alertsEnabled`, the two alert thresholds and `legalHold` on create, but `CreateClientRequest` has none of them, so they are dropped silently and only take effect after a later edit. Found while adding the digest thresholds, which are deliberately shown on edit only for this reason. Either accept them on create or hide them until the client exists.
 - [x] (done) Add alert engine for failure spikes and policy regression with per-client thresholds (`AlertEvaluationService`, hourly worker pass, `alert_event` history with cooldown, per-client overrides on `client`, email notification, `GET /alerts` + admin evaluate endpoint).
 - [x] (done) Add core audit logging for login events, config changes, and manual sync triggers (`audit_event`, `IAuditLog`, admin query endpoint, `/audit` console page, 2-year retention). Scheduled sync runs are covered by `mailbox_sync_run` rather than duplicated; magic-link events will be added with magic links.
 - [ ] (todo) Surface parse validation warnings instead of discarding them. `DmarcRuaReportParser` returns `ValidationMessages`, `HasValidationWarnings` and `HasValidationErrors`, and `MailboxSyncService` references none of them — so every normalization the parser performs is invisible in production. That currently hides three repairs: stripped DMARCbis namespaces, SPF `scope=helo` rewritten to `mfrom`, and empty `policy_evaluated` dkim/spf read as `fail`. The last one substitutes a verdict the reporter never sent, which is defensible only if an operator can find out it happened. Nothing is persisted either — `dmarc_report` has no column for it — so a report cannot be traced back to the repairs applied to it. Found while fixing the empty-result crash, not from a report — but #190 then arrived *because* of it: an operator saw a blank sending source with zeroes across it and had no way to find out why. That is now a fourth hidden message, the warning raised when a record reporting no source IP and no messages is dropped, and the only trace of it an operator can reach is `dmarc_report.RecordCount` exceeding the number of rows in `dmarc_report_record` for that report.
@@ -413,8 +416,8 @@ zero undocumented. The problems are everywhere else.
 - [ ] (todo) **`.github/profile/README.md` advertises two features that do not
       exist** — threat detection "with sending IP, volume, and geography" (no
       geolocation anywhere; already tracked in the Parking Lot) and "white-label
-      client reports … per domain" (the shipped digest is one unbranded email
-      per client). This is the most public surface the project has.
+      client reports … per domain" (the digest carries one instance-wide brand,
+      `Branding:*`, but there is no per-client branding and no PDF). This is the most public surface the project has.
 - [ ] (todo) **Open-source hygiene files are missing across both repos:** no
       `SECURITY.md` (the disclosure policy exists only as website content, so
       GitHub's "Report a vulnerability" affordance is absent for a product that

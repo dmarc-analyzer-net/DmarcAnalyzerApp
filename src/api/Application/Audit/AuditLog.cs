@@ -44,6 +44,7 @@ public static class AuditEvents
     public const string RetentionPurgeRan = "retention.purge.ran";
     public const string NotificationRecipientAdded = "notification_recipient.added";
     public const string NotificationRecipientRemoved = "notification_recipient.removed";
+    public const string NotificationRecipientRoutingChanged = "notification_recipient.routing.changed";
     public const string DatabaseMigrated = "admin.database.migrated";
 
     /// <summary>

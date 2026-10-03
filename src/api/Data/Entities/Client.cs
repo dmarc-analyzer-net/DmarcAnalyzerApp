@@ -26,6 +26,9 @@ public sealed class Client
 
     /// <summary>Ignore days quieter than this when spotting a spike; null uses the configured default.</summary>
     public int? AlertMinMessages { get; set; }
+
+    /// <summary>What the monthly digest flags for this client; null inherits every <c>Digest:*</c> default.</summary>
+    public DigestThresholds? DigestThresholds { get; set; }
     public string Timezone { get; set; } = "UTC";
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
     public DateTime UpdatedAtUtc { get; set; } = DateTime.UtcNow;

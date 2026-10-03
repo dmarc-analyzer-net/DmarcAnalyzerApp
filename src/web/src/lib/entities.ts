@@ -35,7 +35,32 @@ export type Client = {
   /** Null means "use the server default" for these two. */
   alertComplianceDropPercent: number | null
   alertMinMessages: number | null
+  /** Overrides for what the monthly digest flags; null (or a null field) uses the instance default. */
+  digestThresholds: DigestThresholds | null
   timezone: string
+}
+
+/**
+ * Per-client digest triggers. A missing or null field inherits the instance default
+ * (GET /api/v1/admin/digest/defaults); 0 switches a numeric trigger off.
+ */
+export type DigestThresholds = {
+  lowCompliancePercent?: number | null
+  complianceDropPoints?: number | null
+  minMessages?: number | null
+  noReports?: boolean | null
+  tightenAfterDays?: number | null
+  tightenCompliancePercent?: number | null
+}
+
+/** The instance defaults the per-client overrides fall back to. */
+export type DigestDefaults = {
+  lowCompliancePercent: number
+  complianceDropPoints: number
+  minMessages: number
+  noReports: boolean
+  tightenAfterDays: number
+  tightenCompliancePercent: number
 }
 
 export type Domain = {

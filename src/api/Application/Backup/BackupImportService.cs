@@ -1,6 +1,7 @@
 using DmarcAnalyzer.Api.Application.Clients;
 using DmarcAnalyzer.Api.Application.Common;
 using DmarcAnalyzer.Api.Application.Security;
+using DmarcAnalyzer.Api.Application.Notifications;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -266,6 +267,7 @@ public sealed class BackupImportService(
                 existing.AlertsEnabled = client.AlertsEnabled;
                 existing.AlertComplianceDropPercent = client.AlertComplianceDropPercent;
                 existing.AlertMinMessages = client.AlertMinMessages;
+                existing.DigestThresholds = client.DigestThresholds is { IsEmpty: false } ? client.DigestThresholds : null;
                 existing.Timezone = client.Timezone;
                 existing.CreatedAtUtc = client.CreatedAtUtc;
                 existing.UpdatedAtUtc = client.UpdatedAtUtc;
@@ -292,6 +294,7 @@ public sealed class BackupImportService(
                 AlertsEnabled = client.AlertsEnabled,
                 AlertComplianceDropPercent = client.AlertComplianceDropPercent,
                 AlertMinMessages = client.AlertMinMessages,
+                DigestThresholds = client.DigestThresholds is { IsEmpty: false } ? client.DigestThresholds : null,
                 Timezone = client.Timezone,
                 CreatedAtUtc = client.CreatedAtUtc,
                 UpdatedAtUtc = client.UpdatedAtUtc,
@@ -725,6 +728,7 @@ public sealed class BackupImportService(
                 existing.IsActive = recipient.IsActive;
                 existing.CreatedAtUtc = recipient.CreatedAtUtc;
                 existing.UpdatedAtUtc = recipient.UpdatedAtUtc;
+                ApplyRecipientRouting(existing, recipient, state);
                 tally.Updated++;
                 continue;
             }
@@ -746,12 +750,44 @@ public sealed class BackupImportService(
                 CreatedAtUtc = recipient.CreatedAtUtc,
                 UpdatedAtUtc = recipient.UpdatedAtUtc,
             };
+            ApplyRecipientRouting(row, recipient, state);
 
             db.NotificationRecipients.Add(row);
             state.RecipientIdsInUse.Add(row.Id);
             state.RecipientsByScopeEmail[key] = row;
             tally.Created++;
         }
+    }
+
+    /// <summary>
+    /// Carries a recipient's digest routing across, with client ids remapped to this install.
+    /// A mode for a client that resolves nowhere is dropped — it could only ever have
+    /// described a client this install does not have.
+    /// </summary>
+    private void ApplyRecipientRouting(
+        NotificationRecipient row, BackupNotificationRecipient recipient, ImportState state)
+    {
+        if (row.ClientId is not null)
+        {
+            return;
+        }
+
+        // Before per-client routing every several-clients recipient got one mail per
+        // client; restoring that keeps a restored install mailing as the old one did.
+        var defaultMode = DigestModes.IsValid(recipient.DigestDefaultMode)
+            ? recipient.DigestDefaultMode!
+            : DigestModes.Separate;
+
+        var modes = new Dictionary<Guid, string>();
+        foreach (var mode in recipient.ClientModes ?? [])
+        {
+            if (DigestModes.IsValid(mode.Mode) && TryResolveClientId(state, mode.ClientId, out var clientId))
+            {
+                modes[clientId] = mode.Mode;
+            }
+        }
+
+        RecipientRouting.Replace(db, row, defaultMode, modes);
     }
 
     /// <summary>
@@ -776,7 +812,10 @@ public sealed class BackupImportService(
         var users = await db.AgencyUsers.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
         var identities = await db.UserIdentities.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
         var grants = await db.UserClientGrants.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
-        var recipients = await db.NotificationRecipients.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
+        var recipients = await db.NotificationRecipients
+            .Include(x => x.ClientModes)
+            .OrderBy(x => x.CreatedAtUtc)
+            .ToListAsync(ct);
         var mtaStsPolicies = await db.MtaStsPolicies.OrderBy(x => x.CreatedAtUtc).ToListAsync(ct);
 
         return new ImportState

@@ -12,10 +12,19 @@ public interface IEmailSender
     bool IsConfigured { get; }
 
     /// <summary>
-    /// Sends one message. Returns false when delivery is unconfigured or failed
-    /// — delivery problems never throw; only cancellation propagates.
+    /// Sends one plain-text message. Returns false when delivery is unconfigured or
+    /// failed — delivery problems never throw; only cancellation propagates.
     /// </summary>
-    Task<bool> SendAsync(IReadOnlyCollection<string> to, string subject, string body, CancellationToken ct);
+    Task<bool> SendAsync(IReadOnlyCollection<string> to, string subject, string body, CancellationToken ct)
+        => SendAsync(to, subject, body, htmlBody: null, ct);
+
+    /// <summary>
+    /// Sends one message, as <c>multipart/alternative</c> when <paramref name="htmlBody"/>
+    /// is given. The text part is always sent: it is what a text-only client, a filter
+    /// and a screen reader set to plain text actually read.
+    /// </summary>
+    Task<bool> SendAsync(
+        IReadOnlyCollection<string> to, string subject, string textBody, string? htmlBody, CancellationToken ct);
 }
 
 /// <summary>
@@ -34,7 +43,7 @@ public sealed class EmailSender(IOptions<EmailOptions> options, ILogger<EmailSen
 
     /// <inheritdoc />
     public async Task<bool> SendAsync(
-        IReadOnlyCollection<string> to, string subject, string body, CancellationToken ct)
+        IReadOnlyCollection<string> to, string subject, string textBody, string? htmlBody, CancellationToken ct)
     {
         var recipients = to.Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
         if (recipients.Count == 0)
@@ -64,7 +73,9 @@ public sealed class EmailSender(IOptions<EmailOptions> options, ILogger<EmailSen
                 message.To.Add(MailboxAddress.Parse(address));
             }
             message.Subject = subject;
-            message.Body = new TextPart("plain") { Text = body };
+            message.Body = htmlBody is null
+                ? new TextPart("plain") { Text = textBody }
+                : new BodyBuilder { TextBody = textBody, HtmlBody = htmlBody }.ToMessageBody();
 
             using var client = new SmtpClient();
             await client.ConnectAsync(

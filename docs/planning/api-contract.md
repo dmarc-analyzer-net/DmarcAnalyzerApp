@@ -121,10 +121,13 @@ never a redirect) and `GET /mta-sts/ask?domain=` (Caddy's on-demand-TLS gate —
 | PATCH | `/alerts/{id}` | staff — triage: `status` of `open`, `acknowledged` or `closed` |
 | POST | `/admin/alerts/evaluate` | admin — evaluates alert rules now |
 | POST | `/admin/notifications/test` | admin — sends a test email. Requires `to` |
-| GET | `/admin/digest/preview` | admin — renders a client's digest without sending. Requires `clientId`; optional `monthsAgo` |
-| POST | `/admin/digest/send` | admin — sends any due digest; already-sent periods are skipped |
-| GET | `/notification-recipients` | staff |
-| POST | `/notification-recipients` | admin — `clientId` null means agency-wide |
+| GET | `/admin/digest/preview` | admin — renders digests without sending: `clientId` for that client's own digest, or `recipientId` for every mail that recipient would get, roll-up included. Optional `monthsAgo`. Returns `{ mails: [{ subject, text, html, isRollup, clientIds }] }` |
+| GET | `/admin/digest/preview.html` | admin — the same, one mail (`index`, default 0) as `text/html`, for opening in a tab |
+| GET | `/admin/digest/defaults` | staff — the instance's `Digest:*` attention triggers, which a client's overrides fall back to |
+| POST | `/admin/digest/send` | admin — sends any due digest; mails already sent for the period are skipped |
+| GET | `/notification-recipients` | staff — includes `digestDefaultMode` and `clientModes` (only the clients that differ from the default) |
+| POST | `/notification-recipients` | admin — `clientId` null means several clients; optional `digestDefaultMode` (`rollup` \| `separate` \| `off`) and `clientModes` |
+| PUT | `/notification-recipients/{id}/routing` | admin — replaces `digestDefaultMode` and every per-client mode; several-clients recipients only |
 | DELETE | `/notification-recipients/{id}` | admin |
 | GET | `/health/live`, `/health/ready` | public |
 

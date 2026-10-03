@@ -341,17 +341,31 @@ history stream.
 ## A.5 Notifications and alerts
 
 ### `notification_recipient`
-Who gets notified. A **null `ClientId` is the agency-wide scope** — that address
-receives notifications for every client.
+Who gets notified. A set `ClientId` covers that one client. A **null `ClientId`
+covers several**: every client by default mode, narrowed or widened per client by
+`notification_recipient_client`. The same coverage decides alerts and digests.
 
 | Column | Notes |
 |---|---|
 | `Id` | PK |
-| `ClientId` | FK → `client`, **cascade**, indexed; null = agency-wide |
+| `ClientId` | FK → `client`, **cascade**, indexed; null = several clients |
 | `Email` | max 320 |
 | `Kind` | max 16 — `alert` \| `digest` \| `both` |
 | `IsActive` | default true |
+| `DigestDefaultMode` | max 16 — `rollup` \| `separate` \| `off`, default `rollup`; the mode for clients without a row below, including clients added later. Ignored when `ClientId` is set |
 | — | `(ClientId, Email)` **unique** |
+
+### `notification_recipient_client`
+One client's digest mode for a several-clients recipient. Only clients that differ
+from the recipient's `DigestDefaultMode` have a row.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK |
+| `RecipientId` | FK → `notification_recipient`, **cascade** |
+| `ClientId` | FK → `client`, **cascade**, indexed |
+| `DigestMode` | max 16 — `rollup` (in the address's one roll-up) \| `separate` (a mail of its own) \| `off` (not covered: no digest and no alerts) |
+| — | `(RecipientId, ClientId)` **unique** |
 
 ### `alert_event`
 Raised alerts. Persisted so the same problem isn't emailed repeatedly (the
@@ -371,17 +385,20 @@ can see history.
 | `NotifiedAtUtc` | nullable — null when no recipient or no relay |
 
 ### `digest_delivery`
-One row per client per digest period. The unique index is the idempotency
-guarantee.
+One row per address, per mail, per digest period, written before the send. The
+unique index is the idempotency guarantee.
 
 | Column | Notes |
 |---|---|
 | `Id` | PK |
-| `ClientId` | FK → `client`, **cascade** |
+| `ClientId` | FK → `client`, **cascade**, indexed; null = a roll-up covering several clients |
+| `RecipientEmail` | max 320, lower-cased; null on rows from before per-recipient digests, which mark that client's month as sent to everyone |
+| `ClientCount` | default 1; how many clients the mail covered |
+| `CoveredClientIds` | `uuid[]`, default empty; the clients the mail covered. A client an address already had this month, in a roll-up or its own mail, is left out of any later mail that month — so changing a client's mode after sending does not mail it twice |
 | `PeriodStartUtc`, `PeriodEndUtc` | the covered month |
 | `SentAtUtc` | |
-| `RecipientCount` | 0 when recorded but nothing was delivered (no relay) |
-| — | `(ClientId, PeriodStartUtc)` **unique** |
+| `RecipientCount` | 1 when delivered; 0 when recorded but nothing was delivered (no relay, or the send failed) |
+| — | `(RecipientEmail, ClientId, PeriodStartUtc)` **unique, nulls not distinct** — so a roll-up row collides with its own retry |
 
 ### `audit_event`
 Who did what. **No foreign keys on purpose** — a trail that loses meaning when a

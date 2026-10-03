@@ -315,21 +315,33 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
 
 - Monthly digest:
   - `DigestService` composes a per-client summary for the **previous whole
-    calendar month**: compliance and its change against the prior month, volume,
-    failing sources, domains at enforcement, alerts raised, and the worst domains
-  - `digest_delivery` has a unique `(ClientId, PeriodStartUtc)`, which is what
-    makes sending idempotent — a restart or extra pass cannot email a month twice.
-    A period is recorded even when delivery fails, so a broken relay doesn't
-    retry forever
+    calendar month**: pass rate and its change, volume, a verdict, the findings
+    that need attention (pass rate below a threshold, a drop on the previous
+    month, reports that stopped) and suggestions (domains ready for a stricter
+    policy), every domain with its effective policy, the worst failing sources
+    grouped by IP with PTR hostname and a "new this month" flag, and the alerts
+    raised. Triggers are `Digest:*` defaults with per-client overrides
+  - HTML with a plain-text part, branded per instance (`Branding:*`), with links
+    scoped to the client and to each domain
+  - per-address routing: a several-clients recipient gets one roll-up (an
+    overview of every client, detail only for those with findings) plus a mail
+    of its own for each client set to separate; off stops that client's alerts
+    too. Clients with no domains get no digest
+  - `digest_delivery` is unique on `(RecipientEmail, ClientId, PeriodStartUtc)`
+    with nulls not distinct, and the row is claimed before the send, so a restart
+    or extra pass cannot email a month twice. A mail is recorded even when
+    delivery fails, so a broken relay doesn't retry forever
   - worker check pass (`Digest:Enabled`, `DayOfMonth`, `CheckIntervalHours`);
-    `GET /api/v1/admin/digest/preview` renders without sending,
-    `POST /api/v1/admin/digest/send` sends anything due
+    `GET /api/v1/admin/digest/preview` (and `/preview.html`) renders a client's
+    or a recipient's mails without sending, `POST /api/v1/admin/digest/send`
+    sends anything due
 
 - Console pages for notifications:
   - **Alerts** — history with severity, type, status, per-domain links, whether
     each was emailed, an admin "Evaluate now" action, and triage
     (acknowledge / close / reopen) via `PATCH /alerts/{id}`
-  - **Notifications** — recipient management (per-client or agency-wide) and a
+  - **Notifications** — recipient management (one client, or several with a
+    per-client roll-up / own mail / off choice), a digest preview per recipient, and a
     test-send button that surfaces the API's configuration error verbatim
   - **Clients** — retention window, legal hold, and per-client alert settings
     (enable, compliance-drop threshold, minimum messages) are editable in the

@@ -112,21 +112,67 @@ public sealed class AlertsModule : ICarterModule
             return Results.Ok(result);
         }).RequireAgencyAdmin();
 
-        // Renders a client's digest for a period without sending it — lets an
-        // operator see the content before it reaches a customer.
+        // The instance-wide digest triggers, so the client form can show what a blank
+        // override falls back to.
+        app.MapGet("/api/v1/admin/digest/defaults", (
+            Microsoft.Extensions.Options.IOptions<DigestOptions> options) =>
+        {
+            var o = options.Value;
+            return Results.Ok(new
+            {
+                o.LowCompliancePercent,
+                o.ComplianceDropPoints,
+                o.MinMessages,
+                o.NoReports,
+                o.TightenAfterDays,
+                o.TightenCompliancePercent,
+            });
+        }).RequireAgencyStaff();
+
+        // Renders digests for a period without sending them — lets an operator see the
+        // content before it reaches a customer. With clientId: that client's own digest.
+        // With recipientId: every mail that recipient row would get, roll-up included.
         app.MapGet("/api/v1/admin/digest/preview", async (
-            Guid clientId,
+            Guid? clientId,
+            Guid? recipientId,
             int? monthsAgo,
             IDigestService digest,
             CancellationToken ct) =>
         {
-            var now = DateTime.UtcNow;
-            var start = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc)
-                .AddMonths(-Math.Clamp(monthsAgo ?? 1, 1, 24));
-            var summary = await digest.BuildAsync(clientId, start, start.AddMonths(1), ct);
-            return summary is null
+            var mails = await PreviewAsync(digest, clientId, recipientId, monthsAgo, ct);
+            return mails is null
                 ? Results.NotFound()
-                : Results.Ok(new { summary, body = digest.Render(summary) });
+                : Results.Ok(new
+                {
+                    mails = mails.Select(m => new { m.Subject, m.Text, m.Html, m.IsRollup, m.ClientIds }),
+                });
+        }).RequireAgencyAdmin();
+
+        // The same, as the HTML a mail client would render — one mail, picked by index,
+        // so the console can open it in a tab.
+        app.MapGet("/api/v1/admin/digest/preview.html", async (
+            Guid? clientId,
+            Guid? recipientId,
+            int? monthsAgo,
+            int? index,
+            IDigestService digest,
+            CancellationToken ct) =>
+        {
+            var mails = await PreviewAsync(digest, clientId, recipientId, monthsAgo, ct);
+            if (mails is null)
+            {
+                return Results.NotFound();
+            }
+
+            var i = index ?? 0;
+            if (mails.Count == 0 || i < 0 || i >= mails.Count)
+            {
+                return Results.Content(
+                    "<!DOCTYPE html><p style=\"font-family:sans-serif\">This recipient gets no digest for that month.</p>",
+                    "text/html; charset=utf-8");
+            }
+
+            return Results.Content(mails[i].Html, "text/html; charset=utf-8");
         }).RequireAgencyAdmin();
 
         // Sends any digest that is due. Idempotent — a period already sent is skipped.
@@ -166,5 +212,25 @@ public sealed class AlertsModule : ICarterModule
                 ? Results.Ok(new { status = "sent" })
                 : Results.Json(new { error = "send failed; check the API logs" }, statusCode: 502);
         }).RequireAgencyAdmin();
+    }
+
+    private static async Task<IReadOnlyList<DigestMail>?> PreviewAsync(
+        IDigestService digest, Guid? clientId, Guid? recipientId, int? monthsAgo, CancellationToken ct)
+    {
+        var now = DateTime.UtcNow;
+        var start = new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc)
+            .AddMonths(-Math.Clamp(monthsAgo ?? 1, 1, 24));
+
+        if (recipientId is { } rid)
+        {
+            return await digest.PreviewRecipientAsync(rid, start, ct);
+        }
+
+        if (clientId is { } cid)
+        {
+            return await digest.PreviewClientAsync(cid, start, ct) is { } mail ? [mail] : null;
+        }
+
+        return null;
     }
 }

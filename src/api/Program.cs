@@ -121,11 +121,15 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.Configure<AlertOptions>(workerBuilder.Configuration.GetSection("Alerts"));
     workerBuilder.Services.AddScoped<IEmailSender, EmailSender>();
     workerBuilder.Services.Configure<DigestOptions>(workerBuilder.Configuration.GetSection("Digest"));
+    workerBuilder.Services.Configure<BrandingOptions>(workerBuilder.Configuration.GetSection("Branding"));
     workerBuilder.Services.AddScoped<IAlertEvaluationService, AlertEvaluationService>();
     workerBuilder.Services.AddScoped<IDigestService, DigestService>();
+    workerBuilder.Services.AddSingleton<DigestRenderer>();
     // DnsTxtResolver caches lookups in IMemoryCache; the worker host has to provide
     // it too, not just the API host.
     workerBuilder.Services.AddMemoryCache();
+    // The digest names failing sources by their PTR hostname.
+    workerBuilder.Services.AddSingleton<IHostnameResolver, HostnameResolver>();
     workerBuilder.Services.Configure<DnsOptions>(workerBuilder.Configuration.GetSection("Dns"));
     workerBuilder.Services.AddSingleton<IAuthoritativeDnsClientLocator, AuthoritativeDnsClientLocator>();
     workerBuilder.Services.AddSingleton<IDnsTxtResolver, DnsTxtResolver>();
@@ -283,8 +287,10 @@ builder.Services.Configure<EmailOptions>(builder.Configuration.GetSection("Email
 builder.Services.Configure<AlertOptions>(builder.Configuration.GetSection("Alerts"));
 builder.Services.AddScoped<IEmailSender, EmailSender>();
 builder.Services.Configure<DigestOptions>(builder.Configuration.GetSection("Digest"));
+builder.Services.Configure<BrandingOptions>(builder.Configuration.GetSection("Branding"));
 builder.Services.AddScoped<IAlertEvaluationService, AlertEvaluationService>();
 builder.Services.AddScoped<IDigestService, DigestService>();
+builder.Services.AddSingleton<DigestRenderer>();
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<IHostnameResolver, HostnameResolver>();
 builder.Services.AddSingleton<IAuthoritativeDnsClientLocator, AuthoritativeDnsClientLocator>();

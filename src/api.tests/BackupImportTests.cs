@@ -813,4 +813,48 @@ public sealed class BackupImportTests
         Assert.Equal("both", (await db.NotificationRecipients.SingleAsync(x => x.ClientId == null)).Kind);
         Assert.Equal(agencyWide.Id, (await db.NotificationRecipients.SingleAsync(x => x.ClientId == null)).Id);
     }
+
+    /// <summary>
+    /// Digest routing travels with the recipient, its client ids remapped to this install.
+    /// An artifact from before routing existed restores the old behaviour — every client in
+    /// its own mail — rather than silently switching the address to a roll-up.
+    /// </summary>
+    [Fact]
+    public async Task RecipientDigestRoutingIsRestored_AndOldArtifactsKeepOneMailPerClient()
+    {
+        await using var db = NewDb();
+
+        var artifactClientId = Guid.NewGuid();
+        var existing = new Client { Slug = "acme", Name = "Acme", Timezone = "UTC" };
+        db.Add(existing);
+        await db.SaveChangesAsync();
+
+        var routed = new BackupNotificationRecipient(
+            Guid.NewGuid(), null, "owner@group.example", "digest", true, Stamp, Stamp,
+            DigestModes.Off, [new BackupRecipientClientMode(artifactClientId, DigestModes.Rollup)]);
+        var old = ExportedRecipient(Guid.NewGuid(), null, "agency@example.com");
+        var artifact = Artifact(
+            clients:
+            [
+                ExportedClient(artifactClientId, "acme") with
+                {
+                    DigestThresholds = new DigestThresholds { LowCompliancePercent = 95 },
+                },
+            ],
+            recipients: [routed, old]);
+
+        var result = await Service(db).ImportAsync(artifact, BackupImportModes.Merge, false, default);
+
+        Assert.True(result.IsSuccess);
+        var owner = await db.NotificationRecipients.Include(x => x.ClientModes)
+            .SingleAsync(x => x.Email == "owner@group.example");
+        Assert.Equal(DigestModes.Off, owner.DigestDefaultMode);
+        var mode = Assert.Single(owner.ClientModes);
+        Assert.Equal(existing.Id, mode.ClientId);   // remapped through the slug match
+        Assert.Equal(DigestModes.Rollup, mode.DigestMode);
+
+        Assert.Equal(DigestModes.Separate,
+            (await db.NotificationRecipients.SingleAsync(x => x.Email == "agency@example.com")).DigestDefaultMode);
+        Assert.Equal(95, (await db.Clients.SingleAsync()).DigestThresholds?.LowCompliancePercent);
+    }
 }

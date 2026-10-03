@@ -245,8 +245,13 @@ public sealed class BackupExportTests
         Assert.Equal(
             ["id", "name", "slug", "isActive", "retentionMonths", "legalHold", "alertsEnabled",
              "alertComplianceDropPercent", "alertMinMessages", "timezone", "createdAtUtc",
-             "updatedAtUtc"],
+             "updatedAtUtc", "digestThresholds"],
             root.GetProperty("clients")[0].EnumerateObject().Select(p => p.Name).ToArray());
+
+        Assert.Equal(
+            ["id", "clientId", "email", "kind", "isActive", "createdAtUtc", "updatedAtUtc",
+             "digestDefaultMode", "clientModes"],
+            root.GetProperty("notificationRecipients")[0].EnumerateObject().Select(p => p.Name).ToArray());
 
         Assert.Equal(
             ["id", "name", "protocol", "host", "port", "useTls", "username", "passwordEncrypted",

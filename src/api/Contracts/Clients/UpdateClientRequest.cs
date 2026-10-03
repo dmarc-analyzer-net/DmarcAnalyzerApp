@@ -20,5 +20,12 @@ public sealed class UpdateClientRequest
 
     /// <summary>Set true to clear the threshold overrides (a null value alone is indistinguishable from "unchanged").</summary>
     public bool? ClearAlertThresholds { get; set; }
+
+    /// <summary>
+    /// Replaces the client's digest overrides wholesale when present; a property left null
+    /// inside it inherits the instance default, so <c>{}</c> clears every override.
+    /// Absent means unchanged.
+    /// </summary>
+    public DmarcAnalyzer.Api.Data.Entities.DigestThresholds? DigestThresholds { get; set; }
     public string? Timezone { get; set; }
 }

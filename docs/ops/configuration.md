@@ -28,7 +28,7 @@ List values take an index: `Network__TrustedNetworks__0`,
 ## How the values work
 
 The settings this app binds to its own options — the `Worker__*`, `Email__*`,
-`Alerts__*`, `Digest__*`, `Dns__*`, `MtaSts__*`, `Retention__*`, `Network__*`,
+`Alerts__*`, `Digest__*`, `Branding__*`, `Dns__*`, `MtaSts__*`, `Retention__*`, `Network__*`,
 `Backup__*` and `Auth__Oidc__*` groups below, plus `Database__MigrateOnStartup`
 — are typed, and a value that does not convert stops the process at startup with
 a message naming the variable. That is deliberate: a setting silently falling
@@ -215,6 +215,33 @@ features are inert regardless of their own settings.
 | `Digest__Enabled` | `true` | Send the monthly summary. |
 | `Digest__DayOfMonth` | `1` | Day it is sent. |
 | `Digest__CheckIntervalHours` | `6` | How often the worker checks whether it is due. |
+
+The digest flags a domain as needing attention on the triggers below. These are the
+instance defaults: each client can override any of them on the Clients page, and for
+the numeric ones `0` switches the trigger off.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `Digest__LowCompliancePercent` | `98` | Flag a domain whose aligned pass rate for the month is below this percentage. |
+| `Digest__ComplianceDropPoints` | `2` | Flag a domain whose pass rate fell by at least this many percentage points on the month before. |
+| `Digest__MinMessages` | `100` | Domains with fewer messages in the month are not judged on their pass rate — on a quiet domain one forwarded message is a whole point. |
+| `Digest__NoReports` | `true` | Flag a domain whose reports stopped: at least `Digest__MinMessages` reported the month before, none this month — usually a broken `rua=` address. A domain that is always quiet (a seasonal sender, a parked brand) is not flagged. |
+| `Digest__TightenAfterDays` | `60` | Suggest a stricter policy for a domain at `p=none` or `p=quarantine` that has held `Digest__TightenCompliancePercent` for this many days. A suggestion, not a problem: it does not count towards "needs attention". |
+| `Digest__TightenCompliancePercent` | `98` | The pass rate a domain must hold before a stricter policy is suggested. |
+
+Who receives which digest is set per recipient on the Notifications page, not here. An
+address covering several clients gets one roll-up for the clients set to *roll-up* and a
+mail of its own for each client set to *separate*.
+
+## Branding (`Branding`)
+
+The agency's identity on digest mail. One brand for the whole instance.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `Branding__Name` | `DMARC Analyzer` | Name shown at the top and bottom of every digest. |
+| `Branding__LogoUrl` | *(empty)* | Absolute `https://` URL of a logo, shown 32px high in place of the name at the top. The footer still names the agency in text, because many mail clients hold images back until the reader allows them. Anything that is not an http(s) URL is ignored. |
+| `Branding__AccentColor` | `#0c7568` | Six-digit hex colour for the top rule, links and the button. Anything else falls back to the default. |
 
 ## DNS policy checks (`Dns`)
 

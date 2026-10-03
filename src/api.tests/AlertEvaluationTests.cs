@@ -18,7 +18,7 @@ public sealed class AlertEvaluationTests
         public bool IsConfigured => Configured;
 
         public Task<bool> SendAsync(
-            IReadOnlyCollection<string> to, string subject, string body, CancellationToken ct)
+            IReadOnlyCollection<string> to, string subject, string body, string? htmlBody, CancellationToken ct)
         {
             Sent.Add((to, subject, body));
             return Task.FromResult(Configured);
@@ -250,6 +250,38 @@ public sealed class AlertEvaluationTests
         Assert.DoesNotContain("monthly@acme.example", sent.To);
         Assert.Contains("https://dmarc.example.com/domains/", sent.Body);
         Assert.NotNull(Assert.Single(await db.AlertEvents.ToListAsync()).NotifiedAtUtc);
+    }
+
+    [Fact]
+    public async Task AClientSwitchedOffForARecipient_SendsThemNoAlerts()
+    {
+        await using var db = NewDb();
+        var (client, domain) = Seed(db);
+        var muted = new NotificationRecipient { ClientId = null, Email = "agency@example.com", Kind = "both" };
+        muted.ClientModes.Add(new NotificationRecipientClient { ClientId = client.Id, DigestMode = DigestModes.Off });
+        // A customer contact covering only chosen clients: nothing by default, acme opted in.
+        var contact = new NotificationRecipient
+        {
+            ClientId = null, Email = "owner@group.example", Kind = "both", DigestDefaultMode = DigestModes.Off,
+        };
+        contact.ClientModes.Add(new NotificationRecipientClient { ClientId = client.Id, DigestMode = DigestModes.Rollup });
+        var uninvolved = new NotificationRecipient
+        {
+            ClientId = null, Email = "other@group.example", Kind = "alert", DigestDefaultMode = DigestModes.Off,
+        };
+        db.AddRange(muted, contact, uninvolved);
+        for (var d = 7; d >= 1; d--)
+        {
+            AddDay(db, domain.Id, d, messages: 1000, compliant: 1000);
+        }
+        AddDay(db, domain.Id, 0, messages: 1000, compliant: 100);
+        await db.SaveChangesAsync();
+
+        var email = new FakeEmailSender();
+        await Service(db, email).EvaluateAsync(CancellationToken.None);
+
+        var sent = Assert.Single(email.Sent);
+        Assert.Equal(["owner@group.example"], sent.To);
     }
 
     [Fact]

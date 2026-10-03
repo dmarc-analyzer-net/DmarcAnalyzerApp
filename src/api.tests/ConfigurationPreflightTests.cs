@@ -153,9 +153,16 @@ public sealed class ConfigurationPreflightTests
         // Feed each one a value no type converts and require a complaint that
         // names that section's own variable.
         var property = type.GetProperties()
-            .First(p => p.GetSetMethod() is not null
+            .FirstOrDefault(p => p.GetSetMethod() is not null
                 && p.PropertyType != typeof(string)
                 && !p.PropertyType.IsArray);
+        if (property is null)
+        {
+            // A section of nothing but strings (Branding) takes any value, so there is
+            // no bad input to feed it. It still has to bind without complaint.
+            ConfigurationPreflight.Validate(Configuration(($"{section}:Anything", "value")));
+            return;
+        }
 
         var ex = Assert.Throws<InvalidOperationException>(
             () => ConfigurationPreflight.Validate(Configuration(($"{section}:{property.Name}", "not-a-value"))));

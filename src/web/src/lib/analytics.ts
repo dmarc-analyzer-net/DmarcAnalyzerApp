@@ -614,14 +614,45 @@ export const ALERT_RULE_LABEL: Record<AlertRuleType, string> = {
 
 export type NotificationKind = 'alert' | 'digest' | 'both'
 
+/**
+ * How a client reaches a several-clients recipient: in their one roll-up, in a mail of
+ * its own, or not at all (`off` also stops that client's alerts to this address).
+ */
+export type DigestMode = 'rollup' | 'separate' | 'off'
+
 export type NotificationRecipient = {
   id: string
-  /** Null means agency-wide: this address receives notifications for every client. */
+  /** Set: covers this one client. Null: covers several, per `digestDefaultMode` and `clientModes`. */
   clientId: string | null
   clientName: string | null
   email: string
   kind: NotificationKind
   isActive: boolean
+  /** Several-clients recipients: the mode for every client without an entry in `clientModes`, new clients included. */
+  digestDefaultMode: DigestMode
+  /** Only the clients that differ from the default. */
+  clientModes: { clientId: string; mode: DigestMode }[]
   createdAtUtc: string
   updatedAtUtc: string
+}
+
+/** Effective mode per client for a several-clients recipient. */
+export function effectiveDigestModes(
+  recipient: Pick<NotificationRecipient, 'digestDefaultMode' | 'clientModes'>,
+  clientIds: string[],
+): Record<string, DigestMode> {
+  const overrides = new Map(recipient.clientModes.map((m) => [m.clientId, m.mode]))
+  return Object.fromEntries(clientIds.map((id) => [id, overrides.get(id) ?? recipient.digestDefaultMode]))
+}
+
+/** "6 in roll-up, 1 separate, 2 off" — skipping modes no client uses. */
+export function summarizeDigestModes(modes: Record<string, DigestMode>): string {
+  const count = { rollup: 0, separate: 0, off: 0 }
+  for (const mode of Object.values(modes)) count[mode]++
+  const parts = [
+    count.rollup ? `${count.rollup} in roll-up` : null,
+    count.separate ? `${count.separate} separate` : null,
+    count.off ? `${count.off} off` : null,
+  ].filter((x): x is string => x !== null)
+  return parts.length ? parts.join(', ') : 'No clients'
 }

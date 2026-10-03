@@ -148,6 +148,17 @@ public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext
             }
         }
 
+        if (request.DigestThresholds is { } digest)
+        {
+            var problem = ValidateDigestThresholds(digest);
+            if (problem is not null)
+            {
+                return ServiceResult<ClientDto>.Failure(problem, 400);
+            }
+
+            client.DigestThresholds = digest.IsEmpty ? null : digest;
+        }
+
         if (request.Timezone is not null)
         {
             if (string.IsNullOrWhiteSpace(request.Timezone))
@@ -169,6 +180,36 @@ public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext
         return ServiceResult<ClientDto>.Success(ToDto(client));
     }
 
+    private static string? ValidateDigestThresholds(DigestThresholds t)
+    {
+        if (t.LowCompliancePercent is < 0 or > 100)
+        {
+            return "digestThresholds.lowCompliancePercent must be between 0 and 100";
+        }
+
+        if (t.ComplianceDropPoints is < 0 or > 100)
+        {
+            return "digestThresholds.complianceDropPoints must be between 0 and 100";
+        }
+
+        if (t.TightenCompliancePercent is < 0 or > 100)
+        {
+            return "digestThresholds.tightenCompliancePercent must be between 0 and 100";
+        }
+
+        if (t.MinMessages is < 0)
+        {
+            return "digestThresholds.minMessages cannot be negative";
+        }
+
+        if (t.TightenAfterDays is < 0 or > 365)
+        {
+            return "digestThresholds.tightenAfterDays must be between 0 and 365";
+        }
+
+        return null;
+    }
+
     private static ClientDto ToDto(Client x) =>
         new(
             x.Id,
@@ -180,6 +221,7 @@ public sealed class ClientService(DmarcAnalyzerDbContext db, ICurrentUserContext
             x.AlertsEnabled,
             x.AlertComplianceDropPercent,
             x.AlertMinMessages,
+            x.DigestThresholds,
             x.Timezone,
             x.CreatedAtUtc,
             x.UpdatedAtUtc);
