@@ -1,3 +1,5 @@
+import { getDomain } from 'tldts'
+
 import type { DomainAnalytics } from '@/lib/analytics'
 
 /**
@@ -9,13 +11,11 @@ import type { DomainAnalytics } from '@/lib/analytics'
 
 export type GroupableRow = Pick<DomainAnalytics, 'domainId' | 'name'>
 
-/** The name one label up: `booking.example.dk` -> `example.dk`. Null for an apex name. */
+/** The name one label up, but never above the registrable domain. */
 export function parentOf(name: string): string | null {
-  const dot = name.indexOf('.')
-  if (dot < 0) return null
-  const parent = name.slice(dot + 1)
-  // Two labels left means we are already at the apex, so there is no parent to group under.
-  return parent.split('.').length >= 2 ? parent : null
+  const registrable = getDomain(name, { allowPrivateDomains: true })
+  if (!registrable || registrable === name) return null
+  return name.slice(name.indexOf('.') + 1)
 }
 
 export type ListItem<T extends GroupableRow> =
