@@ -22,6 +22,13 @@ public sealed class DigestDelivery
 
     /// <summary>How many clients the mail covered: 1 for a single-client digest, more for a roll-up.</summary>
     public int ClientCount { get; set; } = 1;
+
+    /// <summary>
+    /// The clients the mail covered. What stops a mode change after sending from mailing
+    /// a client twice in one month: a client already in an address's roll-up is left out
+    /// of a separate mail, and the other way round. Empty on rows from before it existed.
+    /// </summary>
+    public List<Guid> CoveredClientIds { get; set; } = [];
     public DateTime PeriodStartUtc { get; set; }
     public DateTime PeriodEndUtc { get; set; }
     public DateTime SentAtUtc { get; set; } = DateTime.UtcNow;

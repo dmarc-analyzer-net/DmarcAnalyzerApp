@@ -77,6 +77,10 @@ public sealed record DigestMail(string Subject, string Text, string Html, IReadO
     public bool IsRollup => ClientIds.Count > 1;
 }
 
-/// <summary>How a send pass went; Skipped counts mails already sent for the period.</summary>
+/// <summary>
+/// How a send pass went. Clients an address already had this month are left out before
+/// any mail is planned, so a repeat pass simply sends nothing; Skipped counts the mails
+/// that were planned but found already claimed — another pass got there first.
+/// </summary>
 /// <param name="SentTo">One entry per mail sent, as "address: subject".</param>
 public sealed record DigestSendResult(int ClientsConsidered, int Sent, int Skipped, IReadOnlyList<string> SentTo);

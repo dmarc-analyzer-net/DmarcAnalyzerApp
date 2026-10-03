@@ -394,6 +394,7 @@ unique index is the idempotency guarantee.
 | `ClientId` | FK → `client`, **cascade**, indexed; null = a roll-up covering several clients |
 | `RecipientEmail` | max 320, lower-cased; null on rows from before per-recipient digests, which mark that client's month as sent to everyone |
 | `ClientCount` | default 1; how many clients the mail covered |
+| `CoveredClientIds` | `uuid[]`, default empty; the clients the mail covered. A client an address already had this month, in a roll-up or its own mail, is left out of any later mail that month — so changing a client's mode after sending does not mail it twice |
 | `PeriodStartUtc`, `PeriodEndUtc` | the covered month |
 | `SentAtUtc` | |
 | `RecipientCount` | 1 when delivered; 0 when recorded but nothing was delivered (no relay, or the send failed) |

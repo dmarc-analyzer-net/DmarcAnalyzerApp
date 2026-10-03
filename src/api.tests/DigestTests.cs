@@ -549,8 +549,8 @@ public sealed class DigestTests
 
         Assert.Equal(1, first.Sent);
         Assert.Equal(0, second.Sent);
-        Assert.Equal(1, second.Skipped);
         Assert.Single(email.Sent);
+        Assert.Single(await db.DigestDeliveries.ToListAsync());
     }
 
     [Fact]
@@ -573,6 +573,52 @@ public sealed class DigestTests
         var mail = Assert.Single((await SendDue(db)).Sent);
 
         Assert.StartsWith("[DMARC] charlie,", mail.Subject);
+    }
+
+    [Fact]
+    public async Task MovingAClientIntoTheRollupAfterSending_DoesNotMailItTwice()
+    {
+        await using var db = NewDb();
+        var (a, b, c) = await ThreeClients(db);
+        var recipient = new NotificationRecipient
+        {
+            ClientId = null, Email = "agency@example.com", Kind = "digest", DigestDefaultMode = DigestModes.Separate,
+        };
+        db.Add(recipient);
+        await db.SaveChangesAsync();
+
+        var email = new FakeEmailSender();
+        var service = Service(db, email, new DigestOptions { DayOfMonth = 1 });
+        await service.SendDueAsync(CancellationToken.None);
+        Assert.Equal(3, email.Sent.Count);   // one mail each
+
+        // The operator switches everything to the roll-up after this month went out.
+        recipient.DigestDefaultMode = DigestModes.Rollup;
+        await db.SaveChangesAsync();
+        await service.SendDueAsync(CancellationToken.None);
+
+        Assert.Equal(3, email.Sent.Count);
+    }
+
+    [Fact]
+    public async Task SplittingAClientOutOfTheRollupAfterSending_DoesNotMailItTwice()
+    {
+        await using var db = NewDb();
+        var (_, b, _) = await ThreeClients(db);
+        var recipient = new NotificationRecipient { ClientId = null, Email = "agency@example.com", Kind = "digest" };
+        db.Add(recipient);
+        await db.SaveChangesAsync();
+
+        var email = new FakeEmailSender();
+        var service = Service(db, email, new DigestOptions { DayOfMonth = 1 });
+        await service.SendDueAsync(CancellationToken.None);
+        Assert.Single(email.Sent);   // the roll-up
+
+        db.Add(new NotificationRecipientClient { RecipientId = recipient.Id, ClientId = b.Id, DigestMode = DigestModes.Separate });
+        await db.SaveChangesAsync();
+        await service.SendDueAsync(CancellationToken.None);
+
+        Assert.Single(email.Sent);
     }
 
     [Fact]

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -41,6 +42,13 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                 type: "integer",
                 nullable: false,
                 defaultValue: 1);
+
+            migrationBuilder.AddColumn<List<Guid>>(
+                name: "CoveredClientIds",
+                table: "digest_delivery",
+                type: "uuid[]",
+                nullable: false,
+                defaultValueSql: "'{}'::uuid[]");
 
             migrationBuilder.AddColumn<string>(
                 name: "RecipientEmail",
@@ -130,6 +138,10 @@ namespace DmarcAnalyzer.Api.Data.Migrations
 
             migrationBuilder.DropColumn(
                 name: "ClientCount",
+                table: "digest_delivery");
+
+            migrationBuilder.DropColumn(
+                name: "CoveredClientIds",
                 table: "digest_delivery");
 
             migrationBuilder.DropColumn(

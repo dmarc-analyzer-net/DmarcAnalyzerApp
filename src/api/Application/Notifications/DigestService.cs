@@ -363,7 +363,7 @@ public sealed class DigestService(
 
         var delivered = await db.DigestDeliveries.AsNoTracking()
             .Where(d => d.PeriodStartUtc == periodStart)
-            .Select(d => new { d.RecipientEmail, d.ClientId })
+            .Select(d => new { d.RecipientEmail, d.ClientId, d.CoveredClientIds })
             .ToListAsync(ct);
         // Rows from before per-recipient digests: that client's month went to everyone.
         var sentToEveryone = delivered
@@ -374,6 +374,15 @@ public sealed class DigestService(
             .Where(d => d.RecipientEmail is not null)
             .Select(d => (d.RecipientEmail!.ToLowerInvariant(), d.ClientId))
             .ToHashSet();
+        // Per address, every client it has already had this month in any mail — so a
+        // client moved between roll-up and separate after sending is not mailed twice.
+        var coveredFor = delivered
+            .Where(d => d.RecipientEmail is not null)
+            .GroupBy(d => d.RecipientEmail!.ToLowerInvariant())
+            .ToDictionary(
+                g => g.Key,
+                g => g.SelectMany(d => d.ClientId is { } id ? d.CoveredClientIds.Append(id) : d.CoveredClientIds)
+                    .ToHashSet());
 
         var cache = new Dictionary<Guid, DigestSummary>();
         var sent = 0;
@@ -382,7 +391,10 @@ public sealed class DigestService(
 
         foreach (var recipient in coverage)
         {
-            foreach (var plan in Plan(recipient, clients, sentToEveryone))
+            var alreadySent = coveredFor.TryGetValue(recipient.Email, out var covered)
+                ? covered.Union(sentToEveryone).ToHashSet()
+                : sentToEveryone;
+            foreach (var plan in Plan(recipient, clients, alreadySent))
             {
                 ct.ThrowIfCancellationRequested();
 
@@ -402,6 +414,7 @@ public sealed class DigestService(
                     ClientId = key,
                     RecipientEmail = recipient.Email,
                     ClientCount = plan.ClientIds.Count,
+                    CoveredClientIds = [.. plan.ClientIds],
                     PeriodStartUtc = periodStart,
                     PeriodEndUtc = periodEnd,
                     SentAtUtc = DateTime.UtcNow,
