@@ -1,14 +1,27 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader } from '@/components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import type { NotificationKind, NotificationRecipient } from '@/lib/analytics'
+import {
+  effectiveDigestModes,
+  summarizeDigestModes,
+  type DigestMode,
+  type NotificationKind,
+  type NotificationRecipient,
+} from '@/lib/analytics'
 import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin } from '@/lib/authz'
@@ -22,9 +35,24 @@ const KIND_LABEL: Record<NotificationKind, string> = {
   both: 'Alerts + digest',
 }
 
+const MODE_LABEL: Record<DigestMode, string> = {
+  rollup: 'In roll-up',
+  separate: 'Own mail',
+  off: 'Off',
+}
+
+const NEW_CLIENTS_LABEL: Record<DigestMode, string> = {
+  rollup: 'New clients join the roll-up',
+  separate: 'New clients get their own mail',
+  off: 'New clients are not included',
+}
+
+type PreviewMail = { subject: string; isRollup: boolean; clientIds: string[] }
+
 /**
- * Who gets emailed. A recipient with no client is agency-wide and receives
- * notifications for every client — useful for an internal ops address.
+ * Who gets emailed. A recipient is either one client's (its digest arrives as a mail of
+ * its own) or covers several: each client is in that address's one roll-up, in a mail
+ * of its own, or off — and off also stops that client's alerts to it.
  */
 export function NotificationsPage() {
   usePageTitle('Notifications')
@@ -39,11 +67,20 @@ export function NotificationsPage() {
 
   const [email, setEmail] = useState('')
   const [clientId, setClientId] = useState('')
+  const [defaultMode, setDefaultMode] = useState<DigestMode>('rollup')
   const [kind, setKind] = useState<NotificationKind>('both')
   const [saving, setSaving] = useState(false)
 
   const [testTo, setTestTo] = useState('')
   const [testing, setTesting] = useState(false)
+
+  const [routing, setRouting] = useState<NotificationRecipient | null>(null)
+  const [preview, setPreview] = useState<{ recipient: NotificationRecipient; mails: PreviewMail[] | null } | null>(
+    null,
+  )
+
+  const sortedClients = useMemo(() => [...clients].sort((a, b) => a.name.localeCompare(b.name)), [clients])
+  const clientIds = useMemo(() => sortedClients.map((c) => c.id), [sortedClients])
 
   const loadData = useCallback(async () => {
     setBusy(true)
@@ -55,8 +92,10 @@ export function NotificationsPage() {
       ])
       setRecipients(recipientData)
       setClients(clientData)
+      return recipientData
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'Failed to load recipients')
+      return null
     } finally {
       setBusy(false)
     }
@@ -72,14 +111,26 @@ export function NotificationsPage() {
     setError(null)
     setNotice(null)
     try {
-      await fetchJson('/api/v1/notification-recipients', {
+      const several = clientId === ''
+      const created = await fetchJson<{ id: string }>('/api/v1/notification-recipients', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: email.trim(), clientId: clientId || null, kind }),
+        body: JSON.stringify({
+          email: email.trim(),
+          clientId: several ? null : clientId,
+          kind,
+          digestDefaultMode: several ? defaultMode : undefined,
+        }),
       })
       setEmail('')
-      setNotice('Recipient added.')
-      await loadData()
+      const fresh = await loadData()
+      // "Only clients I choose" starts with none chosen — go straight to choosing them.
+      const row = several && defaultMode === 'off' ? fresh?.find((r) => r.id === created.id) : undefined
+      if (row) {
+        setRouting(row)
+      } else {
+        setNotice('Recipient added.')
+      }
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'Could not add that recipient')
     } finally {
@@ -96,6 +147,19 @@ export function NotificationsPage() {
       await loadData()
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'Could not remove that recipient')
+    }
+  }
+
+  const openPreview = async (recipient: NotificationRecipient) => {
+    setPreview({ recipient, mails: null })
+    try {
+      const data = await fetchJson<{ mails: PreviewMail[] }>(
+        `/api/v1/admin/digest/preview?recipientId=${recipient.id}`,
+      )
+      setPreview({ recipient, mails: data.mails })
+    } catch (previewError) {
+      setPreview(null)
+      setError(previewError instanceof Error ? previewError.message : 'Could not build the preview')
     }
   }
 
@@ -116,13 +180,23 @@ export function NotificationsPage() {
     }
   }
 
+  const coverage = (recipient: NotificationRecipient) => {
+    if (recipient.clientName) return <span className="text-sm text-body">{recipient.clientName}</span>
+    const modes = effectiveDigestModes(recipient, clientIds)
+    const everyClient = Object.values(modes).every((m) => m === 'rollup') && recipient.digestDefaultMode === 'rollup'
+    return (
+      <div className="flex flex-col gap-0.5">
+        <span className="text-sm text-body">{everyClient ? 'All clients, one roll-up' : summarizeDigestModes(modes)}</span>
+        <span className="text-xs text-faint">{NEW_CLIENTS_LABEL[recipient.digestDefaultMode]}</span>
+      </div>
+    )
+  }
+
   return (
     <>
       <div className="mb-5">
         <h1 className="text-xl font-semibold tracking-tight text-body">Notifications</h1>
-        <p className="mt-1 text-sm text-secondary">
-          Who receives alert emails and the monthly digest
-        </p>
+        <p className="mt-1 text-sm text-secondary">Who receives alert emails and the monthly digest</p>
       </div>
 
       {error ? (
@@ -148,7 +222,7 @@ export function NotificationsPage() {
             <Card pad>
               <CardHeader
                 title="Add a recipient"
-                description="Leave the client blank to send notifications for every client to this address."
+                description="One client's contact gets that client's digest. An address covering several clients gets one roll-up, with any client you choose split into its own mail."
               />
               <form onSubmit={addRecipient} className="flex flex-wrap items-end gap-3">
                 <label className="flex min-w-[240px] flex-1 flex-col gap-1.5">
@@ -162,16 +236,26 @@ export function NotificationsPage() {
                   />
                 </label>
                 <label className="flex min-w-[200px] flex-col gap-1.5">
-                  <span className="text-xs font-medium text-secondary">Client</span>
+                  <span className="text-xs font-medium text-secondary">Covers</span>
                   <Select value={clientId} onChange={(e) => setClientId(e.target.value)}>
-                    <option value="">All clients (agency-wide)</option>
-                    {clients.map((client) => (
+                    <option value="">Several clients</option>
+                    {sortedClients.map((client) => (
                       <option key={client.id} value={client.id}>
-                        {client.name}
+                        {client.name} only
                       </option>
                     ))}
                   </Select>
                 </label>
+                {clientId === '' ? (
+                  <label className="flex min-w-[220px] flex-col gap-1.5">
+                    <span className="text-xs font-medium text-secondary">Which clients</span>
+                    <Select value={defaultMode} onChange={(e) => setDefaultMode(e.target.value as DigestMode)}>
+                      <option value="rollup">All, in one roll-up</option>
+                      <option value="separate">All, one mail each</option>
+                      <option value="off">Only clients I choose</option>
+                    </Select>
+                  </label>
+                ) : null}
                 <label className="flex min-w-[170px] flex-col gap-1.5">
                   <span className="text-xs font-medium text-secondary">Receives</span>
                   <Select value={kind} onChange={(e) => setKind(e.target.value as NotificationKind)}>
@@ -203,7 +287,7 @@ export function NotificationsPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Email</TableHead>
-                      <TableHead>Client</TableHead>
+                      <TableHead>Covers</TableHead>
                       <TableHead>Receives</TableHead>
                       <TableHead>Status</TableHead>
                       {admin ? <TableHead className="text-right">Actions</TableHead> : null}
@@ -213,9 +297,7 @@ export function NotificationsPage() {
                     {recipients.map((recipient) => (
                       <TableRow key={recipient.id}>
                         <TableCell className="font-mono text-xs text-body">{recipient.email}</TableCell>
-                        <TableCell className="text-sm text-secondary">
-                          {recipient.clientName ?? <Badge variant="neutral">All clients</Badge>}
-                        </TableCell>
+                        <TableCell>{coverage(recipient)}</TableCell>
                         <TableCell className="text-sm text-secondary">{KIND_LABEL[recipient.kind]}</TableCell>
                         <TableCell>
                           <Badge variant={recipient.isActive ? 'success' : 'neutral'}>
@@ -224,14 +306,26 @@ export function NotificationsPage() {
                         </TableCell>
                         {admin ? (
                           <TableCell className="text-right">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => void removeRecipient(recipient.id, recipient.email)}
-                            >
-                              <Icon name="trash-2" size={14} />
-                              Remove
-                            </Button>
+                            <div className="flex justify-end gap-1">
+                              {recipient.clientId === null ? (
+                                <Button variant="ghost" size="sm" icon="list-filter" onClick={() => setRouting(recipient)}>
+                                  Clients
+                                </Button>
+                              ) : null}
+                              {recipient.kind !== 'alert' ? (
+                                <Button variant="ghost" size="sm" icon="eye" onClick={() => void openPreview(recipient)}>
+                                  Preview
+                                </Button>
+                              ) : null}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                icon="trash-2"
+                                onClick={() => void removeRecipient(recipient.id, recipient.email)}
+                              >
+                                Remove
+                              </Button>
+                            </div>
                           </TableCell>
                         ) : null}
                       </TableRow>
@@ -272,6 +366,165 @@ export function NotificationsPage() {
           ) : null}
         </div>
       ) : null}
+
+      {routing ? (
+        <RoutingDialog
+          recipient={routing}
+          clients={sortedClients}
+          onClose={() => setRouting(null)}
+          onSaved={async () => {
+            setRouting(null)
+            setNotice('Clients updated.')
+            await loadData()
+          }}
+        />
+      ) : null}
+
+      <Dialog open={preview !== null} onOpenChange={(open) => (!open ? setPreview(null) : undefined)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Digest preview</DialogTitle>
+            <DialogDescription>
+              What <span className="font-mono">{preview?.recipient.email}</span> would get for last month. Nothing is sent.
+            </DialogDescription>
+          </DialogHeader>
+          {preview?.mails === null ? (
+            <div className="flex justify-center py-8">
+              <Icon name="loader-circle" size={20} className="animate-spin text-secondary" />
+            </div>
+          ) : preview?.mails.length === 0 ? (
+            <p className="text-sm text-secondary">No digest: every client this address covers is off, or has no domains.</p>
+          ) : (
+            <ul className="divide-y divide-border rounded-md border border-border">
+              {preview?.mails.map((mail, index) => (
+                <li key={mail.subject} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                  <div className="min-w-0">
+                    <div className="truncate text-sm text-body">{mail.subject}</div>
+                    <div className="text-xs text-faint">
+                      {mail.isRollup ? `Roll-up of ${mail.clientIds.length} clients` : 'Single client'}
+                    </div>
+                  </div>
+                  <Button variant="secondary" size="sm" asChild>
+                    <a
+                      href={`/api/v1/admin/digest/preview.html?recipientId=${preview.recipient.id}&index=${index}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      <Icon name="external-link" size={14} />
+                      Open
+                    </a>
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
+  )
+}
+
+function RoutingDialog({
+  recipient,
+  clients,
+  onClose,
+  onSaved,
+}: {
+  recipient: NotificationRecipient
+  clients: Client[]
+  onClose: () => void
+  onSaved: () => Promise<void>
+}) {
+  const [defaultMode, setDefaultMode] = useState<DigestMode>(recipient.digestDefaultMode)
+  const [modes, setModes] = useState<Record<string, DigestMode>>(() =>
+    effectiveDigestModes(recipient, clients.map((c) => c.id)),
+  )
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  const setAll = (mode: DigestMode) => setModes(Object.fromEntries(clients.map((c) => [c.id, mode])))
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault()
+    setSaving(true)
+    setError(null)
+    try {
+      await fetchJson(`/api/v1/notification-recipients/${recipient.id}/routing`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          digestDefaultMode: defaultMode,
+          clientModes: Object.entries(modes).map(([clientId, mode]) => ({ clientId, mode })),
+        }),
+      })
+      await onSaved()
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : 'Could not save')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(open) => (!open ? onClose() : undefined)}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Clients</DialogTitle>
+          <DialogDescription>
+            What <span className="font-mono">{recipient.email}</span> hears about each client. Off stops alerts as well as
+            the digest.
+          </DialogDescription>
+        </DialogHeader>
+        <form className="grid gap-4" onSubmit={save}>
+          {error ? (
+            <div className="rounded-md bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+              {error}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-secondary">Set all:</span>
+            {(['rollup', 'separate', 'off'] as const).map((mode) => (
+              <Button key={mode} type="button" variant="secondary" size="sm" onClick={() => setAll(mode)}>
+                {MODE_LABEL[mode]}
+              </Button>
+            ))}
+          </div>
+          <ul className="divide-y divide-border rounded-md border border-border">
+            {clients.map((client) => (
+              <li key={client.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                <span className={cn('min-w-0 truncate text-sm', modes[client.id] === 'off' ? 'text-faint' : 'text-body')}>
+                  {client.name}
+                </span>
+                <Select
+                  className="w-36 shrink-0"
+                  aria-label={`Digest for ${client.name}`}
+                  value={modes[client.id]}
+                  onChange={(e) => setModes((x) => ({ ...x, [client.id]: e.target.value as DigestMode }))}
+                >
+                  <option value="rollup">{MODE_LABEL.rollup}</option>
+                  <option value="separate">{MODE_LABEL.separate}</option>
+                  <option value="off">{MODE_LABEL.off}</option>
+                </Select>
+              </li>
+            ))}
+          </ul>
+          <label className="flex flex-col gap-1.5">
+            <span className="text-xs font-medium text-secondary">Clients added later</span>
+            <Select value={defaultMode} onChange={(e) => setDefaultMode(e.target.value as DigestMode)}>
+              <option value="rollup">{NEW_CLIENTS_LABEL.rollup}</option>
+              <option value="separate">{NEW_CLIENTS_LABEL.separate}</option>
+              <option value="off">{NEW_CLIENTS_LABEL.off}</option>
+            </Select>
+          </label>
+          <div className="flex justify-end gap-2 pt-1">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={saving}>
+              Save
+            </Button>
+          </div>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

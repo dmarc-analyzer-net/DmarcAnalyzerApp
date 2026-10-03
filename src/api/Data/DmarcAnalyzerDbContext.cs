@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,6 +11,11 @@ namespace DmarcAnalyzer.Api.Data;
 /// </summary>
 public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbContext> options) : DbContext(options)
 {
+    private static readonly JsonSerializerOptions DigestThresholdsJson = new(JsonSerializerDefaults.Web)
+    {
+        DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
+    };
+
     public DbSet<Client> Clients => Set<Client>();
     public DbSet<Domain> Domains => Set<Domain>();
     public DbSet<DmarcReport> DmarcReports => Set<DmarcReport>();
@@ -19,6 +25,7 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<ReportSource> ReportSources => Set<ReportSource>();
     public DbSet<DmarcReportIngest> DmarcReportIngests => Set<DmarcReportIngest>();
     public DbSet<NotificationRecipient> NotificationRecipients => Set<NotificationRecipient>();
+    public DbSet<NotificationRecipientClient> NotificationRecipientClients => Set<NotificationRecipientClient>();
     public DbSet<AlertEvent> AlertEvents => Set<AlertEvent>();
     public DbSet<DigestDelivery> DigestDeliveries => Set<DigestDelivery>();
     public DbSet<AuditEvent> AuditEvents => Set<AuditEvent>();
@@ -116,6 +123,13 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.Timezone).HasMaxLength(64).IsRequired();
             entity.Property(x => x.LegalHold).HasDefaultValue(false);
             entity.Property(x => x.AlertsEnabled).HasDefaultValue(true);
+            // One JSON document rather than a column per trigger: the set of digest
+            // triggers is expected to grow, and every value in it is an optional override.
+            entity.Property(x => x.DigestThresholds)
+                .HasColumnType("jsonb")
+                .HasConversion(
+                    v => v == null || v.IsEmpty ? null : JsonSerializer.Serialize(v, DigestThresholdsJson),
+                    v => v == null ? null : JsonSerializer.Deserialize<DigestThresholds>(v, DigestThresholdsJson));
             entity.HasIndex(x => x.Slug).IsUnique();
         });
 
@@ -348,10 +362,29 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.Email).HasMaxLength(320).IsRequired();
             entity.Property(x => x.Kind).HasMaxLength(16).IsRequired().HasDefaultValue("both");
             entity.Property(x => x.IsActive).HasDefaultValue(true);
+            entity.Property(x => x.DigestDefaultMode).HasMaxLength(16).IsRequired().HasDefaultValue(DigestModes.Rollup);
             entity.HasIndex(x => x.ClientId);
-            // One row per address per scope; a null ClientId is the agency-wide scope.
+            // One row per address per scope; a null ClientId is the several-clients scope.
             entity.HasIndex(x => new { x.ClientId, x.Email }).IsUnique();
 
+            entity.HasOne(x => x.Client)
+                .WithMany()
+                .HasForeignKey(x => x.ClientId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<NotificationRecipientClient>(entity =>
+        {
+            entity.ToTable("notification_recipient_client");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.DigestMode).HasMaxLength(16).IsRequired();
+            entity.HasIndex(x => new { x.RecipientId, x.ClientId }).IsUnique();
+            entity.HasIndex(x => x.ClientId);
+
+            entity.HasOne(x => x.Recipient)
+                .WithMany(x => x.ClientModes)
+                .HasForeignKey(x => x.RecipientId)
+                .OnDelete(DeleteBehavior.Cascade);
             entity.HasOne(x => x.Client)
                 .WithMany()
                 .HasForeignKey(x => x.ClientId)
@@ -382,8 +415,14 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
         {
             entity.ToTable("digest_delivery");
             entity.HasKey(x => x.Id);
-            // The idempotency guarantee: one digest per client per period.
-            entity.HasIndex(x => new { x.ClientId, x.PeriodStartUtc }).IsUnique();
+            entity.Property(x => x.RecipientEmail).HasMaxLength(320);
+            entity.Property(x => x.ClientCount).HasDefaultValue(1);
+            // The idempotency guarantee: one mail per address, per client (null: the
+            // roll-up), per period. Nulls must compare equal or a roll-up — and every
+            // pre-recipient row — would never collide with its own retry.
+            entity.HasIndex(x => new { x.RecipientEmail, x.ClientId, x.PeriodStartUtc })
+                .IsUnique()
+                .AreNullsDistinct(false);
 
             entity.HasOne(x => x.Client)
                 .WithMany()

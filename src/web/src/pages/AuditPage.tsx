@@ -60,6 +60,7 @@ const EVENT_LABEL: Record<string, string> = {
   'alert.status.changed': 'Alert triaged',
   'retention.purge.ran': 'Retention purge ran',
   'notification_recipient.added': 'Recipient added',
+  'notification_recipient.routing.changed': 'Recipient clients changed',
   'notification_recipient.removed': 'Recipient removed',
   'admin.database.migrated': 'Database migrated',
 }

@@ -392,10 +392,18 @@ anchored to the newest report rather than wall-clock time:
 
 > **Digest is implemented; the PDF is not.**
 
-- Digest job composes a summary and sends it via SMTP, with a preview endpoint
-  (`GET /api/v1/admin/digest/preview`) and a manual send
-  (`POST /api/v1/admin/digest/send`). Deliveries are recorded in `digest_delivery`.
-- Sender identity is deployment-level configured (`Email:*`).
+- Digest job builds a per-client summary — the month's pass rate and its change, the
+  findings that need attention (configurable triggers, `Digest:*` defaults with
+  per-client overrides), the domain table and the worst failing sources by IP with
+  their PTR hostname — and sends it as HTML with a plain-text part via SMTP.
+- Routing is per address (`NotificationRouting`): a several-clients recipient gets one
+  roll-up for its roll-up clients and a mail of its own for each separate client; a
+  client set to off is not covered at all, which stops alerts too.
+- Preview endpoints (`GET /api/v1/admin/digest/preview`, `/preview.html`) and a manual
+  send (`POST /api/v1/admin/digest/send`). Deliveries are recorded in `digest_delivery`,
+  one row per address per mail per period, claimed before the send.
+- Sender identity is deployment-level configured (`Email:*`); the brand on the mail is
+  `Branding:*`, one per instance.
 - **Not implemented**: the branded server-side PDF. This page used to say "Playwright
   Chromium is already a dependency"; it is not one of the backend's, so that work still
   starts by adding it and a browser to the image.

@@ -58,6 +58,7 @@ public static class ConfigurationPreflight
         ("Email", typeof(DmarcAnalyzer.Api.Application.Notifications.EmailOptions)),
         ("Alerts", typeof(DmarcAnalyzer.Api.Application.Notifications.AlertOptions)),
         ("Digest", typeof(DmarcAnalyzer.Api.Application.Notifications.DigestOptions)),
+        ("Branding", typeof(DmarcAnalyzer.Api.Application.Notifications.BrandingOptions)),
         ("Dns", typeof(DmarcAnalyzer.Api.Application.Analytics.DnsOptions)),
         ("MtaSts", typeof(DmarcAnalyzer.Api.Application.MtaSts.MtaStsOptions)),
         ("Retention", typeof(DmarcAnalyzer.Api.Application.Retention.RetentionOptions)),

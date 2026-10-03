@@ -97,7 +97,9 @@ public sealed record BackupClient(
     int? AlertMinMessages,
     string Timezone,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    // Null-tolerant on read: absent from artifacts written before digest thresholds existed.
+    DmarcAnalyzer.Api.Data.Entities.DigestThresholds? DigestThresholds = null);
 
 /// <summary>
 /// The DNS policy cache (<c>DnsPolicy</c>, <c>DnsLookupStatus</c>, <c>DnsCheckedAtUtc</c>)
@@ -134,7 +136,12 @@ public sealed record BackupReportSource(
     DateTime CreatedAtUtc,
     DateTime UpdatedAtUtc);
 
-/// <param name="ClientId">Null is the agency-wide scope — every client.</param>
+/// <param name="ClientId">Null is the several-clients scope, shaped by the two digest properties.</param>
+/// <param name="DigestDefaultMode">
+/// Null-tolerant on read: artifacts written before per-client routing lack it, and every
+/// recipient then was in effect <c>separate</c> for all clients — which is what an import
+/// restores, so a restored install mails exactly as the exporting one did.
+/// </param>
 public sealed record BackupNotificationRecipient(
     Guid Id,
     Guid? ClientId,
@@ -142,7 +149,12 @@ public sealed record BackupNotificationRecipient(
     string Kind,
     bool IsActive,
     DateTime CreatedAtUtc,
-    DateTime UpdatedAtUtc);
+    DateTime UpdatedAtUtc,
+    string? DigestDefaultMode = null,
+    IReadOnlyList<BackupRecipientClientMode>? ClientModes = null);
+
+/// <summary>One client's digest mode for a several-clients recipient.</summary>
+public sealed record BackupRecipientClientMode(Guid ClientId, string Mode);
 
 /// <summary>
 /// Carries <c>PasswordHash</c> verbatim, which is what makes a restore faithful: you

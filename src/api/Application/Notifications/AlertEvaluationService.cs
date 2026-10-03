@@ -459,8 +459,8 @@ public sealed class AlertEvaluationService(
     }
 
     /// <summary>
-    /// Emails each client's alert recipients (plus any agency-wide ones), grouping
-    /// a client's alerts into a single message rather than one per alert.
+    /// Emails every address covering the client (see <see cref="NotificationRouting"/>),
+    /// grouping a client's alerts into a single message rather than one per alert.
     /// </summary>
     private async Task<int> NotifyAsync(List<AlertEvent> raised, CancellationToken ct)
     {
@@ -469,22 +469,15 @@ public sealed class AlertEvaluationService(
             return 0;
         }
 
-        var recipients = await db.NotificationRecipients
-            .AsNoTracking()
-            .Where(r => r.IsActive && (r.Kind == "alert" || r.Kind == "both"))
-            .Select(r => new { r.ClientId, r.Email })
-            .ToListAsync(ct);
-
-        var agencyWide = recipients.Where(r => r.ClientId is null).Select(r => r.Email).ToList();
+        var coverage = await NotificationRouting.LoadAsync(
+            db, "alert", raised.Select(r => r.ClientId).Distinct().ToList(), ct);
         var sent = 0;
 
         foreach (var group in raised.GroupBy(r => r.ClientId))
         {
-            var to = recipients
-                .Where(r => r.ClientId == group.Key)
-                .Select(r => r.Email)
-                .Concat(agencyWide)
-                .Distinct()
+            var to = coverage
+                .Where(c => c.Modes.ContainsKey(group.Key))
+                .Select(c => c.Email)
                 .ToList();
 
             if (to.Count == 0)

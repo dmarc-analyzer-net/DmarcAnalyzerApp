@@ -65,7 +65,7 @@ public sealed class BackupExportService(
             .Select(x => new BackupClient(
                 x.Id, x.Name, x.Slug, x.IsActive, x.RetentionMonths, x.LegalHold,
                 x.AlertsEnabled, x.AlertComplianceDropPercent, x.AlertMinMessages,
-                x.Timezone, x.CreatedAtUtc, x.UpdatedAtUtc))
+                x.Timezone, x.CreatedAtUtc, x.UpdatedAtUtc, x.DigestThresholds))
             .ToListAsync(ct);
 
         // The DNS cache columns are deliberately absent — the worker refreshes them
@@ -94,7 +94,12 @@ public sealed class BackupExportService(
             .AsNoTracking()
             .OrderBy(x => x.Email)
             .Select(x => new BackupNotificationRecipient(
-                x.Id, x.ClientId, x.Email, x.Kind, x.IsActive, x.CreatedAtUtc, x.UpdatedAtUtc))
+                x.Id, x.ClientId, x.Email, x.Kind, x.IsActive, x.CreatedAtUtc, x.UpdatedAtUtc,
+                x.DigestDefaultMode,
+                x.ClientModes
+                    .OrderBy(m => m.ClientId)
+                    .Select(m => new BackupRecipientClientMode(m.ClientId, m.DigestMode))
+                    .ToList()))
             .ToListAsync(ct);
 
         var users = await db.AgencyUsers

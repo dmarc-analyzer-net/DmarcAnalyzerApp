@@ -13,11 +13,12 @@ import {
 } from '@/components/ui/dialog'
 import { Icon } from '@/components/ui/icon'
 import { Input } from '@/components/ui/input'
+import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin } from '@/lib/authz'
-import type { Client } from '@/lib/entities'
+import type { Client, DigestDefaults, DigestThresholds } from '@/lib/entities'
 import { usePageTitle } from '@/lib/use-page-title'
 
 const initialClientForm = {
@@ -31,7 +32,17 @@ const initialClientForm = {
   // Empty string means "use the server default" — the API stores null.
   alertComplianceDropPercent: '',
   alertMinMessages: '',
+  // Digest overrides, same convention: blank inherits the instance default.
+  digestLowCompliancePercent: '',
+  digestComplianceDropPoints: '',
+  digestMinMessages: '',
+  digestNoReports: '' as '' | 'on' | 'off',
+  digestTightenAfterDays: '',
+  digestTightenCompliancePercent: '',
 }
+
+const blankOr = (value: number | null | undefined) => (value == null ? '' : String(value))
+const numberOrNull = (value: string) => (value.trim() === '' ? null : Number(value))
 
 export function ClientsPage() {
   usePageTitle('Clients')
@@ -46,6 +57,7 @@ export function ClientsPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingClientId, setEditingClientId] = useState<string | null>(null)
   const [clientForm, setClientForm] = useState(initialClientForm)
+  const [digestDefaults, setDigestDefaults] = useState<DigestDefaults | null>(null)
 
   const loadData = useCallback(async () => {
     setBusy(true)
@@ -62,6 +74,14 @@ export function ClientsPage() {
   useEffect(() => {
     void loadData()
   }, [loadData])
+
+  // Only for the placeholders; the form works without them.
+  useEffect(() => {
+    if (!canManage) return
+    fetchJson<DigestDefaults>('/api/v1/admin/digest/defaults')
+      .then(setDigestDefaults)
+      .catch(() => setDigestDefaults(null))
+  }, [canManage])
 
   const sortedClients = useMemo(
     () => [...clients].sort((a, b) => a.name.localeCompare(b.name)),
@@ -101,6 +121,13 @@ export function ClientsPage() {
         alertsEnabled: client.alertsEnabled,
         alertComplianceDropPercent: client.alertComplianceDropPercent?.toString() ?? '',
         alertMinMessages: client.alertMinMessages?.toString() ?? '',
+        digestLowCompliancePercent: blankOr(client.digestThresholds?.lowCompliancePercent),
+        digestComplianceDropPoints: blankOr(client.digestThresholds?.complianceDropPoints),
+        digestMinMessages: blankOr(client.digestThresholds?.minMessages),
+        digestNoReports:
+          client.digestThresholds?.noReports == null ? '' : client.digestThresholds.noReports ? 'on' : 'off',
+        digestTightenAfterDays: blankOr(client.digestThresholds?.tightenAfterDays),
+        digestTightenCompliancePercent: blankOr(client.digestThresholds?.tightenCompliancePercent),
       })
     } else {
       setEditingClientId(null)
@@ -127,6 +154,17 @@ export function ClientsPage() {
     }
   }
 
+  // Sent whole on every save: the API replaces the overrides wholesale, and a field
+  // left null inherits the instance default.
+  const digestPayload = (): DigestThresholds => ({
+    lowCompliancePercent: numberOrNull(clientForm.digestLowCompliancePercent),
+    complianceDropPoints: numberOrNull(clientForm.digestComplianceDropPoints),
+    minMessages: numberOrNull(clientForm.digestMinMessages),
+    noReports: clientForm.digestNoReports === '' ? null : clientForm.digestNoReports === 'on',
+    tightenAfterDays: numberOrNull(clientForm.digestTightenAfterDays),
+    tightenCompliancePercent: numberOrNull(clientForm.digestTightenCompliancePercent),
+  })
+
   const createOrUpdateClient = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setError(null)
@@ -135,7 +173,7 @@ export function ClientsPage() {
         await fetchJson(`/api/v1/clients/${editingClientId}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(clientPayload()),
+          body: JSON.stringify({ ...clientPayload(), digestThresholds: digestPayload() }),
         })
       } else {
         await fetchJson('/api/v1/clients', {
@@ -360,6 +398,72 @@ export function ClientsPage() {
                 Leave blank to use the server defaults.
               </p>
             </div>
+
+            {editingClientId ? (
+              <div className="border-t border-border pt-3">
+                <div className="text-xs font-semibold uppercase tracking-wide text-secondary">
+                  Monthly digest
+                </div>
+                <p className="mt-1 text-xs text-faint">
+                  What the digest flags as needing attention for this client. Blank uses the server
+                  default shown; 0 turns a trigger off.
+                </p>
+                <div className="mt-2.5 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <DigestNumberField
+                    label="Pass rate below (%)"
+                    max={100}
+                    step="any"
+                    fallback={digestDefaults?.lowCompliancePercent}
+                    value={clientForm.digestLowCompliancePercent}
+                    onChange={(v) => setClientForm((x) => ({ ...x, digestLowCompliancePercent: v }))}
+                  />
+                  <DigestNumberField
+                    label="Drop of at least (points)"
+                    max={100}
+                    step="any"
+                    fallback={digestDefaults?.complianceDropPoints}
+                    value={clientForm.digestComplianceDropPoints}
+                    onChange={(v) => setClientForm((x) => ({ ...x, digestComplianceDropPoints: v }))}
+                  />
+                  <DigestNumberField
+                    label="Minimum messages"
+                    fallback={digestDefaults?.minMessages}
+                    value={clientForm.digestMinMessages}
+                    onChange={(v) => setClientForm((x) => ({ ...x, digestMinMessages: v }))}
+                  />
+                  <label className="flex flex-col gap-1 text-sm text-secondary">
+                    Reports that stop
+                    <Select
+                      value={clientForm.digestNoReports}
+                      onChange={(e) =>
+                        setClientForm((x) => ({ ...x, digestNoReports: e.target.value as '' | 'on' | 'off' }))
+                      }
+                    >
+                      <option value="">
+                        Default{digestDefaults ? ` (${digestDefaults.noReports ? 'flag' : 'ignore'})` : ''}
+                      </option>
+                      <option value="on">Flag</option>
+                      <option value="off">Ignore</option>
+                    </Select>
+                  </label>
+                  <DigestNumberField
+                    label="Suggest a stricter policy after (days)"
+                    max={365}
+                    fallback={digestDefaults?.tightenAfterDays}
+                    value={clientForm.digestTightenAfterDays}
+                    onChange={(v) => setClientForm((x) => ({ ...x, digestTightenAfterDays: v }))}
+                  />
+                  <DigestNumberField
+                    label="… at a pass rate of at least (%)"
+                    max={100}
+                    step="any"
+                    fallback={digestDefaults?.tightenCompliancePercent}
+                    value={clientForm.digestTightenCompliancePercent}
+                    onChange={(v) => setClientForm((x) => ({ ...x, digestTightenCompliancePercent: v }))}
+                  />
+                </div>
+              </div>
+            ) : null}
             <div className="flex justify-end gap-2 pt-1">
               <Button type="button" variant="secondary" onClick={resetDialog}>
                 Cancel
@@ -370,5 +474,36 @@ export function ClientsPage() {
         </DialogContent>
       </Dialog>
     </>
+  )
+}
+
+function DigestNumberField({
+  label,
+  value,
+  onChange,
+  fallback,
+  max,
+  step,
+}: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  fallback: number | undefined
+  max?: number
+  step?: string
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-sm text-secondary">
+      {label}
+      <Input
+        type="number"
+        min={0}
+        max={max}
+        step={step}
+        placeholder={fallback === undefined ? 'default' : `${fallback} (default)`}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </label>
   )
 }
