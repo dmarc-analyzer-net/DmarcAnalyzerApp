@@ -216,7 +216,11 @@ without the archive, stay "not recorded".
 `<prefix>/reports/yyyy/MM/dd/<reportSourceId>/<generation>-<uid>.eml.gz`, so the
 backfill can walk by day.
 
-**Job:** for each archived object:
+**Job:** two passes, because copies of the same report can be archived under
+different days, so no single object shows all of them. Nothing is written to
+`dmarc_report` until every copy has been seen.
+
+*Collect*, for each archived object:
 
 1. Download it, gunzip it, and parse it as MIME.
 2. Run each attachment through `ReportPayloadExtractor`. One mail can hold
@@ -227,13 +231,21 @@ backfill can walk by day.
    have been archived by two sources while only the first one's row was stored.
    Only use an archived copy whose `reportSourceId` (from the archive key)
    equals the stored row's `ReportSourceId`. Copies from other sources are
-   counted as skipped.
-5. If several archived copies from that source match the same row and parse to
-   different backfill values, leave the row unchanged and count it as
-   ambiguous. Identical copies are fine.
-6. If the stored report has a null `ReportFormat`, write the PR 1 columns,
-   `PublishedPct` and the PR 2 messages with origin `backfill`. Otherwise leave
-   it alone. This makes the job idempotent and safe to stop and re-run.
+   counted as skipped. So are rows that already have a `ReportFormat`.
+5. Save the copy's parsed backfill values, and a hash of them, in a staging
+   table keyed by report id and object key. The object key makes saving the
+   same object again a no-op.
+
+*Apply*, only after the collect pass has finished the whole archive:
+
+6. For each staged report, compare the hashes of all its copies. If they
+   differ, leave the row unchanged and count it as ambiguous. Identical copies
+   are fine.
+7. If the stored report still has a null `ReportFormat`, write the PR 1
+   columns, `PublishedPct` and the PR 2 messages with origin `backfill`.
+   Otherwise leave it alone. This makes the job idempotent and safe to stop and
+   re-run.
+8. Clear the staging rows once the apply pass completes.
 
 It updates **report-level columns only**. Records, and therefore historic `pass`
 dispositions that were stored as `none`, are not rewritten. Their rows have no
@@ -248,19 +260,23 @@ own preview.
   reports that will stay unrecorded. Writes nothing.
 - `POST /admin/report-backfill/run`: queues the job for the worker. Progress
   and the last result go in a new cursor row, modelled on `BackupStreamState`
-  but with its own columns: the last object key fully processed, counts
+  but with its own columns: the current pass, the last object key fully
+  processed, counts
   (matched, updated, skipped, ambiguous, failed) and the last error.
   `BackupStreamState` only has a timestamp watermark, which cannot address an
   object. A restarted worker lists with `startAfter` set to the saved key, so it
   resumes at the next object instead of rescanning earlier pages. Use the key
   rather than the continuation token, because the key works the same after any
-  restart.
+  restart. Staged copies are in the database, so a restart during collect
+  loses none of them, and a restart during apply re-runs apply alone.
 - Audit event on run. Admin only.
 
 **Tests:** the archive walk with a fake `IObjectStorage`; a multi-report mail;
 matching by dedup key and source; a copy from another source is skipped;
-conflicting copies leave the row unchanged; rows that already have a format
-are skipped; resume from the saved key without relisting earlier objects; a missing or unparseable object is counted, not fatal.
+conflicting copies leave the row unchanged even when they are archived on
+different days; nothing is written before the collect pass ends; rows that
+already have a format are skipped; resume from the saved key without relisting
+earlier objects; a missing or unparseable object is counted, not fatal.
 
 **Docs:** `api-contract.md`, `status.md`, and a note in the archive section of
 `config-export-and-recovery.md` that enabling the archive is what makes later
