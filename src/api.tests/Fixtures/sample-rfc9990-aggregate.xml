@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Synthetic RFC 9990 aggregate report. It uses every element RFC 9990 adds or
+  changes, and validates against the XSD in RFC 9990 Appendix A
+  (rfc9990.xsd, next to this file). Keep it valid: tests assert that.
+-->
+<feedback xmlns="urn:ietf:params:xml:ns:dmarc-2.0"
+          xmlns:ext="https://ext.example.org/dmarc-extension/1">
+  <version>1.0</version>
+  <report_metadata>
+    <org_name>Example Receiver</org_name>
+    <email>dmarc-reports@receiver.example.net</email>
+    <extra_contact_info lang="en">https://receiver.example.net/dmarc</extra_contact_info>
+    <report_id>rfc9990-fixture-1</report_id>
+    <date_range>
+      <begin>1759708800</begin>
+      <end>1759795199</end>
+    </date_range>
+    <error lang="en">DNS timeout while fetching the policy for sub.example.com</error>
+    <generator>Example DMARC Aggregate Reporter v1.2</generator>
+  </report_metadata>
+  <policy_published>
+    <domain>example.com</domain>
+    <p>quarantine</p>
+    <sp>none</sp>
+    <np>reject</np>
+    <adkim>r</adkim>
+    <aspf>s</aspf>
+    <discovery_method>treewalk</discovery_method>
+    <fo>1</fo>
+    <testing>y</testing>
+  </policy_published>
+  <extension>
+    <ext:report_note definition="https://ext.example.org/dmarc-extension/1">file-level extension</ext:report_note>
+  </extension>
+  <record>
+    <row>
+      <source_ip>192.0.2.10</source_ip>
+      <count>12</count>
+      <policy_evaluated>
+        <disposition>pass</disposition>
+        <dkim>pass</dkim>
+        <spf>fail</spf>
+      </policy_evaluated>
+    </row>
+    <identifiers>
+      <header_from>example.com</header_from>
+      <envelope_from>bounce.example.com</envelope_from>
+      <envelope_to>receiver.example.net</envelope_to>
+    </identifiers>
+    <auth_results>
+      <dkim>
+        <domain>example.com</domain>
+        <selector>s2026</selector>
+        <result>pass</result>
+        <human_result lang="en">signature verified</human_result>
+      </dkim>
+      <spf>
+        <domain>bounce.example.com</domain>
+        <scope>mfrom</scope>
+        <result>softfail</result>
+        <human_result>192.0.2.10 not in SPF record</human_result>
+      </spf>
+    </auth_results>
+    <ext:record_note definition="https://ext.example.org/dmarc-extension/1">record-level extension</ext:record_note>
+  </record>
+  <record>
+    <row>
+      <source_ip>2001:db8::25</source_ip>
+      <count>3</count>
+      <policy_evaluated>
+        <disposition>none</disposition>
+        <dkim>fail</dkim>
+        <spf>fail</spf>
+      </policy_evaluated>
+    </row>
+    <identifiers>
+      <header_from>example.com</header_from>
+      <envelope_from>example.com</envelope_from>
+      <envelope_to>receiver.example.net</envelope_to>
+    </identifiers>
+    <auth_results>
+      <dkim>
+        <domain>other.example.org</domain>
+        <selector>sel1</selector>
+        <result>fail</result>
+      </dkim>
+      <spf>
+        <domain>example.com</domain>
+        <result>fail</result>
+      </spf>
+    </auth_results>
+  </record>
+</feedback>

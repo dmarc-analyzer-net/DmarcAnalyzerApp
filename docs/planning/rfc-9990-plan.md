@@ -53,24 +53,49 @@ What is missing:
 | `generator` | Stored and shown |
 | Archiving push-endpoint payloads | Out of scope; `POST /reports` reports stay unarchived and cannot be backfilled |
 
-## Step 0: an RFC 9990 test report (before any PR)
+## Step 0: an RFC 9990 test report (done)
 
-Add `src/api.tests/Fixtures/sample-rfc9990-aggregate.xml`. It must use every
-element RFC 9990 adds or changes:
+`src/api.tests/Fixtures/sample-rfc9990-aggregate.xml` uses every element RFC
+9990 adds or changes: `version`, `generator`, `error`, `np`, `testing`,
+`discovery_method` and `fo`, no `pct`, a file-level and a record-level
+extension in a foreign namespace, a `pass` disposition, `envelope_to`, DKIM
+`selector` and `human_result`, and `lang` attributes.
+`DmarcRuaReportParserRfc9990FixtureTests` checks it against the XSD from RFC
+9990 Appendix A (`Fixtures/rfc9990.xsd`), and pins what today's parser does
+with it.
 
-- `version` as the first child of `feedback`;
-- `generator` and `error` in `report_metadata`;
-- `np`, `testing` and `discovery_method` in `policy_published`, with no `pct`;
-- a file-level `extension` after `policy_published`, and a record-level
-  extension after `auth_results`, each in a foreign namespace;
-- a `pass` disposition, `envelope_to`, DKIM `selector` and `human_result`.
+**From the XSD:**
 
-Run it through the parser on `main` and record every validation message it
-produces. That list decides how much PR 1 has to suppress.
+- `version` is the first child of `feedback`.
+- `policy_published` carries `fo` but not `psd`. `psd` is a DNS-only tag.
+- `report_metadata/error` occurs at most once. RFC 7489 allowed several, so
+  `ReportErrors` stays a list.
+- The file-level extension is an `<extension>` wrapper. The record-level one
+  is bare elements (`xs:any`) after `auth_results`, with no wrapper.
+- `lang` is allowed on `extra_contact_info`, `error` and both `human_result`
+  elements.
 
-Also check the element list against the XSD in RFC 9990 itself, not against a
-summary. In particular, check whether `policy_published` carries `psd` and
-`fo`.
+**What today's parser does with it:**
+
+| Message | Cause | Handled in |
+|---|---|---|
+| `error: The 'lang' attribute is not declared.` (twice) | DmarcRua's schema has no `lang` | PR 1 |
+| `error: ... invalid child element 'generator'` | not in DmarcRua's schema | PR 1 |
+| `error: ... invalid child element 'extension'` | not in DmarcRua's schema | PR 1 |
+| `warning: stripped XML namespace ...` | how v2 reports are read | PR 2 (becomes `info`) |
+| `info: np=...`, `info: t=y ...`, `info: discovery_method=...` | `DescribeDmarcBisTags` | PR 1 (become columns) |
+
+- `HasValidationErrors` is true for a conformant report.
+- `PublishedPct` is `100` although the report sends no `pct`.
+- The record-level extension raises no message. That is not because it is
+  handled. The namespace strip removes the namespace from *every* element, so
+  by validation time the extension no longer looks foreign.
+- **A `policy_test_mode` override reason throws, and the whole report is
+  lost.** RFC 9990 added that `reason/type` value, which is what reporters send
+  when a domain publishes `t=y`. DmarcRua 2.1.0 models only the RFC 7489
+  values, and the parser's value repair does not cover `reason/type`. It is
+  left out of the fixture so the other tests can run, and pinned by
+  `Parse_Rfc9990PolicyTestModeReason_CurrentlyThrows`. PR 1 fixes it.
 
 ## PR 1: store the report-level fields
 
@@ -98,8 +123,9 @@ backfill corrects any RFC 9990 ones it can reach.
   recognised instead:
   - `urn:ietf:params:xml:ns:dmarc-2.0` is `rfc9990`;
   - no namespace is `rfc7489` (`rua.xsd` declares no `targetNamespace`), and so
-    is any namespace step 0 finds RFC 7489 reporters using in practice, listed
-    explicitly;
+    is any namespace RFC 7489 reporters are found using in practice, listed
+    explicitly. Step 0 used a synthetic report, so it could not answer this;
+    check the real-report fixtures and a mailbox sample.
   - any other root namespace is rejected with an `error` message rather than
     parsed as RFC 7489.
 - Read `generator` from the `XDocument` in `NormalizeReportXml`, the same way
@@ -109,10 +135,16 @@ backfill corrects any RFC 9990 ones it can reach.
 - `ParsePercent` returns `int?` and gives null when the value is absent. An
   out-of-range value stays `100` with a warning, as now.
 - Delete `DescribeDmarcBisTags`; the values now have columns.
-- Extensions: remove `extension` elements, and any element in a foreign
-  namespace, before validation. RFC 9990 says to ignore unknown extensions, so
-  they must not become schema warnings. Do the same for `generator` if step 0
-  shows it raises one.
+- Extensions: remove the `extension` element, and any element in a namespace
+  other than the report's own, **before the namespace strip**. After it,
+  extension elements can no longer be told apart (see step 0). RFC 9990 says
+  to ignore unknown extensions, so they must not become schema messages.
+- Remove `generator` after reading it, and remove `lang` attributes, before
+  validation. Neither is in DmarcRua's schema. Language is not stored.
+- Add `reason/type` to `EnumRepairs`, with the RFC 7489 and RFC 9990 values
+  allowed and `other` as the fallback. That stops `policy_test_mode`, or any
+  other value DmarcRua does not model, from throwing away the report. Override
+  reasons are not stored, so `other` loses nothing.
 
 **Ingest:** add the columns to the raw SQL insert in
 `DmarcReportIngestor` (the `INSERT INTO "dmarc_report"` block).
@@ -120,8 +152,10 @@ backfill corrects any RFC 9990 ones it can reach.
 **Tests:** parse the step 0 fixture and assert every new field; a v2 report
 with no `pct` stores null; an RFC 7489 report stores `ReportFormat = rfc7489`,
 its `pct`, and null for the v2-only fields; an unknown root namespace is
-rejected; foreign-namespace extensions raise
-no messages.
+rejected; foreign-namespace extensions raise no messages. Update the step 0
+tests: put the `policy_test_mode` reason back in the fixture, turn the throws
+test into one that parses, and cut the pinned messages down to the namespace
+line. `HasValidationErrors` must be false.
 
 **Docs:** `data-model.md` (new columns, the meaning of a null `ReportFormat`),
 `status.md`.
