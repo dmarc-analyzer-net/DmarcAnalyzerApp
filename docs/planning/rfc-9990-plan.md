@@ -97,6 +97,24 @@ with it.
   left out of the fixture so the other tests can run, and pinned by
   `Parse_Rfc9990PolicyTestModeReason_CurrentlyThrows`. PR 1 fixes it.
 
+**From a real mailbox (2026-10-12).** 12,759 distinct DMARC reports: every
+50th INBOX message, the newest 5,000, and all of Spam. All of them were run
+through today's parser.
+
+- Root namespaces: none (12,225) and `dmarc-2.0` (534). No other namespace
+  appeared, so the PR 1 rule needs no allow-list.
+- RFC 9990 reports are about 4% of the sample, from a handful of reporters.
+  None sends `pct`. All send `discovery_method`, and most send `testing`. Only
+  2 send `generator`, which is their only schema error. No `lang`, extensions,
+  `error` elements or override reasons appeared, so `policy_test_mode` is not
+  arriving yet.
+- **RFC 7489 reports carry `np` too.** 1,307 of them, all from one large
+  reporter, send `np` in no namespace. PR 1 must read `np` whatever the format.
+- 2 records in RFC 7489 reports send a `pass` disposition. It is replaced with
+  `none` and a warning, as for any other value RFC 7489 does not define.
+- No report throws. The 107 RFC 7489 reports with errors are the empty records
+  from #190 (104) and documents with no records (3), not RFC 9990 issues.
+
 ## PR 1: store the report-level fields
 
 **Schema** (`dmarc_report`, one migration):
@@ -122,16 +140,16 @@ backfill corrects any RFC 9990 ones it can reach.
   namespace would be classified as `rfc7489` by default. Classify only what is
   recognised instead:
   - `urn:ietf:params:xml:ns:dmarc-2.0` is `rfc9990`;
-  - no namespace is `rfc7489` (`rua.xsd` declares no `targetNamespace`), and so
-    is any namespace RFC 7489 reporters are found using in practice, listed
-    explicitly. Step 0 used a synthetic report, so it could not answer this;
-    check the real-report fixtures and a mailbox sample.
+  - no namespace is `rfc7489` (`rua.xsd` declares no `targetNamespace`). The
+    mailbox sample in step 0 found no RFC 7489 report with a namespace, so
+    there is no allow-list.
   - any other root namespace is rejected with an `error` message rather than
     parsed as RFC 7489.
 - Read `generator` from the `XDocument` in `NormalizeReportXml`, the same way
   the v2 dispositions are captured, because the library does not model it.
 - Read `np`, `testing`, `discovery_method` and `ReportMetadata.Error` from the
-  deserialized objects.
+  deserialized objects, **in any format**. Real RFC 7489 reports send `np`
+  (see step 0), so "v2-only" describes the RFC, not what arrives.
 - `ParsePercent` returns `int?` and gives null when the value is absent. An
   out-of-range value stays `100` with a warning, as now.
 - Delete `DescribeDmarcBisTags`; the values now have columns.
@@ -151,7 +169,8 @@ backfill corrects any RFC 9990 ones it can reach.
 
 **Tests:** parse the step 0 fixture and assert every new field; a v2 report
 with no `pct` stores null; an RFC 7489 report stores `ReportFormat = rfc7489`,
-its `pct`, and null for the v2-only fields; an unknown root namespace is
+its `pct`, and null for the fields it does not send; an RFC 7489 report with
+`np` stores it; an unknown root namespace is
 rejected; foreign-namespace extensions raise no messages. Update the step 0
 tests: put the `policy_test_mode` reason back in the fixture, turn the throws
 test into one that parses, and cut the pinned messages down to the namespace
