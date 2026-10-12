@@ -58,7 +58,8 @@ What is missing:
 Add `src/api.tests/Fixtures/sample-rfc9990-aggregate.xml`. It must use every
 element RFC 9990 adds or changes:
 
-- `version`, `generator` and `error` in `report_metadata`;
+- `version` as the first child of `feedback`;
+- `generator` and `error` in `report_metadata`;
 - `np`, `testing` and `discovery_method` in `policy_published`, with no `pct`;
 - a file-level `extension` after `policy_published`, and a record-level
   extension after `auth_results`, each in a foreign namespace;
@@ -69,7 +70,7 @@ produces. That list decides how much PR 1 has to suppress.
 
 Also check the element list against the XSD in RFC 9990 itself, not against a
 summary. In particular, check whether `policy_published` carries `psd` and
-`fo`, and whether `version` is a `feedback` child or a `report_metadata` child.
+`fo`.
 
 ## PR 1: store the report-level fields
 
@@ -91,8 +92,16 @@ backfill corrects any RFC 9990 ones it can reach.
 
 **Parser** (`DmarcRuaReportParser`):
 
-- Set `ReportFormat` from the root namespace, using the `isDmarcBisReport`
-  check that already exists.
+- Set `ReportFormat` from the root namespace, before `NormalizeReportXml`
+  strips it. Today any non-empty root namespace is stripped, so an unknown
+  namespace would be classified as `rfc7489` by default. Classify only what is
+  recognised instead:
+  - `urn:ietf:params:xml:ns:dmarc-2.0` is `rfc9990`;
+  - no namespace is `rfc7489` (`rua.xsd` declares no `targetNamespace`), and so
+    is any namespace step 0 finds RFC 7489 reporters using in practice, listed
+    explicitly;
+  - any other root namespace is rejected with an `error` message rather than
+    parsed as RFC 7489.
 - Read `generator` from the `XDocument` in `NormalizeReportXml`, the same way
   the v2 dispositions are captured, because the library does not model it.
 - Read `np`, `testing`, `discovery_method` and `ReportMetadata.Error` from the
@@ -110,7 +119,8 @@ backfill corrects any RFC 9990 ones it can reach.
 
 **Tests:** parse the step 0 fixture and assert every new field; a v2 report
 with no `pct` stores null; an RFC 7489 report stores `ReportFormat = rfc7489`,
-its `pct`, and null for the v2-only fields; foreign-namespace extensions raise
+its `pct`, and null for the v2-only fields; an unknown root namespace is
+rejected; foreign-namespace extensions raise
 no messages.
 
 **Docs:** `data-model.md` (new columns, the meaning of a null `ReportFormat`),
@@ -201,8 +211,8 @@ archive's lifecycle. Reports pushed to `POST /reports`, and reports from install
 without the archive, stay "not recorded".
 
 **Storage:** `IObjectStorage` has no list operation. Add
-`ListAsync(prefix, continuationToken, ct)` and implement it with
-`ListObjectsV2`. Archive keys are
+`ListAsync(prefix, startAfter, continuationToken, ct)` and implement it with
+`ListObjectsV2`, passing `startAfter` through as `StartAfter`. Archive keys are
 `<prefix>/reports/yyyy/MM/dd/<reportSourceId>/<generation>-<uid>.eml.gz`, so the
 backfill can walk by day.
 
@@ -213,8 +223,15 @@ backfill can walk by day.
    several reports, and TLS-RPT payloads are skipped.
 3. Parse each DMARC payload with the current parser.
 4. Find the stored report by its dedup key: domain, report id, range begin and
-   range end.
-5. If the stored report has a null `ReportFormat`, write the PR 1 columns,
+   range end. The dedup key does not include the source, so the same report can
+   have been archived by two sources while only the first one's row was stored.
+   Only use an archived copy whose `reportSourceId` (from the archive key)
+   equals the stored row's `ReportSourceId`. Copies from other sources are
+   counted as skipped.
+5. If several archived copies from that source match the same row and parse to
+   different backfill values, leave the row unchanged and count it as
+   ambiguous. Identical copies are fine.
+6. If the stored report has a null `ReportFormat`, write the PR 1 columns,
    `PublishedPct` and the PR 2 messages with origin `backfill`. Otherwise leave
    it alone. This makes the job idempotent and safe to stop and re-run.
 
@@ -230,14 +247,20 @@ own preview.
   reports with a null `ReportFormat` they would match, and an estimate of the
   reports that will stay unrecorded. Writes nothing.
 - `POST /admin/report-backfill/run`: queues the job for the worker. Progress
-  and the last result use a cursor row like `BackupStreamState` (last key
-  processed, counts, last error) so a restarted worker resumes rather than
-  starting again.
+  and the last result go in a new cursor row, modelled on `BackupStreamState`
+  but with its own columns: the last object key fully processed, counts
+  (matched, updated, skipped, ambiguous, failed) and the last error.
+  `BackupStreamState` only has a timestamp watermark, which cannot address an
+  object. A restarted worker lists with `startAfter` set to the saved key, so it
+  resumes at the next object instead of rescanning earlier pages. Use the key
+  rather than the continuation token, because the key works the same after any
+  restart.
 - Audit event on run. Admin only.
 
 **Tests:** the archive walk with a fake `IObjectStorage`; a multi-report mail;
-matching by dedup key; rows that already have a format are skipped; resume
-from the cursor; a missing or unparseable object is counted, not fatal.
+matching by dedup key and source; a copy from another source is skipped;
+conflicting copies leave the row unchanged; rows that already have a format
+are skipped; resume from the saved key without relisting earlier objects; a missing or unparseable object is counted, not fatal.
 
 **Docs:** `api-contract.md`, `status.md`, and a note in the archive section of
 `config-export-and-recovery.md` that enabling the archive is what makes later
