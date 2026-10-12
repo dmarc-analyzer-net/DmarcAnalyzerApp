@@ -34,11 +34,14 @@ public sealed class DmarcRuaReportParserRfc9990FixtureTests
     /// <summary>
     /// Today's parser on a conformant report. Every line here is something PR 1 or PR 2
     /// has to remove, reword or turn into a column; see the plan's step 0 findings.
+    /// The override reason is removed first, because today it throws (next test).
     /// </summary>
     [Fact]
     public void Parse_Rfc9990Fixture_CurrentBehaviour()
     {
-        using var stream = File.OpenRead(FixturePath(FixtureName));
+        var document = LoadFixtureWithoutOverrideReasons();
+        Assert.Empty(ValidateAgainstRfc9990Schema(document));
+        using var stream = ToStream(document);
 
         var result = _parser.Parse(stream);
 
@@ -53,44 +56,60 @@ public sealed class DmarcRuaReportParserRfc9990FixtureTests
         // The report sends no pct; 100 is invented (PR 1).
         Assert.Equal(100, result.PublishedPct);
 
-        // A conformant report is flagged as having errors (PR 1).
+        // A conformant report is flagged as having errors (PR 1). The schema errors are the
+        // validator's wording, not ours, so only their subject is asserted; the parser's
+        // own messages are asserted exactly.
         Assert.True(result.HasValidationErrors);
-        Assert.Equal(
-            [
-                "error: The 'lang' attribute is not declared.",
-                "error: The 'lang' attribute is not declared.",
-                "error: The element 'report_metadata' has invalid child element 'generator'. List of possible elements expected: 'org_name, email, extra_contact_info, report_id, date_range, error'.",
-                "error: The element 'feedback' has invalid child element 'extension'. List of possible elements expected: 'record'.",
-                "warning: stripped XML namespace 'urn:ietf:params:xml:ns:dmarc-2.0' for compatibility",
-                "info: np=reject published for example.com",
-                "info: t=y published for example.com",
-                "info: discovery_method=treewalk reported for example.com",
-            ],
-            result.ValidationMessages);
+        Assert.Collection(
+            result.ValidationMessages,
+            x => AssertSchemaError(x, "'lang'"),
+            x => AssertSchemaError(x, "'lang'"),
+            x => AssertSchemaError(x, "'generator'"),
+            x => AssertSchemaError(x, "'extension'"),
+            x => Assert.Equal("warning: stripped XML namespace 'urn:ietf:params:xml:ns:dmarc-2.0' for compatibility", x),
+            x => Assert.Equal("info: np=reject published for example.com", x),
+            x => Assert.Equal("info: t=y published for example.com", x),
+            x => Assert.Equal("info: discovery_method=treewalk reported for example.com", x));
     }
 
     /// <summary>
     /// RFC 9990 added the override type <c>policy_test_mode</c>, which DmarcRua 2.1.0 does not
     /// model, and the parser's value repair does not cover <c>reason/type</c>. The serializer
-    /// throws and the whole report is lost. Kept out of the fixture so the test above can run;
-    /// PR 1 fixes it and turns this into a parse that succeeds.
+    /// throws and the whole report is lost. PR 1 fixes it and turns this into a parse that
+    /// succeeds.
     /// </summary>
     [Fact]
     public void Parse_Rfc9990PolicyTestModeReason_CurrentlyThrows()
     {
-        var document = XDocument.Load(FixturePath(FixtureName));
+        var document = LoadFixtureWithoutOverrideReasons();
         XNamespace ns = DmarcBisNamespace;
         document.Descendants(ns + "policy_evaluated").Last().Add(
-            new XElement(ns + "reason",
-                new XElement(ns + "type", "policy_test_mode"),
-                new XElement(ns + "comment", "t=y published")));
+            new XElement(ns + "reason", new XElement(ns + "type", "policy_test_mode")));
         Assert.Empty(ValidateAgainstRfc9990Schema(document));
-
-        using var stream = new MemoryStream();
-        document.Save(stream);
-        stream.Position = 0;
+        using var stream = ToStream(document);
 
         Assert.ThrowsAny<InvalidOperationException>(() => _parser.Parse(stream));
+    }
+
+    private static void AssertSchemaError(string message, string subject)
+    {
+        Assert.StartsWith("error: ", message, StringComparison.Ordinal);
+        Assert.Contains(subject, message, StringComparison.Ordinal);
+    }
+
+    private static XDocument LoadFixtureWithoutOverrideReasons()
+    {
+        var document = XDocument.Load(FixturePath(FixtureName));
+        document.Descendants(XName.Get("reason", DmarcBisNamespace)).Remove();
+        return document;
+    }
+
+    private static MemoryStream ToStream(XDocument document)
+    {
+        var stream = new MemoryStream();
+        document.Save(stream);
+        stream.Position = 0;
+        return stream;
     }
 
     /// <summary>

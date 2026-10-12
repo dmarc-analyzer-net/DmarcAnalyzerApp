@@ -72,6 +72,10 @@
         <disposition>none</disposition>
         <dkim>fail</dkim>
         <spf>fail</spf>
+        <reason>
+          <type>policy_test_mode</type>
+          <comment>t=y published</comment>
+        </reason>
       </policy_evaluated>
     </row>
     <identifiers>

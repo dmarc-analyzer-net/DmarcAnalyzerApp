@@ -59,7 +59,8 @@ What is missing:
 9990 adds or changes: `version`, `generator`, `error`, `np`, `testing`,
 `discovery_method` and `fo`, no `pct`, a file-level and a record-level
 extension in a foreign namespace, a `pass` disposition, `envelope_to`, DKIM
-`selector` and `human_result`, and `lang` attributes.
+`selector` and `human_result`, `lang` attributes, and a `policy_test_mode`
+override reason.
 `DmarcRuaReportParserRfc9990FixtureTests` checks it against the XSD from RFC
 9990 Appendix A (`Fixtures/rfc9990.xsd`), and pins what today's parser does
 with it.
@@ -93,9 +94,10 @@ with it.
 - **A `policy_test_mode` override reason throws, and the whole report is
   lost.** RFC 9990 added that `reason/type` value, which is what reporters send
   when a domain publishes `t=y`. DmarcRua 2.1.0 models only the RFC 7489
-  values, and the parser's value repair does not cover `reason/type`. It is
-  left out of the fixture so the other tests can run, and pinned by
-  `Parse_Rfc9990PolicyTestModeReason_CurrentlyThrows`. PR 1 fixes it.
+  values, and the parser's value repair does not cover `reason/type`. The fixture
+  carries it, because RFC 9990 requires a reason when the disposition differs
+  from the policy. The current-behaviour test removes it before parsing, and
+  `Parse_Rfc9990PolicyTestModeReason_CurrentlyThrows` pins the crash. PR 1 fixes it.
 
 **From a real mailbox (2026-10-12).** 12,759 distinct DMARC reports: every
 50th INBOX message, the newest 5,000, and all of Spam. All of them were run
@@ -159,10 +161,13 @@ backfill corrects any RFC 9990 ones it can reach.
   to ignore unknown extensions, so they must not become schema messages.
 - Remove `generator` after reading it, and remove `lang` attributes, before
   validation. Neither is in DmarcRua's schema. Language is not stored.
-- Add `reason/type` to `EnumRepairs`, with the RFC 7489 and RFC 9990 values
-  allowed and `other` as the fallback. That stops `policy_test_mode`, or any
-  other value DmarcRua does not model, from throwing away the report. Override
-  reasons are not stored, so `other` loses nothing.
+- Add `reason/type` to `EnumRepairs`. The allowed list is exactly what
+  DmarcRua 2.1.0 deserializes (`forwarded`, `sampled_out`,
+  `trusted_forwarder`, `mailing_list`, `local_policy`, `other`), not the
+  RFC 9990 list. Anything else, including `policy_test_mode`, becomes `other`.
+  Allowing an RFC 9990 value the library does not model would hand it to the
+  serializer, which throws. Override reasons are not stored, so `other` loses
+  nothing.
 
 **Ingest:** add the columns to the raw SQL insert in
 `DmarcReportIngestor` (the `INSERT INTO "dmarc_report"` block).
@@ -172,9 +177,9 @@ with no `pct` stores null; an RFC 7489 report stores `ReportFormat = rfc7489`,
 its `pct`, and null for the fields it does not send; an RFC 7489 report with
 `np` stores it; an unknown root namespace is
 rejected; foreign-namespace extensions raise no messages. Update the step 0
-tests: put the `policy_test_mode` reason back in the fixture, turn the throws
-test into one that parses, and cut the pinned messages down to the namespace
-line. `HasValidationErrors` must be false.
+tests: parse the fixture as is, without removing its `policy_test_mode`
+reason; turn the throws test into one that parses; and cut the pinned messages
+down to the namespace line. `HasValidationErrors` must be false.
 
 **Docs:** `data-model.md` (new columns, the meaning of a null `ReportFormat`),
 `status.md`.
