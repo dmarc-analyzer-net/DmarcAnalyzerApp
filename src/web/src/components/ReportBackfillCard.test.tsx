@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { ReportBackfillCard } from '@/components/ReportBackfillCard'
 import type { ReportBackfillPreview, ReportBackfillState } from '@/lib/entities'
-import { describeBackfillCounts } from '@/lib/report-backfill'
+import { describeBackfillCounts, describeReportsWithoutFields } from '@/lib/report-backfill'
 
 // Hoisted with the mock: a plain module-scope vi.fn() is not initialised yet when the
 // mocked module is first imported, and the card's calls would hit an empty function.
@@ -68,6 +68,46 @@ describe('describeBackfillCounts', () => {
   })
 })
 
+describe('describeReportsWithoutFields', () => {
+  it('says every report has them when none is missing', () => {
+    expect(describeReportsWithoutFields(preview({ reportsNotRecorded: 0 }))).toBe('Every stored report already has them.')
+  })
+
+  it('without an archive, says none can be filled instead of describing an archive that does not exist', () => {
+    const text = describeReportsWithoutFields(
+      preview({
+        archiveConfigured: false,
+        archive: null,
+        archivedObjects: 0,
+        oldestArchivedDay: null,
+        newestArchivedDay: null,
+        reportsNotRecorded: 208729,
+        reportsFromPushedSources: 0,
+        reportsFromArchivableSources: 208729,
+        reportsIngestedBeforeTheArchive: 208729,
+        estimatedToStayUnrecorded: 208729,
+      }),
+    )
+    expect(text).toBe('There is no archive to re-read, so all of them stay "not recorded". Reports ingested from now on get the fields when they arrive.')
+    expect(text).not.toMatch(/archived day|pushed/)
+  })
+
+  it('gives the breakdown and the estimate when some can be filled', () => {
+    expect(describeReportsWithoutFields(preview())).toBe(
+      '20 reports from pushed sources were never archived; 100 reports were ingested before the oldest archived day. ' +
+        'About 120 will stay "not recorded" whatever happens; the rest depends on what the archive holds.',
+    )
+  })
+
+  it('leaves out a zero clause, and says all of them when none can be filled', () => {
+    expect(
+      describeReportsWithoutFields(
+        preview({ reportsNotRecorded: 300, reportsFromPushedSources: 0, reportsIngestedBeforeTheArchive: 300, estimatedToStayUnrecorded: 300 }),
+      ),
+    ).toBe('300 reports were ingested before the oldest archived day. All of them will stay "not recorded".')
+  })
+})
+
 describe('ReportBackfillCard', () => {
   // Braces matter: mockReset() returns the mock, and a function returned from a hook is
   // registered as a cleanup hook — vitest would then call fetchJson() after every test.
@@ -93,6 +133,8 @@ describe('ReportBackfillCard', () => {
 
     expect(await screen.findByText('Not configured')).toBeInTheDocument()
     expect(screen.getByText(/No bucket is configured/)).toBeInTheDocument()
+    expect(screen.getByText(/There is no archive to re-read/)).toBeInTheDocument()
+    expect(screen.queryByText(/oldest archived day/)).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run backfill' })).toBeDisabled()
   })
 

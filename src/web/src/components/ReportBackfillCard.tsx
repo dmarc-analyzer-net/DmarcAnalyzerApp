@@ -9,7 +9,7 @@ import { Icon } from '@/components/ui/icon'
 import { fetchJson } from '@/lib/api'
 import type { ReportBackfillPreview, ReportBackfillState, ReportBackfillStatus } from '@/lib/entities'
 import { formatRelativeOrDate, formatShortDate } from '@/lib/format'
-import { describeBackfillCounts, plural } from '@/lib/report-backfill'
+import { describeBackfillCounts, describeReportsWithoutFields, plural } from '@/lib/report-backfill'
 
 const STATUS_META: Record<ReportBackfillStatus, { label: string; badge: 'neutral' | 'warning' | 'success' | 'danger' }> = {
   idle: { label: 'Not run', badge: 'neutral' },
@@ -147,13 +147,7 @@ export function ReportBackfillCard({ disabled = false }: { disabled?: boolean })
           <StatusRow
             label="Reports without the fields"
             value={preview.reportsNotRecorded.toLocaleString('en-US')}
-            hint={
-              preview.reportsNotRecorded > 0
-                ? `${plural(preview.reportsFromPushedSources, 'report')} from pushed sources were never archived; ` +
-                  `${preview.reportsIngestedBeforeTheArchive.toLocaleString('en-US')} of the rest were ingested before the oldest archived day. ` +
-                  `About ${preview.estimatedToStayUnrecorded.toLocaleString('en-US')} will stay "not recorded" whatever happens; the rest depends on what the archive holds.`
-                : 'Every stored report already has them.'
-            }
+            hint={describeReportsWithoutFields(preview)}
           />
           <StatusRow
             label="Last run"
