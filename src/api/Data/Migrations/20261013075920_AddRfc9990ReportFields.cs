@@ -92,6 +92,11 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                 name: "Testing",
                 table: "dmarc_report");
 
+            // Reports stored without a pct hold null, which NOT NULL below would refuse.
+            // 100 is what the column invented for an absent pct before this migration, so
+            // rolling back restores exactly that reading.
+            migrationBuilder.Sql("""UPDATE "dmarc_report" SET "PublishedPct" = 100 WHERE "PublishedPct" IS NULL;""");
+
             migrationBuilder.AlterColumn<int>(
                 name: "PublishedPct",
                 table: "dmarc_report",
