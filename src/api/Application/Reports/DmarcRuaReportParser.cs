@@ -29,10 +29,13 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         }
 
         using var sourceBuffer = CopyToMemory(xmlStream);
-        var hasSubdomainPolicy = HasSubdomainPolicyTag(sourceBuffer);
         var normalizationMessages = new List<string>();
         var normalized = NormalizeReportXml(sourceBuffer, normalizationMessages);
         using var parserStream = normalized.Stream;
+
+        // Sniffed on the document DmarcRua will read, not the original: an sp the repair
+        // pass removed as unusable has to read as absent here too.
+        var hasSubdomainPolicy = HasSubdomainPolicyTag(parserStream);
 
         var aggregateReport = new AggregateReport(parserStream);
         var feedback = aggregateReport.Feedback
@@ -344,9 +347,11 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
     /// <summary>
     /// Element values the DmarcRua enums accept, and what an unrecognised value becomes.
     /// Keyed by (parent, element) because auth_results reuses the names dkim and spf for
-    /// complex types whose verdict lives in a nested result element.
+    /// complex types whose verdict lives in a nested result element. A null fallback
+    /// removes the element instead: for an optional tag whose every substitute would be a
+    /// claim, absent is the only honest reading.
     /// </summary>
-    private static readonly (string Parent, string Element, string[] Allowed, string Fallback)[] EnumRepairs =
+    private static readonly (string Parent, string Element, string[] Allowed, string? Fallback)[] EnumRepairs =
     [
         // DMARCResultType. No empty member, so an empty element here is fatal. 'fail' is the
         // conservative reading: compliance is dkim=pass OR spf=pass, so a record whose other
@@ -386,6 +391,20 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         ("reason", "type",
             ["forwarded", "sampled_out", "trusted_forwarder", "mailing_list", "local_policy", "other"],
             "other"),
+
+        // policy_published. DispositionType, TestingType and DiscoveryType have no catch-all
+        // member, so a value outside them threw in the serializer and lost the whole report
+        // over a tag that describes the published record rather than any message in it. p
+        // is required, and MapDisposition already reads anything that is not reject or
+        // quarantine as none, so that is its fallback. The optional tags have no fallback
+        // that is not a claim — sp=none on a p=reject domain reads as a regression — so an
+        // unusable value is removed, and absent is then what it means: sp inherits p, the
+        // others were not usably sent.
+        ("policy_published", "p", ["none", "quarantine", "reject", "nil", ""], "none"),
+        ("policy_published", "sp", ["none", "quarantine", "reject", "nil", ""], null),
+        ("policy_published", "np", ["none", "quarantine", "reject", "nil", ""], null),
+        ("policy_published", "testing", ["y", "n"], null),
+        ("policy_published", "discovery_method", ["psl", "treewalk"], null),
     ];
 
     /// <summary>
@@ -703,7 +722,10 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             // unknown land on permerror here versus temperror upstream, and both read as
             // "could not be evaluated". Adding a value to a set below hands that value back
             // to the library, so check what its enum maps it to first.
-            foreach (var element in document.Descendants())
+            //
+            // Snapshotted, because a repair with no fallback removes the element it is on,
+            // and Descendants() cannot continue from a node that has just lost its parent.
+            foreach (var element in document.Descendants().ToList())
             {
                 var parent = element.Parent?.Name.LocalName;
                 if (parent is null)
@@ -776,14 +798,26 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                     continue;
                 }
 
-                element.Value = repair.Fallback;
+                string message;
+                if (repair.Fallback is null)
+                {
+                    element.Remove();
+                    message =
+                        $"warning: removed unusable {parent}/{element.Name.LocalName} value " +
+                        $"'{original}' for compatibility";
+                }
+                else
+                {
+                    element.Value = repair.Fallback;
+                    message =
+                        $"warning: replaced unrecognised {parent}/{element.Name.LocalName} value " +
+                        $"'{original}' with '{repair.Fallback}' for compatibility";
+                }
+
                 updated = true;
 
                 // Named, and deduplicated, so a large report cannot emit thousands of copies
                 // while an operator still learns which value was actually substituted.
-                var message =
-                    $"warning: replaced unrecognised {parent}/{element.Name.LocalName} value " +
-                    $"'{original}' with '{repair.Fallback}' for compatibility";
                 if (!normalizationMessages.Contains(message))
                 {
                     normalizationMessages.Add(message);

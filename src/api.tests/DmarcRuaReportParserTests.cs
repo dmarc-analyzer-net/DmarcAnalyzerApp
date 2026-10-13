@@ -468,6 +468,99 @@ public sealed class DmarcRuaReportParserTests
     }
 
     /// <summary>
+    /// DmarcRua's policy_published enums have no catch-all member, so a value outside them
+    /// used to throw in the serializer and lose the whole report. For the optional tags no
+    /// substitute is honest — sp=none on a p=reject domain reads as a regression — so the
+    /// tag is removed and reads as absent, which for sp means "inherits p".
+    /// </summary>
+    [Theory]
+    [InlineData("sp", "bogus")]
+    [InlineData("np", "bogus")]
+    [InlineData("testing", "maybe")]
+    [InlineData("discovery_method", "guess")]
+    public void Parse_RemovesAnUnusableOptionalPolicyPublishedTagRatherThanLosingTheReport(string tag, string value)
+    {
+        var xml = $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback>
+              <report_metadata>
+                <org_name>bad-tag</org_name>
+                <report_id>bad-tag-1</report_id>
+                <date_range><begin>1737446400</begin><end>1737532800</end></date_range>
+              </report_metadata>
+              <policy_published>
+                <domain>example.com</domain>
+                <adkim>r</adkim><aspf>r</aspf>
+                <p>reject</p>
+                <{tag}>{value}</{tag}>
+              </policy_published>
+              <record>
+                <row><source_ip>192.0.2.1</source_ip><count>1</count>
+                  <policy_evaluated><disposition>reject</disposition><dkim>fail</dkim><spf>fail</spf></policy_evaluated>
+                </row>
+                <identifiers><header_from>example.com</header_from></identifiers>
+                <auth_results><spf><domain>example.com</domain><result>fail</result></spf></auth_results>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal("reject", result.PublishedPolicy);
+        Assert.Null(result.SubdomainPolicy);
+        Assert.Null(result.NonexistentSubdomainPolicy);
+        Assert.Null(result.Testing);
+        Assert.Null(result.DiscoveryMethod);
+        Assert.Single(result.Records);
+        Assert.False(result.HasValidationErrors, string.Join(" | ", result.ValidationMessages));
+        Assert.Equal(
+            [$"warning: removed unusable policy_published/{tag} value '{value}' for compatibility"],
+            result.ValidationMessages);
+    }
+
+    /// <summary>
+    /// p is required, so it cannot be removed; none is what MapDisposition already reads
+    /// for anything that is not reject or quarantine.
+    /// </summary>
+    [Fact]
+    public void Parse_ReplacesAnUnusablePublishedPolicyWithNone()
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback>
+              <report_metadata>
+                <org_name>bad-p</org_name>
+                <report_id>bad-p-1</report_id>
+                <date_range><begin>1737446400</begin><end>1737532800</end></date_range>
+              </report_metadata>
+              <policy_published>
+                <domain>example.com</domain>
+                <p>bogus</p>
+              </policy_published>
+              <record>
+                <row><source_ip>192.0.2.1</source_ip><count>1</count>
+                  <policy_evaluated><disposition>none</disposition><dkim>pass</dkim><spf>pass</spf></policy_evaluated>
+                </row>
+                <identifiers><header_from>example.com</header_from></identifiers>
+                <auth_results><spf><domain>example.com</domain><result>pass</result></spf></auth_results>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal("none", result.PublishedPolicy);
+        Assert.Single(result.Records);
+        Assert.Contains(
+            "warning: replaced unrecognised policy_published/p value 'bogus' with 'none' for compatibility",
+            result.ValidationMessages);
+    }
+
+    /// <summary>
     /// A root namespace nobody defined is not a format the parser can claim to read. It
     /// used to be stripped and parsed as RFC 7489; now the report is rejected, which the
     /// ingest path counts as a parse failure like any other unreadable document.
