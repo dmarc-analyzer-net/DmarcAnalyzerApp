@@ -73,6 +73,30 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - modal create/edit flows
   - mailbox operations dashboard filters (failed / parse failures / stale success)
 - DMARC RUA parsing integration via `DmarcRua` with fixture tests.
+- RFC 9990 report-level fields stored on `dmarc_report` (PR 1 of
+  [`rfc-9990-plan.md`](rfc-9990-plan.md)):
+  - `ReportFormat` (`rfc7489` or `rfc9990`) from the root namespace. Only those two
+    are read; any other root namespace is rejected as a parse failure rather than
+    stripped and read as RFC 7489. NULL on rows from before the column means "not
+    recorded", not "not sent".
+  - `np`, `testing`, `discovery_method`, `generator` and `report_metadata/error` as
+    columns, read in any format — real RFC 7489 reports send `np`. The old `info:`
+    messages for them are gone.
+  - `PublishedPct` is nullable: an absent `pct` is stored as absent instead of as
+    100. RFC 9990 removed the tag, so that is every conformant RFC 9990 report. An
+    unusable value still becomes 100, now with a warning.
+  - A conformant RFC 9990 report no longer validates with errors: the `extension`
+    element and any element in a foreign namespace are removed before the
+    namespace strip (afterwards they cannot be told apart from unknown report
+    elements), and `generator` and `lang` attributes are removed before validation.
+  - `reason/type` is repaired like the other enums, to exactly the values DmarcRua
+    deserializes, with `other` as the fallback. RFC 9990's `policy_test_mode` is
+    carried as `other` silently, because reasons are not stored; before this it
+    reached the serializer, which threw and lost the whole report.
+  - Not yet: storing or showing parser messages (PR 2), record inspection using
+    the new fields (PR 3), and the backfill of rows stored before the columns
+    existed (PR 4). Record inspection still reports an absent `pct` as 100 until
+    PR 3.
 - Worker-driven mailbox ingestion orchestration:
   - sequential mailbox processing
   - checkpointed sync (`LastProcessedUid`, `LastProcessedUidValidity`)

@@ -21,9 +21,31 @@ public sealed class DmarcReport
     public string PublishedPolicy { get; set; } = "none";
     /// <summary>null when the reporter sent no sp tag — subdomains inherit p.</summary>
     public string? SubdomainPolicy { get; set; }
-    public int PublishedPct { get; set; } = 100;
+    /// <summary>
+    /// null when the reporter sent no pct tag. RFC 9990 removed the tag, so that is every
+    /// conformant RFC 9990 report. Rows stored before this became nullable hold 100, the
+    /// value the parser used to invent for an absent tag.
+    /// </summary>
+    public int? PublishedPct { get; set; }
     public string DkimAlignment { get; set; } = "relaxed";
     public string SpfAlignment { get; set; } = "relaxed";
+
+    /// <summary>
+    /// <c>rfc7489</c> or <c>rfc9990</c> (<see cref="Application.Reports.DmarcReportFormats"/>), from the root
+    /// namespace. null means the row was stored before this column existed, so every
+    /// field below is "not recorded" rather than "not sent".
+    /// </summary>
+    public string? ReportFormat { get; set; }
+    /// <summary><c>np</c>; null when the reporter sent none.</summary>
+    public string? NonexistentSubdomainPolicy { get; set; }
+    /// <summary><c>testing</c> (<c>y</c> = true); null when the reporter sent none.</summary>
+    public bool? Testing { get; set; }
+    /// <summary><c>discovery_method</c>: <c>psl</c> or <c>treewalk</c>; null when the reporter sent none.</summary>
+    public string? DiscoveryMethod { get; set; }
+    /// <summary><c>report_metadata/generator</c>, trimmed and capped; null when the reporter sent none.</summary>
+    public string? Generator { get; set; }
+    /// <summary><c>report_metadata/error</c> values as sent; null when the reporter sent none.</summary>
+    public List<string>? ReportErrors { get; set; }
 
     public Domain? Domain { get; set; }
     public ReportSource? ReportSource { get; set; }

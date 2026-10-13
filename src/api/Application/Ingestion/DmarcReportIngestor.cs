@@ -1,3 +1,4 @@
+using System.Text.Json;
 using DmarcAnalyzer.Api.Application.Domains;
 using DmarcAnalyzer.Api.Application.Reports;
 using DmarcAnalyzer.Api.Data;
@@ -109,11 +110,14 @@ public sealed class DmarcReportIngestor(
         DmarcReportParseResult parsed, CancellationToken ct)
     {
         var id = Guid.NewGuid();
+        // The same JSON shape the entity's value converter writes, so a row inserted here
+        // reads back through EF unchanged. Null rather than '[]' when there is nothing.
+        var reportErrors = parsed.ReportErrors.Count == 0 ? null : JsonSerializer.Serialize(parsed.ReportErrors);
         var rows = await db.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dmarc_report
-                (""Id"", ""DomainId"", ""ReportSourceId"", ""OrganizationName"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"", ""RecordCount"", ""IngestedAtUtc"", ""PublishedPolicy"", ""SubdomainPolicy"", ""PublishedPct"", ""DkimAlignment"", ""SpfAlignment"")
+                (""Id"", ""DomainId"", ""ReportSourceId"", ""OrganizationName"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"", ""RecordCount"", ""IngestedAtUtc"", ""PublishedPolicy"", ""SubdomainPolicy"", ""PublishedPct"", ""DkimAlignment"", ""SpfAlignment"", ""ReportFormat"", ""NonexistentSubdomainPolicy"", ""Testing"", ""DiscoveryMethod"", ""Generator"", ""ReportErrors"")
             VALUES
-                ({id}, {domainId}, {reportSourceId}, {organizationName}, {reportId}, {parsed.RangeBeginUtc}, {parsed.RangeEndUtc}, {parsed.RecordCount}, {DateTime.UtcNow}, {parsed.PublishedPolicy}, {parsed.SubdomainPolicy}, {parsed.PublishedPct}, {parsed.DkimAlignment}, {parsed.SpfAlignment})
+                ({id}, {domainId}, {reportSourceId}, {organizationName}, {reportId}, {parsed.RangeBeginUtc}, {parsed.RangeEndUtc}, {parsed.RecordCount}, {DateTime.UtcNow}, {parsed.PublishedPolicy}, {parsed.SubdomainPolicy}, {parsed.PublishedPct}, {parsed.DkimAlignment}, {parsed.SpfAlignment}, {parsed.ReportFormat}, {parsed.NonexistentSubdomainPolicy}, {parsed.Testing}, {parsed.DiscoveryMethod}, {parsed.Generator}, {reportErrors}::jsonb)
             ON CONFLICT (""DomainId"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"") DO NOTHING;
             ", ct);
 

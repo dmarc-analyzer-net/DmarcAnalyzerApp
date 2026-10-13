@@ -216,7 +216,8 @@ public sealed class IngestionTenancyAndMalformedInputTests(PostgresFixture postg
         new DateTime(2026, 8, 2, 0, 0, 0, DateTimeKind.Utc),
         policyDomain, 1,
         [new DmarcReportRecordParseResult("203.0.113.4", 1, "none", "pass", "pass", policyDomain, policyDomain, "x.test", [], [])],
-        false, false, [], "none", null, 100, "relaxed", "relaxed");
+        false, false, [], "none", null, 100, "relaxed", "relaxed",
+        DmarcReportFormats.Rfc7489, null, null, null, null, []);
 
     private static string ReportXml(string policyDomain, string reportId) =>
         $"""

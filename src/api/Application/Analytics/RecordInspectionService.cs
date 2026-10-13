@@ -70,7 +70,11 @@ public sealed class RecordInspectionService(
             : new ObservedPolicyDto(
                 observedRow.PublishedPolicy,
                 observedRow.SubdomainPolicy,
-                observedRow.PublishedPct,
+                // The column is nullable now (RFC 9990 reports send no pct), but this DTO
+                // and its pct comparison still assume a value; 100 is what the parser used
+                // to store for an absent tag, so the API answer is unchanged until the
+                // comparison learns to say "not reported" (docs/planning/rfc-9990-plan.md, PR 3).
+                observedRow.PublishedPct ?? 100,
                 observedRow.DkimAlignment,
                 observedRow.SpfAlignment,
                 observedRow.RangeEndUtc,

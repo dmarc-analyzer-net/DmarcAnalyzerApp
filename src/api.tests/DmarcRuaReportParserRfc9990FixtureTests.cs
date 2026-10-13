@@ -11,15 +11,18 @@ namespace DmarcAnalyzer.Api.Tests;
 /// <para>
 /// The first test keeps the fixture honest: it must validate against the RFC's own XSD,
 /// so a failure in the parser tests is a parser problem and not a broken fixture.
-/// The others pin what the parser does with a conformant RFC 9990 report today,
-/// including every message it produces. They are expected to change as the plan's PRs
-/// land; change them on purpose, one message at a time.
+/// The others pin what the parser does with a conformant RFC 9990 report, including
+/// every message it produces. The plan's later PRs change them on purpose, one message
+/// at a time; the namespace line becomes info in PR 2.
 /// </para>
 /// </summary>
 public sealed class DmarcRuaReportParserRfc9990FixtureTests
 {
     private const string FixtureName = "sample-rfc9990-aggregate.xml";
     private const string DmarcBisNamespace = "urn:ietf:params:xml:ns:dmarc-2.0";
+
+    private const string NamespaceMessage =
+        "warning: stripped XML namespace 'urn:ietf:params:xml:ns:dmarc-2.0' for compatibility";
 
     private readonly DmarcRuaReportParser _parser = new();
 
@@ -32,16 +35,16 @@ public sealed class DmarcRuaReportParserRfc9990FixtureTests
     }
 
     /// <summary>
-    /// Today's parser on a conformant report. Every line here is something PR 1 or PR 2
-    /// has to remove, reword or turn into a column; see the plan's step 0 findings.
-    /// The override reason is removed first, because today it throws (next test).
+    /// A conformant report, parsed as sent. Every report-level field it carries comes back,
+    /// the pct it does not send is null rather than invented, nothing it carries — the
+    /// <c>lang</c> attributes, <c>generator</c>, the extensions in both places, the
+    /// <c>policy_test_mode</c> override reason — is a schema error or a repair, and the one
+    /// message is the namespace strip, which is how an RFC 9990 report is read, not a fault.
     /// </summary>
     [Fact]
-    public void Parse_Rfc9990Fixture_CurrentBehaviour()
+    public void Parse_Rfc9990Fixture_ReadsEveryReportLevelField()
     {
-        var document = LoadFixtureWithoutOverrideReasons();
-        Assert.Empty(ValidateAgainstRfc9990Schema(document));
-        using var stream = ToStream(document);
+        using var stream = File.OpenRead(FixturePath(FixtureName));
 
         var result = _parser.Parse(stream);
 
@@ -50,58 +53,51 @@ public sealed class DmarcRuaReportParserRfc9990FixtureTests
         Assert.Equal("example.com", result.PolicyDomain);
         Assert.Equal("quarantine", result.PublishedPolicy);
         Assert.Equal("none", result.SubdomainPolicy);
+        Assert.Equal("relaxed", result.DkimAlignment);
+        Assert.Equal("strict", result.SpfAlignment);
         Assert.Equal(2, result.RecordCount);
         Assert.Equal(["pass", "none"], result.Records.Select(x => x.Disposition));
 
-        // The report sends no pct; 100 is invented (PR 1).
-        Assert.Equal(100, result.PublishedPct);
+        Assert.Equal(DmarcReportFormats.Rfc9990, result.ReportFormat);
+        Assert.Equal("reject", result.NonexistentSubdomainPolicy);
+        Assert.True(result.Testing);
+        Assert.Equal("treewalk", result.DiscoveryMethod);
+        Assert.Equal("Example DMARC Aggregate Reporter v1.2", result.Generator);
+        Assert.Equal(["DNS timeout while fetching the policy for sub.example.com"], result.ReportErrors);
 
-        // A conformant report is flagged as having errors (PR 1). The schema errors are the
-        // validator's wording, not ours, so only their subject is asserted; the parser's
-        // own messages are asserted exactly.
-        Assert.True(result.HasValidationErrors);
-        Assert.Collection(
-            result.ValidationMessages,
-            x => AssertSchemaError(x, "'lang'"),
-            x => AssertSchemaError(x, "'lang'"),
-            x => AssertSchemaError(x, "'generator'"),
-            x => AssertSchemaError(x, "'extension'"),
-            x => Assert.Equal("warning: stripped XML namespace 'urn:ietf:params:xml:ns:dmarc-2.0' for compatibility", x),
-            x => Assert.Equal("info: np=reject published for example.com", x),
-            x => Assert.Equal("info: t=y published for example.com", x),
-            x => Assert.Equal("info: discovery_method=treewalk reported for example.com", x));
+        // The report sends no pct, and none is invented.
+        Assert.Null(result.PublishedPct);
+
+        Assert.False(result.HasValidationErrors, string.Join(" | ", result.ValidationMessages));
+        Assert.Equal([NamespaceMessage], result.ValidationMessages);
     }
 
     /// <summary>
-    /// RFC 9990 added the override type <c>policy_test_mode</c>, which DmarcRua 2.1.0 does not
-    /// model, and the parser's value repair does not cover <c>reason/type</c>. The serializer
-    /// throws and the whole report is lost. PR 1 fixes it and turns this into a parse that
-    /// succeeds.
+    /// RFC 9990 added the override type <c>policy_test_mode</c>, which DmarcRua 2.1 does not
+    /// model; it used to reach the serializer, which threw and lost the whole report. The
+    /// fixture carries it, because RFC 9990 requires a reason when the disposition differs
+    /// from the policy, and the test above shows it parses without a message. A value
+    /// neither RFC defines is a repair, and says so — the report still parses.
     /// </summary>
     [Fact]
-    public void Parse_Rfc9990PolicyTestModeReason_CurrentlyThrows()
-    {
-        var document = LoadFixtureWithoutOverrideReasons();
-        XNamespace ns = DmarcBisNamespace;
-        document.Descendants(ns + "policy_evaluated").Last().Add(
-            new XElement(ns + "reason", new XElement(ns + "type", "policy_test_mode")));
-        Assert.Empty(ValidateAgainstRfc9990Schema(document));
-        using var stream = ToStream(document);
-
-        Assert.ThrowsAny<InvalidOperationException>(() => _parser.Parse(stream));
-    }
-
-    private static void AssertSchemaError(string message, string subject)
-    {
-        Assert.StartsWith("error: ", message, StringComparison.Ordinal);
-        Assert.Contains(subject, message, StringComparison.Ordinal);
-    }
-
-    private static XDocument LoadFixtureWithoutOverrideReasons()
+    public void Parse_Rfc9990UnknownOverrideReason_RepairsItWithoutLosingTheReport()
     {
         var document = XDocument.Load(FixturePath(FixtureName));
-        document.Descendants(XName.Get("reason", DmarcBisNamespace)).Remove();
-        return document;
+        XNamespace ns = DmarcBisNamespace;
+        document.Descendants(ns + "policy_evaluated").First().Add(
+            new XElement(ns + "reason", new XElement(ns + "type", "not_a_reason")));
+        using var stream = ToStream(document);
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal(["pass", "none"], result.Records.Select(x => x.Disposition));
+        Assert.False(result.HasValidationErrors, string.Join(" | ", result.ValidationMessages));
+        Assert.Equal(
+            [
+                NamespaceMessage,
+                "warning: replaced unrecognised reason/type value 'not_a_reason' with 'other' for compatibility",
+            ],
+            result.ValidationMessages);
     }
 
     private static MemoryStream ToStream(XDocument document)

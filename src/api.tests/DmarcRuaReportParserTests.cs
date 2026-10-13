@@ -271,13 +271,12 @@ public sealed class DmarcRuaReportParserTests
     }
 
     /// <summary>
-    /// np, testing and discovery_method (RFC 9989/9990/9991) are already modeled by
-    /// DmarcRua 2.0.0's PolicyPublishedType — this only guards that the parser
-    /// actually reads them through, as informational messages rather than silently
-    /// discarding them like it did before.
+    /// np, testing and discovery_method are RFC 9990's, but they are read in any format:
+    /// a real-mailbox sample found 1,307 RFC 7489 reports from one large reporter sending
+    /// np in no namespace. This report has no namespace, so "v2-only" would lose them.
     /// </summary>
     [Fact]
-    public void Parse_SurfacesNpTestingAndDiscoveryMethod()
+    public void Parse_ReadsNpTestingAndDiscoveryMethodFromAnRfc7489Report()
     {
         const string xml = """
             <?xml version="1.0" encoding="UTF-8"?>
@@ -308,18 +307,247 @@ public sealed class DmarcRuaReportParserTests
 
         var result = _parser.Parse(stream);
 
-        Assert.Contains(result.ValidationMessages, x => x == "info: np=quarantine published for acme.example");
-        Assert.Contains(result.ValidationMessages, x => x == "info: t=y published for acme.example");
-        Assert.Contains(result.ValidationMessages, x => x == "info: discovery_method=treewalk reported for acme.example");
+        Assert.Equal(DmarcReportFormats.Rfc7489, result.ReportFormat);
+        Assert.Equal("quarantine", result.NonexistentSubdomainPolicy);
+        Assert.True(result.Testing);
+        Assert.Equal("treewalk", result.DiscoveryMethod);
+        Assert.Equal(100, result.PublishedPct);
+        Assert.False(result.HasValidationErrors, string.Join(" | ", result.ValidationMessages));
+        Assert.Empty(result.ValidationMessages);
+    }
+
+    /// <summary>
+    /// An RFC 7489 report: its format, the pct it sends, and null — not a default — for
+    /// every report-level field it does not send.
+    /// </summary>
+    [Fact]
+    public void Parse_Rfc7489Report_StoresItsPctAndNullForTheFieldsItDoesNotSend()
+    {
+        using var stream = OpenFixture("sample-yahoo-aggregate.xml");
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal(DmarcReportFormats.Rfc7489, result.ReportFormat);
+        Assert.Equal(100, result.PublishedPct);
+        Assert.Null(result.NonexistentSubdomainPolicy);
+        Assert.Null(result.Testing);
+        Assert.Null(result.DiscoveryMethod);
+        Assert.Null(result.Generator);
+        Assert.Empty(result.ReportErrors);
+        Assert.Empty(result.ValidationMessages);
+    }
+
+    /// <summary>
+    /// RFC 9990 removed pct. An absent tag used to become 100, so every conformant RFC 9990
+    /// report stored a pct it never sent; now it stores nothing.
+    /// </summary>
+    [Fact]
+    public void Parse_Rfc9990ReportWithoutPct_StoresNoPct()
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback xmlns="urn:ietf:params:xml:ns:dmarc-2.0">
+              <version>1.0</version>
+              <report_metadata>
+                <org_name>no-pct</org_name>
+                <email>noreply@example.com</email>
+                <report_id>no-pct-1</report_id>
+                <date_range><begin>1737446400</begin><end>1737532800</end></date_range>
+              </report_metadata>
+              <policy_published>
+                <domain>example.com</domain>
+                <p>none</p>
+              </policy_published>
+              <record>
+                <row><source_ip>192.0.2.1</source_ip><count>1</count>
+                  <policy_evaluated><disposition>none</disposition><dkim>pass</dkim><spf>pass</spf></policy_evaluated>
+                </row>
+                <identifiers><header_from>example.com</header_from></identifiers>
+                <auth_results><spf><domain>example.com</domain><result>pass</result></spf></auth_results>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal(DmarcReportFormats.Rfc9990, result.ReportFormat);
+        Assert.Null(result.PublishedPct);
         Assert.False(result.HasValidationErrors, string.Join(" | ", result.ValidationMessages));
     }
 
-    [Fact]
-    public void Parse_WithoutNpTestingOrDiscoveryMethod_AddsNoMessages()
+    /// <summary>
+    /// A value that is not a whole number from 0 to 100 still becomes 100, as before, but
+    /// now says so: it is a substitution, unlike an absent tag.
+    /// </summary>
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("250")]
+    [InlineData("")]
+    public void Parse_UnusablePct_Becomes100WithAWarning(string pct)
     {
-        using var stream = OpenFixture("sample-yahoo-aggregate.xml");
+        var xml = $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback>
+              <report_metadata>
+                <org_name>bad-pct</org_name>
+                <report_id>bad-pct-1</report_id>
+                <date_range><begin>1737446400</begin><end>1737532800</end></date_range>
+              </report_metadata>
+              <policy_published>
+                <domain>example.com</domain>
+                <p>none</p>
+                <pct>{pct}</pct>
+              </policy_published>
+              <record>
+                <row><source_ip>192.0.2.1</source_ip><count>1</count>
+                  <policy_evaluated><disposition>none</disposition><dkim>pass</dkim><spf>pass</spf></policy_evaluated>
+                </row>
+                <identifiers><header_from>example.com</header_from></identifiers>
+                <auth_results><spf><domain>example.com</domain><result>pass</result></spf></auth_results>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
         var result = _parser.Parse(stream);
-        Assert.DoesNotContain(result.ValidationMessages, x => x.StartsWith("info:", StringComparison.Ordinal));
+
+        Assert.Equal(100, result.PublishedPct);
+        Assert.Contains(
+            $"warning: replaced unusable policy_published/pct value '{pct}' with '100' for compatibility",
+            result.ValidationMessages);
+    }
+
+    /// <summary>
+    /// generator and error are read whatever the format. RFC 7489 allows several error
+    /// elements where RFC 9990 allows one, so they are a list. The generator is trimmed and
+    /// capped at the column width, and removed before validation, because DmarcRua's schema
+    /// does not know it.
+    /// </summary>
+    [Fact]
+    public void Parse_ReadsGeneratorAndErrorsFromAnRfc7489Report()
+    {
+        var longGenerator = new string('g', 300);
+        var xml = $"""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback>
+              <report_metadata>
+                <org_name>errors</org_name>
+                <report_id>errors-1</report_id>
+                <date_range><begin>1737446400</begin><end>1737532800</end></date_range>
+                <error>first error</error>
+                <error>
+                  second error
+                </error>
+                <generator>  {longGenerator}  </generator>
+              </report_metadata>
+              <policy_published>
+                <domain>example.com</domain>
+                <p>none</p>
+              </policy_published>
+              <record>
+                <row><source_ip>192.0.2.1</source_ip><count>1</count>
+                  <policy_evaluated><disposition>none</disposition><dkim>pass</dkim><spf>pass</spf></policy_evaluated>
+                </row>
+                <identifiers><header_from>example.com</header_from></identifiers>
+                <auth_results><spf><domain>example.com</domain><result>pass</result></spf></auth_results>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal(["first error", "second error"], result.ReportErrors);
+        Assert.Equal(new string('g', 256), result.Generator);
+        Assert.False(result.HasValidationErrors, string.Join(" | ", result.ValidationMessages));
+        Assert.Empty(result.ValidationMessages);
+    }
+
+    /// <summary>
+    /// A root namespace nobody defined is not a format the parser can claim to read. It
+    /// used to be stripped and parsed as RFC 7489; now the report is rejected, which the
+    /// ingest path counts as a parse failure like any other unreadable document.
+    /// </summary>
+    [Fact]
+    public void Parse_UnknownRootNamespace_IsRejected()
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback xmlns="urn:example:not-dmarc">
+              <report_metadata>
+                <org_name>unknown-ns</org_name>
+                <report_id>unknown-ns-1</report_id>
+                <date_range><begin>1737446400</begin><end>1737532800</end></date_range>
+              </report_metadata>
+              <policy_published>
+                <domain>example.com</domain>
+                <p>none</p>
+              </policy_published>
+              <record>
+                <row><source_ip>192.0.2.1</source_ip><count>1</count>
+                  <policy_evaluated><disposition>none</disposition><dkim>pass</dkim><spf>pass</spf></policy_evaluated>
+                </row>
+                <identifiers><header_from>example.com</header_from></identifiers>
+                <auth_results><spf><domain>example.com</domain><result>pass</result></spf></auth_results>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var ex = Assert.ThrowsAny<InvalidOperationException>(() => _parser.Parse(stream));
+
+        Assert.Contains("urn:example:not-dmarc", ex.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// RFC 9990 says a receiver ignores extensions it does not understand. Both places one
+    /// can appear — the file-level <c>extension</c> wrapper and bare foreign-namespace
+    /// elements after a record's <c>auth_results</c> — are removed before validation, so a
+    /// report carrying them has nothing to say about it. In a report with no namespace, an
+    /// element in any namespace is foreign.
+    /// </summary>
+    [Fact]
+    public void Parse_ForeignNamespaceExtensions_RaiseNoMessages()
+    {
+        const string xml = """
+            <?xml version="1.0" encoding="UTF-8"?>
+            <feedback xmlns:ext="https://ext.example.org/dmarc-extension/1">
+              <report_metadata>
+                <org_name>extensions</org_name>
+                <report_id>extensions-1</report_id>
+                <date_range><begin>1737446400</begin><end>1737532800</end></date_range>
+              </report_metadata>
+              <policy_published>
+                <domain>example.com</domain>
+                <p>none</p>
+              </policy_published>
+              <extension>
+                <ext:report_note definition="https://ext.example.org/dmarc-extension/1">file-level</ext:report_note>
+              </extension>
+              <record>
+                <row><source_ip>192.0.2.1</source_ip><count>7</count>
+                  <policy_evaluated><disposition>none</disposition><dkim>pass</dkim><spf>pass</spf></policy_evaluated>
+                </row>
+                <identifiers><header_from>example.com</header_from></identifiers>
+                <auth_results><spf><domain>example.com</domain><result>pass</result></spf></auth_results>
+                <ext:record_note definition="https://ext.example.org/dmarc-extension/1">record-level</ext:record_note>
+              </record>
+            </feedback>
+            """;
+
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(xml));
+
+        var result = _parser.Parse(stream);
+
+        Assert.Equal(7, Assert.Single(result.Records).MessageCount);
+        Assert.False(result.HasValidationErrors, string.Join(" | ", result.ValidationMessages));
+        Assert.False(result.HasValidationWarnings, string.Join(" | ", result.ValidationMessages));
+        Assert.Empty(result.ValidationMessages);
     }
 
     [Fact]

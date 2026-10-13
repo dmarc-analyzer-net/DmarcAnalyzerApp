@@ -398,6 +398,10 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<string>("DiscoveryMethod")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
                     b.Property<string>("DkimAlignment")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -408,18 +412,24 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Property<Guid>("DomainId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Generator")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
                     b.Property<DateTime>("IngestedAtUtc")
                         .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("NonexistentSubdomainPolicy")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<string>("OrganizationName")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
-                    b.Property<int>("PublishedPct")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(100);
+                    b.Property<int?>("PublishedPct")
+                        .HasColumnType("integer");
 
                     b.Property<string>("PublishedPolicy")
                         .IsRequired()
@@ -436,6 +446,13 @@ namespace DmarcAnalyzer.Api.Data.Migrations
 
                     b.Property<int>("RecordCount")
                         .HasColumnType("integer");
+
+                    b.Property<string>("ReportErrors")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("ReportFormat")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
 
                     b.Property<string>("ReportId")
                         .IsRequired()
@@ -455,6 +472,9 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Property<string>("SubdomainPolicy")
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
+
+                    b.Property<bool?>("Testing")
+                        .HasColumnType("boolean");
 
                     b.HasKey("Id");
 

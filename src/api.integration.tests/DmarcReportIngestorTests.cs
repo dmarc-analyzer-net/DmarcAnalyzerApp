@@ -153,6 +153,49 @@ public sealed class DmarcReportIngestorTests(PostgresFixture postgres) : IAsyncL
         Assert.Equal(2, await db.DmarcReports.CountAsync());
     }
 
+    /// <summary>
+    /// The report-level RFC 9990 columns go through the raw-SQL insert, not EF, so only a
+    /// real database shows they land: the column list, the jsonb cast on the error list, a
+    /// null pct with no column default left to fill it, and a boolean read back as one.
+    /// </summary>
+    [Fact]
+    public async Task Rfc9990ReportLevelFieldsRoundTripThroughTheRawInsert()
+    {
+        var v2 = Report("acme.test", "report-v2") with
+        {
+            PublishedPct = null,
+            ReportFormat = DmarcReportFormats.Rfc9990,
+            NonexistentSubdomainPolicy = "reject",
+            Testing = true,
+            DiscoveryMethod = "treewalk",
+            Generator = "Example Reporter v1.2",
+            ReportErrors = ["DNS timeout", "second error"],
+        };
+
+        Assert.Equal(DmarcReportIngestOutcome.Inserted, await IngestAsync(v2));
+        Assert.Equal(DmarcReportIngestOutcome.Inserted, await IngestAsync(Report("acme.test", "report-v1")));
+
+        await using var db = postgres.CreateContext();
+        var stored = await db.DmarcReports.SingleAsync(x => x.ReportId == "report-v2");
+        Assert.Null(stored.PublishedPct);
+        Assert.Equal(DmarcReportFormats.Rfc9990, stored.ReportFormat);
+        Assert.Equal("reject", stored.NonexistentSubdomainPolicy);
+        Assert.True(stored.Testing);
+        Assert.Equal("treewalk", stored.DiscoveryMethod);
+        Assert.Equal("Example Reporter v1.2", stored.Generator);
+        Assert.Equal(["DNS timeout", "second error"], stored.ReportErrors);
+
+        // An RFC 7489 report that sent none of them stores null, not a default, for each.
+        var v1 = await db.DmarcReports.SingleAsync(x => x.ReportId == "report-v1");
+        Assert.Equal(100, v1.PublishedPct);
+        Assert.Equal(DmarcReportFormats.Rfc7489, v1.ReportFormat);
+        Assert.Null(v1.NonexistentSubdomainPolicy);
+        Assert.Null(v1.Testing);
+        Assert.Null(v1.DiscoveryMethod);
+        Assert.Null(v1.Generator);
+        Assert.Null(v1.ReportErrors);
+    }
+
     private async Task<DmarcReportIngestOutcome> IngestAsync(DmarcReportParseResult parsed)
     {
         await using var db = postgres.CreateContext();
@@ -184,7 +227,13 @@ public sealed class DmarcReportIngestorTests(PostgresFixture postgres) : IAsyncL
         SubdomainPolicy: null,
         PublishedPct: 100,
         DkimAlignment: "relaxed",
-        SpfAlignment: "relaxed");
+        SpfAlignment: "relaxed",
+        ReportFormat: DmarcReportFormats.Rfc7489,
+        NonexistentSubdomainPolicy: null,
+        Testing: null,
+        DiscoveryMethod: null,
+        Generator: null,
+        ReportErrors: []);
 
     private static DmarcReportRecordParseResult Record() => new(
         SourceIp: "203.0.113.4",

@@ -105,6 +105,9 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 $"warning: dropped {emptyRecords} record(s) reporting no source IP and no messages");
         }
 
+        // Before the messages are collected: an unusable pct adds one.
+        var publishedPct = ParsePercent(policyPublished.Percent, normalizationMessages);
+
         var validationMessages = aggregateReport.ValidationEvents
             .Select(x =>
             {
@@ -112,7 +115,24 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 return $"{severity}: {x.Message}";
             })
             .Concat(normalizationMessages)
-            .Concat(DescribeDmarcBisTags(policyPublished))
+            .ToArray();
+
+        // Read from the root namespace before the normalization pass stripped it. It is
+        // null only when that pass could not load the document, and DmarcRua reads with the
+        // same XML stack, so deserialization has failed before this line in practice.
+        var reportFormat = normalized.ReportFormat
+            ?? throw new InvalidOperationException("DMARC report format could not be determined.");
+
+        // error, np, testing and discovery_method are read whatever the format. np, testing
+        // and discovery_method are RFC 9990's, but real RFC 7489 reports carry np (one large
+        // reporter sends it in no namespace), and the library models all of them without
+        // caring about the namespace. Unlike sp, the three are genuinely nullable in
+        // DmarcRua, so absence needs no XML sniff. Errors are kept as sent, minus the
+        // whitespace a pretty-printed element wraps around its text.
+        var reportErrors = (metadata.Error ?? [])
+            .Select(x => x?.Trim())
+            .Where(x => !string.IsNullOrEmpty(x))
+            .Select(x => x!)
             .ToArray();
 
         return new DmarcReportParseResult(
@@ -128,9 +148,17 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             validationMessages,
             MapDisposition(policyPublished.P),
             hasSubdomainPolicy ? MapDisposition(policyPublished.Sp) : null,
-            ParsePercent(policyPublished.Percent),
+            publishedPct,
             MapAlignment(policyPublished.Adkim),
-            MapAlignment(policyPublished.Aspf));
+            MapAlignment(policyPublished.Aspf),
+            reportFormat,
+            MapOptionalDisposition(policyPublished.Np),
+            policyPublished.Testing is { } testing ? testing == TestingType.Yes : null,
+            policyPublished.DiscoveryMethod is { } discovery
+                ? (discovery == DiscoveryType.Treewalk ? "treewalk" : "psl")
+                : null,
+            normalized.Generator,
+            reportErrors);
     }
 
     /// <summary>
@@ -199,33 +227,16 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         => alignment == AlignmentType.Strict ? "strict" : "relaxed";
 
     /// <summary>
-    /// Read-through only, per the DMARCbis (RFC 9989/9990/9991) impact report: np,
-    /// testing and discovery_method are already modeled by DmarcRua 2.0.0 (unlike sp,
-    /// these are genuinely nullable, so presence comes from the library for free — no
-    /// HasSubdomainPolicyTag-style XML sniff needed) but were never read. Surfaced as
-    /// informational validation messages rather than new DmarcReport columns: cheap,
-    /// no migration, and there is nowhere else yet worth putting them — the same
-    /// unresolved backlog item that leaves ValidationMessages itself unsurfaced to
-    /// operators applies here too.
+    /// np, which unlike p has no value to fall back to: absent means "not sent", and an
+    /// empty or nil element states no policy either, so neither is read as none.
     /// </summary>
-    private static IEnumerable<string> DescribeDmarcBisTags(PolicyPublishedType policyPublished)
+    private static string? MapOptionalDisposition(DispositionType? disposition) => disposition switch
     {
-        if (policyPublished.Np is { } np)
-        {
-            yield return $"info: np={MapDisposition(np)} published for {policyPublished.Domain}";
-        }
-
-        if (policyPublished.Testing is { } testing)
-        {
-            yield return $"info: t={(testing == TestingType.Yes ? "y" : "n")} published for {policyPublished.Domain}";
-        }
-
-        if (policyPublished.DiscoveryMethod is { } discovery)
-        {
-            var method = discovery == DiscoveryType.Treewalk ? "treewalk" : "psl";
-            yield return $"info: discovery_method={method} reported for {policyPublished.Domain}";
-        }
-    }
+        DispositionType.Reject => "reject",
+        DispositionType.Quarantine => "quarantine",
+        DispositionType.None => "none",
+        _ => null,
+    };
 
     /// <summary>
     /// Whether the reporter actually sent an sp tag.
@@ -295,8 +306,32 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         }
     }
 
-    private static int ParsePercent(string? percent)
-        => int.TryParse(percent, out var value) && value is >= 0 and <= 100 ? value : 100;
+    /// <summary>
+    /// pct, or null when the reporter sent none.
+    /// <para>
+    /// This used to invent 100 for an absent tag. That is RFC 7489's default, but RFC 9990
+    /// removed the tag, so every conformant RFC 9990 report was stored with a pct it never
+    /// sent — the same problem sp had. Absent is stored as absent; what an absent pct means
+    /// is the reader's decision, not the parser's. A value that is not a whole number from 0
+    /// to 100 still becomes 100, with a warning, since there is no better reading of it.
+    /// </para>
+    /// </summary>
+    private static int? ParsePercent(string? percent, List<string> normalizationMessages)
+    {
+        if (percent is null)
+        {
+            return null;
+        }
+
+        if (int.TryParse(percent, out var value) && value is >= 0 and <= 100)
+        {
+            return value;
+        }
+
+        normalizationMessages.Add(
+            $"warning: replaced unusable policy_published/pct value '{percent.Trim()}' with '100' for compatibility");
+        return 100;
+    }
 
     private static MemoryStream CopyToMemory(Stream xmlStream)
     {
@@ -341,6 +376,16 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         // <scope/> or a value neither of these is fatal, and mfrom is the safe reading —
         // it is the scope RFC 7489 aligns against and the one ~99% of reports send.
         ("spf", "scope", ["mfrom", "helo"], "mfrom"),
+
+        // PolicyOverrideType, under policy_evaluated/reason. The allowed set is exactly what
+        // DmarcRua 2.1 deserializes, not RFC 9990's list: that RFC added policy_test_mode,
+        // and allowing a value the library does not model hands it to the serializer, which
+        // throws and loses the whole report. Override reasons are not stored, so 'other'
+        // loses nothing. policy_test_mode itself is rewritten silently in the loop below,
+        // because it is a defined value rather than a reporter's mistake.
+        ("reason", "type",
+            ["forwarded", "sampled_out", "trusted_forwarder", "mailing_list", "local_policy", "other"],
+            "other"),
     ];
 
     /// <summary>
@@ -461,7 +506,31 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         return open;
     }
 
-    private static (MemoryStream Stream, IReadOnlyList<string?> DmarcBisDispositions) NormalizeReportXml(
+    /// <summary>
+    /// What <see cref="NormalizeReportXml"/> hands back: the document DmarcRua will read,
+    /// plus everything that had to be read off the original before it was rewritten.
+    /// </summary>
+    /// <param name="ReportFormat">One of <see cref="DmarcReportFormats"/>; null when the document could not be loaded.</param>
+    /// <param name="Generator">report_metadata/generator, which DmarcRua does not model; null when not sent.</param>
+    private sealed record NormalizedReport(
+        MemoryStream Stream,
+        IReadOnlyList<string?> DmarcBisDispositions,
+        string? ReportFormat,
+        string? Generator);
+
+    /// <summary>
+    /// A root namespace that is neither RFC 7489's (none) nor RFC 9990's. Not a parse
+    /// failure of the document, so it is its own type: the normalization pass swallows
+    /// everything else and falls back to the original bytes, and this must not be swallowed.
+    /// </summary>
+    private sealed class UnsupportedReportNamespaceException(string namespaceName)
+        : InvalidOperationException(
+            $"DMARC report root namespace '{namespaceName}' is not a recognised aggregate report format.");
+
+    /// <summary>The column is varchar(256); nothing longer is a generator name.</summary>
+    private const int GeneratorMaxLength = 256;
+
+    private static NormalizedReport NormalizeReportXml(
         Stream xmlStream,
         List<string> normalizationMessages)
     {
@@ -491,7 +560,22 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 updated = true;
             }
 
-            var isDmarcBisReport = document.Root?.Name.NamespaceName == DmarcBisNamespace;
+            // The format is the root namespace, and only the two defined ones are read.
+            // This pass used to strip any namespace, which would have parsed a report in a
+            // namespace nobody defined as RFC 7489 and stored it as such. A real-mailbox
+            // sample of 12,759 reports found none and dmarc-2.0 only (no RFC 7489 report
+            // carries a namespace: rua.xsd declares no targetNamespace), so there is no
+            // allow-list to maintain — anything else is rejected, and the ingest path counts
+            // it as a parse failure like any other document it cannot read.
+            var reportNamespace = document.Root?.Name.NamespaceName ?? string.Empty;
+            var reportFormat = reportNamespace switch
+            {
+                "" => DmarcReportFormats.Rfc7489,
+                DmarcBisNamespace => DmarcReportFormats.Rfc9990,
+                _ => throw new UnsupportedReportNamespaceException(reportNamespace),
+            };
+
+            var isDmarcBisReport = reportFormat == DmarcReportFormats.Rfc9990;
             var dmarcBisDispositions = isDmarcBisReport
                 ? document.Root!
                     .Elements()
@@ -512,9 +596,69 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                     .ToArray()
                 : Array.Empty<string?>();
 
+            // Extensions go before the namespace strip, while the namespace still tells them
+            // apart. RFC 9990 says a receiver ignores extensions it does not understand;
+            // DmarcRua's schema knows none, so left in they turn a conformant report into
+            // one with schema errors. The file-level extension is an <extension> wrapper in
+            // the report's own namespace; the record-level ones are bare elements in a
+            // foreign namespace after auth_results, with no wrapper. After the strip every
+            // element is in no namespace, and the record-level ones would be
+            // indistinguishable from an unknown report element. Removed without a message:
+            // ignoring them is the specified behaviour, not a repair.
+            XNamespace reportXmlNamespace = reportNamespace;
+            var extensions = document.Root!
+                .Descendants()
+                .Where(x => x.Name == reportXmlNamespace + "extension" || x.Name.Namespace != reportXmlNamespace)
+                .ToList();
+            foreach (var extension in extensions)
+            {
+                // Already detached with a removed ancestor: nothing to do.
+                if (extension.Parent is not null)
+                {
+                    extension.Remove();
+                }
+            }
+
+            updated |= extensions.Count > 0;
+
+            // generator is RFC 9990's and DmarcRua 2.1.1 does not model it: no property, and
+            // its schema rejects the element. Read it here, where the document is already
+            // loaded, then remove it so a conformant report validates.
+            string? generator = null;
+            var generatorElements = document.Root!
+                .Elements(reportXmlNamespace + "report_metadata")
+                .Elements(reportXmlNamespace + "generator")
+                .ToList();
+            if (generatorElements.Count > 0)
+            {
+                var value = generatorElements[0].Value.Trim();
+                generator = value.Length switch
+                {
+                    0 => null,
+                    > GeneratorMaxLength => value[..GeneratorMaxLength],
+                    _ => value,
+                };
+                generatorElements.Remove();
+                updated = true;
+            }
+
+            // lang is allowed on four elements in RFC 9990 and on none in DmarcRua's schema,
+            // where it is an error. Language is not stored, so the attribute is dropped
+            // rather than read.
+            var langAttributes = document.Descendants()
+                .Attributes()
+                .Where(x => x.Name == "lang")
+                .ToList();
+            if (langAttributes.Count > 0)
+            {
+                langAttributes.Remove();
+                updated = true;
+            }
+
             // DMARCbis reports namespace the schema (urn:ietf:params:xml:ns:dmarc-2.0),
             // which the DmarcRua serializer does not expect. The aggregate format is
-            // field-compatible for everything we read, so strip namespaces entirely.
+            // field-compatible for everything we read, so strip namespaces entirely. Only
+            // RFC 9990 reports reach this block now: an unknown namespace was rejected above.
             //
             // Still needed on 2.0.1, despite its NamespaceIgnorantXmlReader: that reader only
             // hides namespaces from the *serializer*, while the validating reader beneath it
@@ -525,7 +669,6 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             // validation meaningful and costs one explanatory message instead.
             if (document.Root is not null && document.Root.Name.Namespace != XNamespace.None)
             {
-                var reportNamespace = document.Root.Name.NamespaceName;
                 foreach (var element in document.Descendants())
                 {
                     element.Name = XNamespace.None + element.Name.LocalName;
@@ -597,6 +740,21 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                     continue;
                 }
 
+                // RFC 9990 added the override reason policy_test_mode, which reporters send
+                // when the domain publishes t=y. DmarcRua models only the RFC 7489 reasons,
+                // so it travels as 'other'. Silent, like the disposition rewrite above: it is
+                // a defined value rather than a reporter's mistake, and override reasons are
+                // not stored, so nothing observable changes. A warning here would flag every
+                // conformant report from a domain in test mode as repaired.
+                if (parent == "reason"
+                    && element.Name.LocalName == "type"
+                    && string.Equals(candidate, "policy_test_mode", StringComparison.OrdinalIgnoreCase))
+                {
+                    element.Value = "other";
+                    updated = true;
+                    continue;
+                }
+
                 // Match case-insensitively but write back the *canonical* spelling, never the
                 // reporter's. XmlSerializer matches XmlEnum names case-sensitively, so passing
                 // 'PASS' or 'HELO' through unchanged after accepting it here would hand the
@@ -638,21 +796,23 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                 var original = new MemoryStream();
                 xmlStream.CopyTo(original);
                 original.Position = 0;
-                return (original, dmarcBisDispositions);
+                return new NormalizedReport(original, dmarcBisDispositions, reportFormat, generator);
             }
 
             var normalized = new MemoryStream();
             document.Save(normalized);
             normalized.Position = 0;
-            return (normalized, dmarcBisDispositions);
+            return new NormalizedReport(normalized, dmarcBisDispositions, reportFormat, generator);
         }
-        catch
+        catch (Exception ex) when (ex is not UnsupportedReportNamespaceException)
         {
+            // Nothing read off the document survives: the format is null, and Parse treats
+            // that as unreadable once DmarcRua has had its own go at the original bytes.
             xmlStream.Position = 0;
             var original = new MemoryStream();
             xmlStream.CopyTo(original);
             original.Position = 0;
-            return (original, Array.Empty<string?>());
+            return new NormalizedReport(original, Array.Empty<string?>(), null, null);
         }
     }
 }

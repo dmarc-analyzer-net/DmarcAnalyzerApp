@@ -220,12 +220,23 @@ A normalized aggregate (RUA) report, resolved to a `domain`.
 | `IngestedAtUtc` | |
 | `PublishedPolicy` | max 16, default `none` — `policy_published.p` |
 | `SubdomainPolicy` | max 16, **nullable** — `sp`. NULL means the reporter sent no `sp` tag, so subdomains inherit `p` (RFC 7489 §6.3). Rows ingested before this became nullable store `none` either way. |
-| `PublishedPct` | default 100 — `pct` |
+| `PublishedPct` | **nullable** — `pct`. NULL means the reporter sent no `pct` tag, which RFC 9990 removed, so that is every conformant RFC 9990 report. Rows stored before this became nullable hold `100`, the value the parser used to invent for an absent tag. |
 | `DkimAlignment`, `SpfAlignment` | max 16, default `relaxed` — `adkim` / `aspf` |
+| `ReportFormat` | max 16, **nullable** — `rfc7489` or `rfc9990`, from the root namespace. **NULL means the row was stored before this column existed**, so every field below is "not recorded" rather than "not sent". |
+| `NonexistentSubdomainPolicy` | max 16, **nullable** — `np`. Read in any format: real RFC 7489 reports send it too. |
+| `Testing` | boolean, **nullable** — `testing` (`y` = true) |
+| `DiscoveryMethod` | max 16, **nullable** — `psl` or `treewalk` |
+| `Generator` | max 256, **nullable** — `report_metadata/generator`, trimmed and capped |
+| `ReportErrors` | jsonb, **nullable** — `report_metadata/error` values as sent, as a JSON list of strings. RFC 9990 allows one, RFC 7489 allowed several. NULL when none were sent. |
 | — | **`(DomainId, ReportId, RangeBeginUtc, RangeEndUtc)` unique — the dedup key** |
 
 The `policy_published` columns were added after initial ingestion, so reports
-ingested before then carry the defaults (`p=none`) until re-ingested.
+ingested before then carry the defaults (`p=none`) until re-ingested. The
+report-level RFC 9990 columns (`ReportFormat` onwards) came later still; on rows
+from before them `ReportFormat` is NULL and the rest say nothing, and
+`PublishedPct` is `100` whether or not the reporter sent it. The plan in
+[`rfc-9990-plan.md`](rfc-9990-plan.md) backfills what the report-mail archive can
+reach.
 
 > Dedup note: the unique key is domain-scoped, not client- or org-scoped. Because
 > `domain."Name"` is globally unique, the client is implied; the reporting org is

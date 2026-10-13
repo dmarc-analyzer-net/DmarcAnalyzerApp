@@ -1,6 +1,7 @@
 using System.Text.Json;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace DmarcAnalyzer.Api.Data;
 
@@ -299,9 +300,26 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.ReportId).HasMaxLength(255).IsRequired();
             entity.Property(x => x.PublishedPolicy).HasMaxLength(16).IsRequired().HasDefaultValue("none");
             entity.Property(x => x.SubdomainPolicy).HasMaxLength(16);
-            entity.Property(x => x.PublishedPct).HasDefaultValue(100);
+            // No default: an absent pct is stored as null, not invented as 100. The old
+            // default of 100 is what rows from before this change hold.
+            entity.Property(x => x.PublishedPct);
             entity.Property(x => x.DkimAlignment).HasMaxLength(16).IsRequired().HasDefaultValue("relaxed");
             entity.Property(x => x.SpfAlignment).HasMaxLength(16).IsRequired().HasDefaultValue("relaxed");
+            entity.Property(x => x.ReportFormat).HasMaxLength(16);
+            entity.Property(x => x.NonexistentSubdomainPolicy).HasMaxLength(16);
+            entity.Property(x => x.DiscoveryMethod).HasMaxLength(16);
+            entity.Property(x => x.Generator).HasMaxLength(256);
+            // jsonb list of the error strings as sent. RFC 9990 allows one error element,
+            // RFC 7489 allowed several, so a list covers both without a second column.
+            entity.Property(x => x.ReportErrors)
+                .HasColumnType("jsonb")
+                .HasConversion(
+                    v => v == null ? null : JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                    v => v == null ? null : JsonSerializer.Deserialize<List<string>>(v, (JsonSerializerOptions?)null),
+                    new ValueComparer<List<string>?>(
+                        (a, b) => (a == null && b == null) || (a != null && b != null && a.SequenceEqual(b)),
+                        v => v == null ? 0 : v.Aggregate(0, (hash, item) => HashCode.Combine(hash, item.GetHashCode())),
+                        v => v == null ? null : v.ToList()));
             entity.HasIndex(x => x.DomainId);
             entity.HasIndex(x => x.ReportSourceId);
             entity.HasIndex(x => new { x.DomainId, x.ReportId, x.RangeBeginUtc, x.RangeEndUtc }).IsUnique();
