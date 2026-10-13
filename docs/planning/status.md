@@ -154,7 +154,10 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - Reaches only what the archive holds: pushed (`api`) sources and installs
     without `Backup:ArchiveReportMail` stay "not recorded", and `preview` says how
     many. Enabling the archive is what makes a later re-parse possible.
-  - No console page: the three endpoints are the operator surface for now.
+  - A "Report backfill" card on the backup page: whether the archive is on and how
+    much it holds, how many reports lack the fields and roughly how many will stay
+    that way, the last run's status and counts, and a run button that queues the
+    job and polls the status row while the worker is on it.
 - Worker-driven mailbox ingestion orchestration:
   - sequential mailbox processing
   - checkpointed sync (`LastProcessedUid`, `LastProcessedUidValidity`)

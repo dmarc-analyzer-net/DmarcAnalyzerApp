@@ -404,3 +404,41 @@ export type IssuedApiCredential = {
   /** Shown once and not stored anywhere. Losing it means issuing a new credential. */
   token: string
 }
+
+/** Shape of GET /api/v1/admin/report-backfill/preview. Counts only; the "stay unrecorded" figure is an estimate. */
+export type ReportBackfillPreview = {
+  archiveConfigured: boolean
+  archive: string | null
+  prefix: string
+  archivedObjects: number
+  oldestArchivedDay: string | null
+  newestArchivedDay: string | null
+  /** Reports stored before the report-level columns existed (null `ReportFormat`). */
+  reportsNotRecorded: number
+  /** Of those, reports from pushed (`api`) sources — never archived, so never reachable. */
+  reportsFromPushedSources: number
+  reportsFromArchivableSources: number
+  /** Of the archivable ones, reports ingested before the oldest archived day — no object can hold them. */
+  reportsIngestedBeforeTheArchive: number
+  estimatedToStayUnrecorded: number
+}
+
+export type ReportBackfillStatus = 'idle' | 'requested' | 'running' | 'completed' | 'failed'
+
+/** Shape of GET /api/v1/admin/report-backfill/status: the job's cursor row. */
+export type ReportBackfillState = {
+  status: ReportBackfillStatus
+  pass: 'collect' | 'apply' | null
+  lastObjectKey: string | null
+  requestedAtUtc: string | null
+  startedAtUtc: string | null
+  finishedAtUtc: string | null
+  objectsSeen: number
+  payloadsParsed: number
+  matched: number
+  updated: number
+  skipped: number
+  ambiguous: number
+  failed: number
+  lastError: string | null
+}

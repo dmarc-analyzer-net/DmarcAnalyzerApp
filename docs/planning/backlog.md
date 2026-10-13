@@ -454,7 +454,14 @@ zero undocumented. The problems are everywhere else.
       restore path** — and the docs say so. Needs a bucket-sourced ingestion path
       (`POST /api/v1/admin/reports/replay?from=&to=`) walking the prefix and
       feeding each object through `ExtractXmlStreamsAsync`; safe to re-run because
-      report dedup is idempotent. Also missing: a picker for the dated daily
+      report dedup is idempotent. Most of the walk now exists: the report backfill
+      (PR 4 of `rfc-9990-plan.md`) added `IObjectStorage.ListAsync` and
+      `ReportBackfillService`'s collect pass, which lists the archive prefix,
+      gunzips each mail, parses it as MIME and runs its attachments through the
+      extractor and parser. Replay differs in what it does with the result —
+      ingest through `IReportPayloadIngestor` rather than fill columns on rows
+      that exist — so it can reuse the walk and the cursor-row shape rather than
+      the job. Also missing: a picker for the dated daily
       snapshots, so recovering from a bad `latest.json` still means fetching the
       dated copy by hand, and a console surface for
       `MailboxSource.DeleteAfterRetention` (today it is settable only in the

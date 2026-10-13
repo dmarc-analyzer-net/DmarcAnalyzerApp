@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { ReactNode } from 'react'
 
 import { ConfigImportPanel } from '@/components/ConfigImportPanel'
 import { Notice } from '@/components/Notice'
+import { ReportBackfillCard } from '@/components/ReportBackfillCard'
+import { StatusRow } from '@/components/StatusRow'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardHeader } from '@/components/ui/card'
@@ -289,6 +290,8 @@ export function BackupPage() {
             </div>
           </Card>
 
+          <ReportBackfillCard disabled={sessionEnded} />
+
           <Card pad>
             <CardHeader
               title="Export configuration"
@@ -358,28 +361,3 @@ export function BackupPage() {
   )
 }
 
-/** One label/value line in the status card. */
-function StatusRow({
-  label,
-  badge,
-  value,
-  hint,
-}: {
-  label: string
-  badge?: ReactNode
-  value?: string
-  hint?: ReactNode
-}) {
-  return (
-    <div className="border-t border-border py-2.5 first:border-t-0 first:pt-0 last:pb-0">
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-        <span className="text-sm text-secondary">{label}</span>
-        <span className="flex items-center gap-2 text-sm text-body">
-          {value != null ? <span>{value}</span> : null}
-          {badge}
-        </span>
-      </div>
-      {hint != null ? <p className="mt-1 text-xs text-faint">{hint}</p> : null}
-    </div>
-  )
-}
