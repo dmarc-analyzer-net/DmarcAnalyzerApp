@@ -320,6 +320,10 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
                         (a, b) => (a == null && b == null) || (a != null && b != null && a.SequenceEqual(b)),
                         v => v == null ? 0 : v.Aggregate(0, (hash, item) => HashCode.Combine(hash, item.GetHashCode())),
                         v => v == null ? null : v.ToList()));
+            // The parser's messages, as JSON. Null on every row from before the column: that is
+            // "not recorded", and readers say so rather than "no problems".
+            entity.Property(x => x.ParseMessages).HasColumnType("jsonb");
+            entity.Property(x => x.ParseMessagesOrigin).HasMaxLength(16);
             entity.HasIndex(x => x.DomainId);
             entity.HasIndex(x => x.ReportSourceId);
             entity.HasIndex(x => new { x.DomainId, x.ReportId, x.RangeBeginUtc, x.RangeEndUtc }).IsUnique();

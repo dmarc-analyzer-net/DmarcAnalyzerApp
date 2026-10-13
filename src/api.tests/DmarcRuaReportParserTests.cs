@@ -168,7 +168,7 @@ public sealed class DmarcRuaReportParserTests
         Assert.Equal("helo", Assert.Single(result.Records[0].SpfAuthResults).Scope);
 
         // No longer a repair, so it must no longer be reported as one.
-        Assert.DoesNotContain(result.ValidationMessages, x => x.Contains("SPF scope", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.ValidationMessages, x => x.Text.Contains("SPF scope", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -222,7 +222,7 @@ public sealed class DmarcRuaReportParserTests
         Assert.Equal(expectedScope, Assert.Single(result.Records[0].SpfAuthResults).Scope);
         Assert.Equal(
             expectsWarning,
-            result.ValidationMessages.Any(x => x.Contains("spf/scope", StringComparison.Ordinal)));
+            result.ValidationMessages.Any(x => x.Text.Contains("spf/scope", StringComparison.Ordinal)));
     }
 
     /// <summary>
@@ -267,7 +267,7 @@ public sealed class DmarcRuaReportParserTests
         Assert.Equal(expected, Assert.Single(result.Records).DkimResult);
 
         // A case correction changes no meaning, so it must not be reported as a substitution.
-        Assert.DoesNotContain(result.ValidationMessages, x => x.Contains("replaced unrecognised", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.ValidationMessages, x => x.Text.Contains("replaced unrecognised", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -416,7 +416,8 @@ public sealed class DmarcRuaReportParserTests
 
         Assert.Equal(100, result.PublishedPct);
         Assert.Contains(
-            $"warning: replaced unusable policy_published/pct value '{pct}' with '100' for compatibility",
+            DmarcReportParseMessage.Warning(
+                $"replaced unusable policy_published/pct value '{pct}' with '100' for compatibility"),
             result.ValidationMessages);
     }
 
@@ -516,7 +517,7 @@ public sealed class DmarcRuaReportParserTests
         Assert.Single(result.Records);
         Assert.False(result.HasValidationErrors, string.Join(" | ", result.ValidationMessages));
         Assert.Equal(
-            [$"warning: removed unusable policy_published/{tag} value '{value}' for compatibility"],
+            [DmarcReportParseMessage.Warning($"removed unusable policy_published/{tag} value '{value}' for compatibility")],
             result.ValidationMessages);
     }
 
@@ -556,7 +557,8 @@ public sealed class DmarcRuaReportParserTests
         Assert.Equal("none", result.PublishedPolicy);
         Assert.Single(result.Records);
         Assert.Contains(
-            "warning: replaced unrecognised policy_published/p value 'bogus' with 'none' for compatibility",
+            DmarcReportParseMessage.Warning(
+                "replaced unrecognised policy_published/p value 'bogus' with 'none' for compatibility"),
             result.ValidationMessages);
     }
 
@@ -706,10 +708,10 @@ public sealed class DmarcRuaReportParserTests
         Assert.Single(result.Records);
         Assert.Equal(2, result.Records[0].MessageCount);
         Assert.Equal("pass", result.Records[0].Disposition);
-        Assert.Contains(result.ValidationMessages, x => x.Contains("stripped XML namespace 'urn:ietf:params:xml:ns:dmarc-2.0'", StringComparison.Ordinal));
+        Assert.Contains(result.ValidationMessages, x => x.Text.Contains("stripped XML namespace 'urn:ietf:params:xml:ns:dmarc-2.0'", StringComparison.Ordinal));
         Assert.DoesNotContain(
             result.ValidationMessages,
-            x => x.Contains("policy_evaluated/disposition", StringComparison.Ordinal));
+            x => x.Text.Contains("policy_evaluated/disposition", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -790,7 +792,7 @@ public sealed class DmarcRuaReportParserTests
             result.Records.Select(x => $"{x.SourceIp}={x.Disposition}").ToArray());
         Assert.DoesNotContain(
             result.ValidationMessages,
-            x => x.Contains("policy_evaluated/disposition", StringComparison.Ordinal));
+            x => x.Text.Contains("policy_evaluated/disposition", StringComparison.Ordinal));
     }
 
     [Fact]

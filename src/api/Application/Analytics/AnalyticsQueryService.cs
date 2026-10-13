@@ -933,6 +933,87 @@ public sealed class AnalyticsQueryService(
         return query;
     }
 
+    /// <summary>Rows per report-notes answer. A domain with more than this has a reporter problem, not a list problem.</summary>
+    private const int ReportNotesLimit = 100;
+
+    /// <inheritdoc />
+    public async Task<ReportNotesDto?> GetReportNotesAsync(Guid domainId, int days, bool includeInfo, CancellationToken ct)
+    {
+        days = ClampDays(days);
+
+        var domainRow = await db.Domains
+            .AsNoTracking()
+            .Where(x => x.Id == domainId)
+            .Select(x => new { x.Id, x.ClientId })
+            .SingleOrDefaultAsync(ct);
+
+        // Cross-tenant ids read as not-found to avoid an existence oracle.
+        if (domainRow is null || !currentUser.CanAccessClient(domainRow.ClientId))
+        {
+            return null;
+        }
+
+        var window = await ResolveWindowAsync(days, ct);
+
+        // The same window rule as the record queries: a report is in the window by its
+        // range start. Reports rather than records, because the notes are per report.
+        var inWindow = db.DmarcReports
+            .AsNoTracking()
+            .Where(x => x.DomainId == domainId
+                && x.RangeBeginUtc >= window.BeginUtc
+                && x.RangeBeginUtc <= window.EndUtc);
+
+        var reportsInWindow = await inWindow.CountAsync(ct);
+        var notRecorded = await inWindow.CountAsync(x => x.ParseMessages == null, ct);
+        var withWarnings = await inWindow.CountAsync(x => x.ParseWarningCount > 0, ct);
+
+        // Info-only: recorded, nothing at warning level, and not the empty list. The JSON
+        // is compared as a value on purpose — '[]' is the one form an empty list takes,
+        // and jsonb equality is by value, so whitespace cannot make a second one.
+        var withInfoOnly = await inWindow.CountAsync(
+            x => x.ParseMessages != null && x.ParseWarningCount == 0 && x.ParseMessages != "[]", ct);
+
+        var rows = await inWindow
+            .Where(x => x.ParseWarningCount > 0
+                || (includeInfo && x.ParseMessages != null && x.ParseMessages != "[]"))
+            .OrderByDescending(x => x.RangeEndUtc)
+            .ThenByDescending(x => x.IngestedAtUtc)
+            .Take(ReportNotesLimit)
+            .Select(x => new
+            {
+                x.Id,
+                x.OrganizationName,
+                x.ReportId,
+                x.RangeBeginUtc,
+                x.RangeEndUtc,
+                x.IngestedAtUtc,
+                x.ParseMessagesOrigin,
+                x.ParseWarningCount,
+                x.ParseMessages,
+            })
+            .ToListAsync(ct);
+
+        return new ReportNotesDto(
+            window,
+            includeInfo,
+            ReportNotesLimit,
+            reportsInWindow,
+            withWarnings,
+            withInfoOnly,
+            notRecorded,
+            rows.Select(x => new ReportNoteDto(
+                    x.Id,
+                    x.OrganizationName,
+                    x.ReportId,
+                    x.RangeBeginUtc,
+                    x.RangeEndUtc,
+                    x.IngestedAtUtc,
+                    x.ParseMessagesOrigin ?? Reports.DmarcReportParseOrigins.Ingest,
+                    x.ParseWarningCount ?? 0,
+                    Reports.DmarcReportParseMessagesJson.Deserialize(x.ParseMessages!)))
+                .ToList());
+    }
+
     private async Task<AnalyticsWindowDto> ResolveWindowAsync(int days, CancellationToken ct)
     {
         // Report data can lag far behind the wall clock (backfilled mailboxes),

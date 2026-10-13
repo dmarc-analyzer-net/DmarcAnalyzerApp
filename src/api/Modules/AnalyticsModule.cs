@@ -75,6 +75,17 @@ public sealed class AnalyticsModule : ICarterModule
             return guidance is null ? Results.NotFound() : Results.Ok(guidance);
         }).AllowClientViewer();
 
+        app.MapGet("/api/v1/analytics/domains/{domainId:guid}/report-notes", async (
+            Guid domainId,
+            int? days,
+            bool? includeInfo,
+            IAnalyticsQueryService service,
+            CancellationToken ct) =>
+        {
+            var notes = await service.GetReportNotesAsync(domainId, days ?? 30, includeInfo ?? false, ct);
+            return notes is null ? Results.NotFound() : Results.Ok(notes);
+        }).AllowClientViewer();
+
         app.MapGet("/api/v1/analytics/domains/{domainId:guid}/records", async (
             Guid domainId,
             IRecordInspectionService service,

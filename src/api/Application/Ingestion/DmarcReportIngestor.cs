@@ -113,11 +113,15 @@ public sealed class DmarcReportIngestor(
         // The same JSON shape the entity's value converter writes, so a row inserted here
         // reads back through EF unchanged. Null rather than '[]' when there is nothing.
         var reportErrors = parsed.ReportErrors.Count == 0 ? null : JsonSerializer.Serialize(parsed.ReportErrors);
+        // Always written, '[]' included: a clean parse is recorded as clean, and only rows
+        // from before the column are null, which readers show as "not recorded".
+        var parseMessages = DmarcReportParseMessagesJson.Serialize(parsed.ValidationMessages);
+        var parseWarningCount = parsed.ValidationMessages.Count(x => DmarcReportParseSeverity.IsAtLeastWarning(x.Severity));
         var rows = await db.Database.ExecuteSqlInterpolatedAsync($@"
             INSERT INTO dmarc_report
-                (""Id"", ""DomainId"", ""ReportSourceId"", ""OrganizationName"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"", ""RecordCount"", ""IngestedAtUtc"", ""PublishedPolicy"", ""SubdomainPolicy"", ""PublishedPct"", ""DkimAlignment"", ""SpfAlignment"", ""ReportFormat"", ""NonexistentSubdomainPolicy"", ""Testing"", ""DiscoveryMethod"", ""Generator"", ""ReportErrors"")
+                (""Id"", ""DomainId"", ""ReportSourceId"", ""OrganizationName"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"", ""RecordCount"", ""IngestedAtUtc"", ""PublishedPolicy"", ""SubdomainPolicy"", ""PublishedPct"", ""DkimAlignment"", ""SpfAlignment"", ""ReportFormat"", ""NonexistentSubdomainPolicy"", ""Testing"", ""DiscoveryMethod"", ""Generator"", ""ReportErrors"", ""ParseMessages"", ""ParseWarningCount"", ""ParseMessagesOrigin"")
             VALUES
-                ({id}, {domainId}, {reportSourceId}, {organizationName}, {reportId}, {parsed.RangeBeginUtc}, {parsed.RangeEndUtc}, {parsed.RecordCount}, {DateTime.UtcNow}, {parsed.PublishedPolicy}, {parsed.SubdomainPolicy}, {parsed.PublishedPct}, {parsed.DkimAlignment}, {parsed.SpfAlignment}, {parsed.ReportFormat}, {parsed.NonexistentSubdomainPolicy}, {parsed.Testing}, {parsed.DiscoveryMethod}, {parsed.Generator}, {reportErrors}::jsonb)
+                ({id}, {domainId}, {reportSourceId}, {organizationName}, {reportId}, {parsed.RangeBeginUtc}, {parsed.RangeEndUtc}, {parsed.RecordCount}, {DateTime.UtcNow}, {parsed.PublishedPolicy}, {parsed.SubdomainPolicy}, {parsed.PublishedPct}, {parsed.DkimAlignment}, {parsed.SpfAlignment}, {parsed.ReportFormat}, {parsed.NonexistentSubdomainPolicy}, {parsed.Testing}, {parsed.DiscoveryMethod}, {parsed.Generator}, {reportErrors}::jsonb, {parseMessages}::jsonb, {parseWarningCount}, {DmarcReportParseOrigins.Ingest})
             ON CONFLICT (""DomainId"", ""ReportId"", ""RangeBeginUtc"", ""RangeEndUtc"") DO NOTHING;
             ", ct);
 

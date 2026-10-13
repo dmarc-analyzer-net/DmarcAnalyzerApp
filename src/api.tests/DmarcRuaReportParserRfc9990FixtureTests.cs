@@ -12,8 +12,7 @@ namespace DmarcAnalyzer.Api.Tests;
 /// The first test keeps the fixture honest: it must validate against the RFC's own XSD,
 /// so a failure in the parser tests is a parser problem and not a broken fixture.
 /// The others pin what the parser does with a conformant RFC 9990 report, including
-/// every message it produces. The plan's later PRs change them on purpose, one message
-/// at a time; the namespace line becomes info in PR 2.
+/// every message it produces. Change them on purpose, one message at a time.
 /// </para>
 /// </summary>
 public sealed class DmarcRuaReportParserRfc9990FixtureTests
@@ -21,8 +20,9 @@ public sealed class DmarcRuaReportParserRfc9990FixtureTests
     private const string FixtureName = "sample-rfc9990-aggregate.xml";
     private const string DmarcBisNamespace = "urn:ietf:params:xml:ns:dmarc-2.0";
 
-    private const string NamespaceMessage =
-        "warning: stripped XML namespace 'urn:ietf:params:xml:ns:dmarc-2.0' for compatibility";
+    /// <summary>Info, not a warning: it is how every RFC 9990 report is read.</summary>
+    private static readonly DmarcReportParseMessage NamespaceMessage =
+        DmarcReportParseMessage.Info("stripped XML namespace 'urn:ietf:params:xml:ns:dmarc-2.0' for compatibility");
 
     private readonly DmarcRuaReportParser _parser = new();
 
@@ -69,6 +69,9 @@ public sealed class DmarcRuaReportParserRfc9990FixtureTests
         Assert.Null(result.PublishedPct);
 
         Assert.False(result.HasValidationErrors, string.Join(" | ", result.ValidationMessages));
+        // The one message is info, so a conformant report has no warnings either: once
+        // messages are shown, the format itself must not read as repaired.
+        Assert.False(result.HasValidationWarnings, string.Join(" | ", result.ValidationMessages));
         Assert.Equal([NamespaceMessage], result.ValidationMessages);
     }
 
@@ -95,7 +98,8 @@ public sealed class DmarcRuaReportParserRfc9990FixtureTests
         Assert.Equal(
             [
                 NamespaceMessage,
-                "warning: replaced unrecognised reason/type value 'not_a_reason' with 'other' for compatibility",
+                DmarcReportParseMessage.Warning(
+                    "replaced unrecognised reason/type value 'not_a_reason' with 'other' for compatibility"),
             ],
             result.ValidationMessages);
     }

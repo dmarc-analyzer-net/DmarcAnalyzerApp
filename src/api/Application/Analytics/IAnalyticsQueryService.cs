@@ -28,4 +28,10 @@ public interface IAnalyticsQueryService
 
     /// <summary>Failing sources across every visible domain, optionally filtered to one client.</summary>
     Task<ThreatFeedDto> GetThreatFeedAsync(int days, int limit, Guid? clientId, CancellationToken ct);
+
+    /// <summary>
+    /// What the parser had to say about one domain's reports in the window — the repairs it
+    /// made and the schema problems it saw — plus how many reports it cannot speak for.
+    /// </summary>
+    Task<ReportNotesDto?> GetReportNotesAsync(Guid domainId, int days, bool includeInfo, CancellationToken ct);
 }

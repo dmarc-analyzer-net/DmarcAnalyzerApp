@@ -29,7 +29,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         }
 
         using var sourceBuffer = CopyToMemory(xmlStream);
-        var normalizationMessages = new List<string>();
+        var normalizationMessages = new List<DmarcReportParseMessage>();
         var normalized = NormalizeReportXml(sourceBuffer, normalizationMessages);
         using var parserStream = normalized.Stream;
 
@@ -104,20 +104,21 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
         var emptyRecords = deserializedRecords.Length - records.Length;
         if (emptyRecords > 0)
         {
-            normalizationMessages.Add(
-                $"warning: dropped {emptyRecords} record(s) reporting no source IP and no messages");
+            normalizationMessages.Add(DmarcReportParseMessage.Warning(
+                $"dropped {emptyRecords} record(s) reporting no source IP and no messages"));
         }
 
         // Before the messages are collected: an unusable pct adds one.
         var publishedPct = ParsePercent(policyPublished.Percent, normalizationMessages);
 
+        // Deduplicated as a whole, not only per repair: the schema validator repeats itself
+        // (one 'lang' error per attribute it finds), and the stored list is read by people.
         var validationMessages = aggregateReport.ValidationEvents
-            .Select(x =>
-            {
-                var severity = x.Severity == XmlSeverityType.Error ? "error" : "warning";
-                return $"{severity}: {x.Message}";
-            })
+            .Select(x => x.Severity == XmlSeverityType.Error
+                ? DmarcReportParseMessage.Error(x.Message)
+                : DmarcReportParseMessage.Warning(x.Message))
             .Concat(normalizationMessages)
+            .Distinct()
             .ToArray();
 
         // Read from the root namespace before the normalization pass stripped it. It is
@@ -146,7 +147,9 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             policyPublished.Domain ?? string.Empty,
             feedback.Record?.Length ?? 0,
             records,
-            aggregateReport.HasWarnings || normalizationMessages.Count > 0,
+            // Warnings are the warning-severity messages, not "anything was said": an
+            // info message is how an RFC 9990 report is read, and must not flag it.
+            validationMessages.Any(x => x.Severity == DmarcReportParseSeverity.Warning),
             aggregateReport.HasErrors,
             validationMessages,
             MapDisposition(policyPublished.P),
@@ -319,7 +322,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
     /// to 100 still becomes 100, with a warning, since there is no better reading of it.
     /// </para>
     /// </summary>
-    private static int? ParsePercent(string? percent, List<string> normalizationMessages)
+    private static int? ParsePercent(string? percent, List<DmarcReportParseMessage> normalizationMessages)
     {
         if (percent is null)
         {
@@ -331,8 +334,8 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             return value;
         }
 
-        normalizationMessages.Add(
-            $"warning: replaced unusable policy_published/pct value '{percent.Trim()}' with '100' for compatibility");
+        normalizationMessages.Add(DmarcReportParseMessage.Warning(
+            $"replaced unusable policy_published/pct value '{percent.Trim()}' with '100' for compatibility"));
         return 100;
     }
 
@@ -434,7 +437,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
     /// duplicate. In that case this returns null and the report fails as before.
     /// </para>
     /// </summary>
-    private static XDocument? TryCloseTruncatedDocument(Stream xmlStream, List<string> normalizationMessages)
+    private static XDocument? TryCloseTruncatedDocument(Stream xmlStream, List<DmarcReportParseMessage> normalizationMessages)
     {
         try
         {
@@ -466,8 +469,8 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
             var closing = string.Concat(open.Select(x => $"</{x}>"));
             var document = XDocument.Parse(trimmed + closing);
 
-            normalizationMessages.Add(
-                $"warning: completed a truncated document by closing {closing} for compatibility");
+            normalizationMessages.Add(DmarcReportParseMessage.Warning(
+                $"completed a truncated document by closing {closing} for compatibility"));
 
             return document;
         }
@@ -551,7 +554,7 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
 
     private static NormalizedReport NormalizeReportXml(
         Stream xmlStream,
-        List<string> normalizationMessages)
+        List<DmarcReportParseMessage> normalizationMessages)
     {
         try
         {
@@ -696,7 +699,10 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                         .Remove();
                 }
 
-                normalizationMessages.Add($"warning: stripped XML namespace '{reportNamespace}' for compatibility");
+                // Info, not a warning: this is how every RFC 9990 report is read, and once
+                // messages are shown a warning here would flag the whole format as faulty.
+                normalizationMessages.Add(DmarcReportParseMessage.Info(
+                    $"stripped XML namespace '{reportNamespace}' for compatibility"));
                 updated = true;
             }
 
@@ -798,20 +804,20 @@ public sealed class DmarcRuaReportParser : IDmarcReportParser
                     continue;
                 }
 
-                string message;
+                DmarcReportParseMessage message;
                 if (repair.Fallback is null)
                 {
                     element.Remove();
-                    message =
-                        $"warning: removed unusable {parent}/{element.Name.LocalName} value " +
-                        $"'{original}' for compatibility";
+                    message = DmarcReportParseMessage.Warning(
+                        $"removed unusable {parent}/{element.Name.LocalName} value " +
+                        $"'{original}' for compatibility");
                 }
                 else
                 {
                     element.Value = repair.Fallback;
-                    message =
-                        $"warning: replaced unrecognised {parent}/{element.Name.LocalName} value " +
-                        $"'{original}' with '{repair.Fallback}' for compatibility";
+                    message = DmarcReportParseMessage.Warning(
+                        $"replaced unrecognised {parent}/{element.Name.LocalName} value " +
+                        $"'{original}' with '{repair.Fallback}' for compatibility");
                 }
 
                 updated = true;

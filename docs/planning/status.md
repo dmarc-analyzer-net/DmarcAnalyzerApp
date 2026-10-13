@@ -99,10 +99,32 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     threw in the serializer and lost the report; no substitute for an optional tag
     is honest (`sp=none` on a `p=reject` domain reads as a regression), so absent
     is the reading.
-  - Not yet: storing or showing parser messages (PR 2), record inspection using
-    the new fields (PR 3), and the backfill of rows stored before the columns
-    existed (PR 4). Record inspection still reports an absent `pct` as 100 until
-    PR 3.
+  - Not yet: record inspection using the new fields (PR 3), and the backfill of
+    rows stored before the columns existed (PR 4). Record inspection still reports
+    an absent `pct` as 100 until PR 3.
+- Parser messages stored and shown (PR 2 of [`rfc-9990-plan.md`](rfc-9990-plan.md);
+  closes the backlog item *Surface parse validation warnings instead of discarding
+  them*):
+  - `DmarcReportParseResult.ValidationMessages` is a list of `(Severity, Text)`
+    records — `info`, `warning`, `error` — instead of prefixed strings. The RFC 9990
+    namespace strip is `info`; repairs that change meaning (values replaced or
+    removed, empty `policy_evaluated` read as `fail`, dropped empty records, a
+    completed truncated document) stay `warning`; schema errors stay `error`.
+    `HasValidationWarnings` counts warnings only, so a conformant RFC 9990 report
+    has none. The list is deduplicated as a whole, not only per repair.
+  - `dmarc_report.ParseMessages` (jsonb), `ParseWarningCount` and
+    `ParseMessagesOrigin` are written at ingest, `[]` included. NULL on rows from
+    before the columns means "not recorded", and every reader says so.
+  - `GET /analytics/domains/{id}/report-notes?days=&includeInfo=`: reports in the
+    window with warnings, newest first, capped at 100, plus counts of reports in
+    the window, with warnings, with info only, and not recorded.
+  - A "Report notes" card on the domain detail page, rendered only when a report in
+    the window carries a note; rows expand to their messages, backfilled rows are
+    marked "re-parsed later", and the summary line names what the list cannot
+    show. On an existing install the not-recorded count is nearly everything until
+    PR 4's backfill or new ingests fill it.
+  - "Re-parsed on *date*" is not possible yet: no column records when a backfill
+    wrote the messages. PR 4 needs to add one if the date is wanted.
 - Worker-driven mailbox ingestion orchestration:
   - sequential mailbox processing
   - checkpointed sync (`LastProcessedUid`, `LastProcessedUidValidity`)

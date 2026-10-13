@@ -656,3 +656,45 @@ export function summarizeDigestModes(modes: Record<string, DigestMode>): string 
   ].filter((x): x is string => x !== null)
   return parts.length ? parts.join(', ') : 'No clients'
 }
+
+// --- Report notes (GET /api/v1/analytics/domains/{domainId}/report-notes) ---
+
+export type ReportNoteSeverity = 'info' | 'warning' | 'error'
+
+/** One thing the parser had to say about a report. */
+export type ReportNoteMessage = {
+  severity: ReportNoteSeverity
+  text: string
+}
+
+/** `ingest`: written by the parser that stored the report. `backfill`: re-parsed later from the archive. */
+export type ReportNoteOrigin = 'ingest' | 'backfill'
+
+export type ReportNote = {
+  id: string
+  organizationName: string
+  reportId: string
+  rangeBeginUtc: string
+  rangeEndUtc: string
+  ingestedAtUtc: string
+  origin: ReportNoteOrigin
+  /** Warning and error entries in `messages`. */
+  warningCount: number
+  messages: ReportNoteMessage[]
+}
+
+/**
+ * Reports in the window with something to say, newest first, capped at `limit`. The
+ * counts cover the whole window: `reportsNotRecorded` is reports stored before notes
+ * were kept, for which "no notes" would be a claim.
+ */
+export type ReportNotes = {
+  window: AnalyticsWindow
+  includeInfo: boolean
+  limit: number
+  reportsInWindow: number
+  reportsWithWarnings: number
+  reportsWithInfoOnly: number
+  reportsNotRecorded: number
+  reports: ReportNote[]
+}

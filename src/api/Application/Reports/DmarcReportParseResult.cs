@@ -9,6 +9,9 @@ namespace DmarcAnalyzer.Api.Application.Reports;
 /// <param name="DiscoveryMethod">psl or treewalk; null when not sent.</param>
 /// <param name="Generator">report_metadata/generator, trimmed and capped; null when not sent.</param>
 /// <param name="ReportErrors">report_metadata/error values as sent; empty when none.</param>
+/// <param name="HasValidationWarnings">Any warning-severity message. Info messages do not count.</param>
+/// <param name="HasValidationErrors">Any schema validation error.</param>
+/// <param name="ValidationMessages">Everything the parser had to say, deduplicated, in the order it was said.</param>
 public sealed record DmarcReportParseResult(
     string OrganizationName,
     string ReportId,
@@ -19,7 +22,7 @@ public sealed record DmarcReportParseResult(
     IReadOnlyList<DmarcReportRecordParseResult> Records,
     bool HasValidationWarnings,
     bool HasValidationErrors,
-    IReadOnlyList<string> ValidationMessages,
+    IReadOnlyList<DmarcReportParseMessage> ValidationMessages,
     string PublishedPolicy,
     string? SubdomainPolicy,
     int? PublishedPct,

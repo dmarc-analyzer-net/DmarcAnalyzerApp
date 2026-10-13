@@ -42,6 +42,7 @@ import {
   type RecordComparison,
   type RecordInspection,
   type SourceDetail,
+  type ReportNotes,
   type TlsRptRecord,
   type TlsRptSummary,
   type ValueCount,
@@ -57,6 +58,7 @@ import type {
   MtaStsPolicyResponse,
 } from '@/lib/entities'
 import { formatCompact, formatFullDate, formatPercent, formatRelativeOrDate, formatShortDate } from '@/lib/format'
+import { NOTE_SEVERITY_BADGE, noteCountLabel, reportNotesSummary } from '@/lib/report-notes'
 import { useHostnames } from '@/lib/use-hostnames'
 import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
@@ -1170,6 +1172,136 @@ function noSessionsCopy(status: TlsRptRecord['status']): ReactNode {
  * Loads on its own because it waits on a live DNS lookup, the same reason the
  * record inspection card does.
  */
+/**
+ * The rows: one per report, expanding to its messages. Exported for the test; the card
+ * below owns loading and the include-info toggle.
+ */
+export function ReportNotesList({ notes }: { notes: ReportNotes }) {
+  const [expanded, setExpanded] = useState<string | null>(null)
+
+  return (
+    <div className="mt-4 space-y-3">
+      <p className="text-sm text-secondary">{reportNotesSummary(notes)}</p>
+      {notes.reports.length > 0 ? (
+        <ul className="divide-y divide-border border-t border-border">
+          {notes.reports.map((report) => {
+            const open = expanded === report.id
+            return (
+              <li key={report.id}>
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  onClick={() => setExpanded(open ? null : report.id)}
+                  className="flex w-full items-center gap-3 py-2 text-left text-sm"
+                >
+                  <Icon name={open ? 'chevron-down' : 'chevron-right'} size={14} className="shrink-0 text-secondary" />
+                  <span className="min-w-0 flex-1 truncate">{report.organizationName}</span>
+                  <span className="shrink-0 font-mono text-xs text-secondary">
+                    {formatShortDate(report.rangeBeginUtc)} – {formatShortDate(report.rangeEndUtc)}
+                  </span>
+                  {/* A backfilled row's notes come from the parser that re-read the archived
+                      mail, not necessarily the one that stored the records. */}
+                  {report.origin === 'backfill' ? <Badge variant="muted">re-parsed later</Badge> : null}
+                  <Badge variant={report.warningCount > 0 ? 'warning' : 'neutral'}>{noteCountLabel(report)}</Badge>
+                </button>
+                {open ? (
+                  <ul className="mb-3 ml-7 space-y-1.5">
+                    {report.messages.map((message, index) => (
+                      <li key={index} className="flex items-start gap-2 text-sm">
+                        <Badge variant={NOTE_SEVERITY_BADGE[message.severity]} className="shrink-0">
+                          {message.severity}
+                        </Badge>
+                        <span className="min-w-0 break-words font-mono text-xs">{message.text}</span>
+                      </li>
+                    ))}
+                    <li className="font-mono text-xs text-secondary">report id {report.reportId}</li>
+                  </ul>
+                ) : null}
+              </li>
+            )
+          })}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * What the parser had to say about this domain's reports: the values it repaired, the
+ * records it dropped, the schema problems it saw. Quiet by default — most domains, most of
+ * the time, have nothing here — so the card renders only when a report in the window
+ * carries a note. A load failure is shown rather than hidden, because a card that vanishes
+ * on error reads as "nothing wrong".
+ */
+function ReportNotesCard({ domainId, days }: { domainId: string; days: AnalyticsDays }) {
+  const [notes, setNotes] = useState<ReportNotes | null>(null)
+  const [busy, setBusy] = useState(true)
+  const [includeInfo, setIncludeInfo] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const requestSeq = useRef(0)
+
+  // Same loader idiom as the other panels in this file (see RecordInspectionCard).
+  const loadNotes = useCallback(async () => {
+    const seq = ++requestSeq.current
+    setBusy(true)
+    setError(null)
+    try {
+      const payload = await fetchJson<ReportNotes>(
+        `/api/v1/analytics/domains/${domainId}/report-notes?days=${days}&includeInfo=${includeInfo}`,
+      )
+      if (seq === requestSeq.current) setNotes(payload)
+    } catch (loadError) {
+      if (seq === requestSeq.current) {
+        setError(loadError instanceof Error ? loadError.message : 'Failed to load report notes')
+      }
+    } finally {
+      if (seq === requestSeq.current) setBusy(false)
+    }
+  }, [domainId, days, includeInfo])
+
+  useEffect(() => {
+    void loadNotes()
+  }, [loadNotes])
+
+  // Nothing while the first load is in flight, and nothing when there is nothing to say.
+  // The toggle lives inside the card, so once shown the card stays through a reload.
+  const nothingToShow = !notes || (notes.reportsWithWarnings === 0 && notes.reportsWithInfoOnly === 0)
+  if (!error && nothingToShow) {
+    return null
+  }
+
+  return (
+    <Card pad>
+      <CardHeader
+        title="Report notes"
+        description="What the parser had to say about this domain's reports: values it repaired, records it dropped, and schema problems it saw"
+        actions={
+          <label className="flex items-center gap-2 text-sm text-secondary">
+            <input
+              type="checkbox"
+              checked={includeInfo}
+              onChange={(event) => setIncludeInfo(event.target.checked)}
+            />
+            Show informational notes
+          </label>
+        }
+      />
+      {error ? (
+        <p className="mt-4 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+          {error}
+        </p>
+      ) : busy ? (
+        <div className="flex items-center gap-2 py-4 text-sm text-secondary">
+          <Icon name="loader-circle" size={16} className="animate-spin" />
+          Loading report notes…
+        </div>
+      ) : notes ? (
+        <ReportNotesList notes={notes} />
+      ) : null}
+    </Card>
+  )
+}
+
 function TlsReportingCard({ domainId, days }: { domainId: string; days: AnalyticsDays }) {
   const [summary, setSummary] = useState<TlsRptSummary | null>(null)
   const [busy, setBusy] = useState(true)
@@ -2250,6 +2382,8 @@ export function DomainDetailPage() {
           <TransportSecurityCard domainId={domainId} />
 
           <TlsReportingCard domainId={domainId} days={days} />
+
+          <ReportNotesCard domainId={domainId} days={days} />
 
           {/* The centerpiece: per-source breakdown */}
           <Card>

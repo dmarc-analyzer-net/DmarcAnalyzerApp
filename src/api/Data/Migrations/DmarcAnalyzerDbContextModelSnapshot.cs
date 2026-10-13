@@ -428,6 +428,16 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<string>("ParseMessages")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("ParseMessagesOrigin")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int?>("ParseWarningCount")
+                        .HasColumnType("integer");
+
                     b.Property<int?>("PublishedPct")
                         .HasColumnType("integer");
 

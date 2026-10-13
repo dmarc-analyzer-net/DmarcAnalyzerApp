@@ -228,6 +228,9 @@ A normalized aggregate (RUA) report, resolved to a `domain`.
 | `DiscoveryMethod` | max 16, **nullable** — `psl` or `treewalk` |
 | `Generator` | max 256, **nullable** — `report_metadata/generator`, trimmed and capped |
 | `ReportErrors` | jsonb, **nullable** — `report_metadata/error` values as sent, as a JSON list of strings. RFC 9990 allows one, RFC 7489 allowed several. NULL when none were sent. |
+| `ParseMessages` | jsonb, **nullable** — what the parser had to say: `[{ "severity": "info" \| "warning" \| "error", "text": "..." }]`, deduplicated. `info` is how the report was read (the RFC 9990 namespace strip), `warning` a repair that changed meaning or a schema warning, `error` a schema error. **NULL means the row predates the column — "not recorded", not "no problems"**; a clean parse stores `[]`. |
+| `ParseWarningCount` | **nullable** — count of `warning` and `error` entries, so a list can filter without reading JSON. NULL exactly when `ParseMessages` is. |
+| `ParseMessagesOrigin` | max 16, **nullable** — `ingest` when the parser that stored the row wrote them, `backfill` when a later parser re-read the archived mail. NULL exactly when `ParseMessages` is. |
 | — | **`(DomainId, ReportId, RangeBeginUtc, RangeEndUtc)` unique — the dedup key** |
 
 The `policy_published` columns were added after initial ingestion, so reports

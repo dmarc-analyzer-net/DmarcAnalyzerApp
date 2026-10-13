@@ -47,6 +47,26 @@ public sealed class DmarcReport
     /// <summary><c>report_metadata/error</c> values as sent; null when the reporter sent none.</summary>
     public List<string>? ReportErrors { get; set; }
 
+    /// <summary>
+    /// What the parser had to say about this report, as the JSON
+    /// <see cref="Application.Reports.DmarcReportParseMessagesJson"/> writes:
+    /// <c>[{ "severity": "warning", "text": "..." }]</c>, deduplicated. null means the row
+    /// predates this column — "not recorded", not "no problems". An empty list is a clean
+    /// parse. Kept as the JSON string so a query can tell an empty list from a null one.
+    /// </summary>
+    public string? ParseMessages { get; set; }
+    /// <summary>
+    /// Count of warning and error entries in <see cref="ParseMessages"/>, so a list can
+    /// filter without reading JSON. null exactly when <see cref="ParseMessages"/> is.
+    /// </summary>
+    public int? ParseWarningCount { get; set; }
+    /// <summary>
+    /// <c>ingest</c> when the parser that stored the report wrote them, <c>backfill</c> when
+    /// a later parser re-read the archived mail (<see cref="Application.Reports.DmarcReportParseOrigins"/>).
+    /// null exactly when <see cref="ParseMessages"/> is.
+    /// </summary>
+    public string? ParseMessagesOrigin { get; set; }
+
     public Domain? Domain { get; set; }
     public ReportSource? ReportSource { get; set; }
     public ICollection<DmarcReportRecord> Records { get; set; } = new List<DmarcReportRecord>();

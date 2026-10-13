@@ -196,6 +196,40 @@ public sealed class DmarcReportIngestorTests(PostgresFixture postgres) : IAsyncL
         Assert.Null(v1.ReportErrors);
     }
 
+    /// <summary>
+    /// The parser's messages go through the raw insert as JSON, with their warning count
+    /// and origin. A clean parse stores an empty list, not null: null is "not recorded", and
+    /// only rows from before the column have it.
+    /// </summary>
+    [Fact]
+    public async Task ParseMessagesRoundTripThroughTheRawInsert()
+    {
+        var noisy = Report("acme.test", "report-noisy") with
+        {
+            ValidationMessages =
+            [
+                DmarcReportParseMessage.Info("stripped XML namespace 'urn:ietf:params:xml:ns:dmarc-2.0' for compatibility"),
+                DmarcReportParseMessage.Warning("replaced unrecognised policy_evaluated/dkim value 'x' with 'fail' for compatibility"),
+                DmarcReportParseMessage.Error("The element 'feedback' has invalid child element 'extra'."),
+            ],
+        };
+
+        Assert.Equal(DmarcReportIngestOutcome.Inserted, await IngestAsync(noisy));
+        Assert.Equal(DmarcReportIngestOutcome.Inserted, await IngestAsync(Report("acme.test", "report-clean")));
+
+        await using var db = postgres.CreateContext();
+        var stored = await db.DmarcReports.SingleAsync(x => x.ReportId == "report-noisy");
+        Assert.NotNull(stored.ParseMessages);
+        Assert.Equal(noisy.ValidationMessages, DmarcReportParseMessagesJson.Deserialize(stored.ParseMessages));
+        Assert.Equal(2, stored.ParseWarningCount);
+        Assert.Equal(DmarcReportParseOrigins.Ingest, stored.ParseMessagesOrigin);
+
+        var clean = await db.DmarcReports.SingleAsync(x => x.ReportId == "report-clean");
+        Assert.Equal("[]", clean.ParseMessages);
+        Assert.Equal(0, clean.ParseWarningCount);
+        Assert.Equal(DmarcReportParseOrigins.Ingest, clean.ParseMessagesOrigin);
+    }
+
     private async Task<DmarcReportIngestOutcome> IngestAsync(DmarcReportParseResult parsed)
     {
         await using var db = postgres.CreateContext();

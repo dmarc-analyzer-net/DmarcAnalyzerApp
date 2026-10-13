@@ -312,3 +312,38 @@ public sealed record ThreatFeedDto(
     long TotalFailedMessages,
     int TotalSources,
     IReadOnlyList<ThreatSourceDto> Sources);
+
+/// <summary>
+/// What the parser had to say about one report (GET .../report-notes). The messages are
+/// from the parser that stored the row (origin <c>ingest</c>) or from a later one that
+/// re-read the archived mail (origin <c>backfill</c>), which is why the origin travels
+/// with them: a backfilled row's notes describe today's parser, not necessarily the one
+/// that stored the records.
+/// </summary>
+public sealed record ReportNoteDto(
+    Guid Id,
+    string OrganizationName,
+    string ReportId,
+    DateTime RangeBeginUtc,
+    DateTime RangeEndUtc,
+    DateTime IngestedAtUtc,
+    string Origin,
+    int WarningCount,
+    IReadOnlyList<Reports.DmarcReportParseMessage> Messages);
+
+/// <summary>
+/// Reports in the window with something to say, newest first, capped. The counts cover
+/// the whole window, so the panel can say how many it shows and how many it cannot see:
+/// <paramref name="ReportsNotRecorded"/> is reports stored before messages were kept, for
+/// which "no notes" would be a claim. Info-only reports are listed only when
+/// <paramref name="IncludeInfo"/> was asked for, but counted either way.
+/// </summary>
+public sealed record ReportNotesDto(
+    AnalyticsWindowDto Window,
+    bool IncludeInfo,
+    int Limit,
+    int ReportsInWindow,
+    int ReportsWithWarnings,
+    int ReportsWithInfoOnly,
+    int ReportsNotRecorded,
+    IReadOnlyList<ReportNoteDto> Reports);

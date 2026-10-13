@@ -109,8 +109,8 @@ public sealed class DmarcRuaReportParserEmptyResultTests
         Assert.True(result.HasValidationWarnings);
         Assert.Contains(
             result.ValidationMessages,
-            x => x.Contains("policy_evaluated", StringComparison.OrdinalIgnoreCase)
-                 && x.Contains("fail", StringComparison.OrdinalIgnoreCase));
+            x => x.Text.Contains("policy_evaluated", StringComparison.OrdinalIgnoreCase)
+                 && x.Text.Contains("fail", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -129,7 +129,7 @@ public sealed class DmarcRuaReportParserEmptyResultTests
         Assert.Equal("fail", record.SpfResult);
         Assert.DoesNotContain(
             result.ValidationMessages,
-            x => x.Contains("policy_evaluated", StringComparison.OrdinalIgnoreCase));
+            x => x.Text.Contains("policy_evaluated", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
@@ -204,7 +204,7 @@ public sealed class DmarcRuaReportParserEmptyResultTests
 
         var spf = Assert.Single(Assert.Single(result.Records).SpfAuthResults);
         Assert.Equal("permerror", spf.Result);
-        Assert.Contains(result.ValidationMessages, x => x.Contains("'wat'", StringComparison.Ordinal));
+        Assert.Contains(result.ValidationMessages, x => x.Text.Contains("'wat'", StringComparison.Ordinal));
     }
 
     /// <summary>A reporter putting a number in disposition. Observed as '15'.</summary>
@@ -218,7 +218,7 @@ public sealed class DmarcRuaReportParserEmptyResultTests
         Assert.Equal(2, result.Records.Count);
         var record = Assert.Single(result.Records, x => x.SourceIp == "192.0.2.1");
         Assert.Equal("none", record.Disposition);
-        Assert.Contains(result.ValidationMessages, x => x.Contains("'15'", StringComparison.Ordinal));
+        Assert.Contains(result.ValidationMessages, x => x.Text.Contains("'15'", StringComparison.Ordinal));
     }
 
     /// <summary>Pass is an RFC 9990 action disposition, not a valid unnamespaced v1 value.</summary>
@@ -231,7 +231,7 @@ public sealed class DmarcRuaReportParserEmptyResultTests
 
         var record = Assert.Single(result.Records, x => x.SourceIp == "192.0.2.1");
         Assert.Equal("none", record.Disposition);
-        Assert.Contains(result.ValidationMessages, x => x.Contains("'pass'", StringComparison.Ordinal));
+        Assert.Contains(result.ValidationMessages, x => x.Text.Contains("'pass'", StringComparison.Ordinal));
     }
 
     /// <summary>The substituted value has to be named, or the repair is untraceable.</summary>
@@ -244,9 +244,9 @@ public sealed class DmarcRuaReportParserEmptyResultTests
 
         Assert.Contains(
             result.ValidationMessages,
-            x => x.Contains("policy_evaluated/dkim", StringComparison.Ordinal)
-                 && x.Contains("'bogus'", StringComparison.Ordinal)
-                 && x.Contains("'fail'", StringComparison.Ordinal));
+            x => x.Text.Contains("policy_evaluated/dkim", StringComparison.Ordinal)
+                 && x.Text.Contains("'bogus'", StringComparison.Ordinal)
+                 && x.Text.Contains("'fail'", StringComparison.Ordinal));
     }
 
     /// <summary>Values the enums genuinely accept must survive untouched.</summary>
@@ -263,7 +263,7 @@ public sealed class DmarcRuaReportParserEmptyResultTests
 
         var spf = Assert.Single(Assert.Single(result.Records).SpfAuthResults);
         Assert.Equal(reported, spf.Result);
-        Assert.DoesNotContain(result.ValidationMessages, x => x.Contains("unrecognised", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.ValidationMessages, x => x.Text.Contains("unrecognised", StringComparison.Ordinal));
     }
 
     private static string ReportWithSpfAuthResult(string spfResult) => $"""
@@ -310,7 +310,7 @@ public sealed class DmarcRuaReportParserEmptyResultTests
         Assert.Equal("permerror", spf.Result);
 
         // The giveaway that this is not our substitution: no warning was raised.
-        Assert.DoesNotContain(result.ValidationMessages, x => x.Contains("unrecognised", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.ValidationMessages, x => x.Text.Contains("unrecognised", StringComparison.Ordinal));
     }
 
     // --- Truncated documents ---------------------------------------------------------
@@ -355,7 +355,7 @@ public sealed class DmarcRuaReportParserEmptyResultTests
         Assert.Equal(7, record.MessageCount);
         // The enum repair still runs, which it could not when the load failed.
         Assert.Equal("none", record.Disposition);
-        Assert.Contains(result.ValidationMessages, x => x.Contains("truncated document", StringComparison.Ordinal));
+        Assert.Contains(result.ValidationMessages, x => x.Text.Contains("truncated document", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -368,7 +368,7 @@ public sealed class DmarcRuaReportParserEmptyResultTests
         var result = _parser.Parse(stream);
 
         Assert.Single(result.Records);
-        Assert.Contains(result.ValidationMessages, x => x.Contains("truncated document", StringComparison.Ordinal));
+        Assert.Contains(result.ValidationMessages, x => x.Text.Contains("truncated document", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -394,6 +394,6 @@ public sealed class DmarcRuaReportParserEmptyResultTests
         var result = _parser.Parse(stream);
 
         Assert.Single(result.Records);
-        Assert.DoesNotContain(result.ValidationMessages, x => x.Contains("truncated", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.ValidationMessages, x => x.Text.Contains("truncated", StringComparison.Ordinal));
     }
 }

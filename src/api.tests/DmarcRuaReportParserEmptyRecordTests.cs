@@ -129,7 +129,7 @@ public sealed class DmarcRuaReportParserEmptyRecordTests
         Assert.Equal(1, result.RecordCount);
         Assert.Contains(
             result.ValidationMessages,
-            x => x.Contains("dropped 1 record(s)", StringComparison.Ordinal));
+            x => x.Text.Contains("dropped 1 record(s)", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -158,8 +158,8 @@ public sealed class DmarcRuaReportParserEmptyRecordTests
         Assert.True(result.HasValidationWarnings);
         Assert.Contains(
             result.ValidationMessages,
-            x => x.Contains("dropped 2 record(s)", StringComparison.Ordinal)
-                 && x.Contains("no source IP and no messages", StringComparison.Ordinal));
+            x => x.Text.Contains("dropped 2 record(s)", StringComparison.Ordinal)
+                 && x.Text.Contains("no source IP and no messages", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -223,6 +223,6 @@ public sealed class DmarcRuaReportParserEmptyRecordTests
         var result = _parser.Parse(stream);
 
         Assert.Single(result.Records);
-        Assert.DoesNotContain(result.ValidationMessages, x => x.Contains("dropped", StringComparison.Ordinal));
+        Assert.DoesNotContain(result.ValidationMessages, x => x.Text.Contains("dropped", StringComparison.Ordinal));
     }
 }
