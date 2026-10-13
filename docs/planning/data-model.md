@@ -231,6 +231,7 @@ A normalized aggregate (RUA) report, resolved to a `domain`.
 | `ParseMessages` | jsonb, **nullable** — what the parser had to say: `[{ "severity": "info" \| "warning" \| "error", "text": "..." }]`, deduplicated. `info` is how the report was read (the RFC 9990 namespace strip), `warning` a repair that changed meaning or a schema warning, `error` a schema error. **NULL means the row predates the column — "not recorded", not "no problems"**; a clean parse stores `[]`. |
 | `ParseWarningCount` | **nullable** — count of `warning` and `error` entries, so a list can filter without reading JSON. NULL exactly when `ParseMessages` is. |
 | `ParseMessagesOrigin` | max 16, **nullable** — `ingest` when the parser that stored the row wrote them, `backfill` when a later parser re-read the archived mail. NULL exactly when `ParseMessages` is. |
+| `ParseMessagesRecordedAtUtc` | **nullable** — when `ParseMessages` was written: the ingest time, or the re-parse for a backfilled row (shown as "re-parsed on"). NULL on rows that predate the column. |
 | — | **`(DomainId, ReportId, RangeBeginUtc, RangeEndUtc)` unique — the dedup key** |
 
 The `policy_published` columns were added after initial ingestion, so reports
@@ -518,6 +519,39 @@ succeed?" to survive a restart too.
 | `LastSuccessAtUtc`, `LastAttemptAtUtc` | nullable |
 | `LastError` | max 4000, nullable — cleared by the next success, so a lingering value always means "still failing" |
 | `UpdatedAtUtc` | |
+
+### `report_backfill_state`
+The report backfill's cursor and last result, one row. Fills the RFC 9990
+report-level columns on `dmarc_report` rows stored before they existed, by
+re-reading their mail from the report-mail archive. In the database for the
+same reasons as `backup_stream_state`, but with its own columns: a timestamp
+watermark cannot address an object, so the resume point is a key.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK |
+| `Status` | max 16 — `idle` \| `requested` \| `running` \| `completed` \| `failed` |
+| `Pass` | max 16, nullable — `collect` or `apply` while running, or the pass a failed run stopped in |
+| `LastObjectKey` | max 1024, nullable — the last archive object fully processed in the collect pass; a resumed walk lists with `StartAfter` set to it |
+| `RequestedAtUtc`, `StartedAtUtc`, `FinishedAtUtc` | nullable |
+| `ObjectsSeen`, `PayloadsParsed`, `Matched`, `Updated`, `Skipped`, `Ambiguous`, `Failed` | counts, cumulative across a resume |
+| `LastError` | max 4000, nullable — cleared when a later run completes |
+| `UpdatedAtUtc` | |
+
+### `report_backfill_candidate`
+What one archived copy of a report said, staged by the collect pass. Copies of
+one report can be archived under different days (one per mailbox that received
+it), so nothing is written to `dmarc_report` until every copy has been seen and
+they agree. Cleared when the apply pass ends.
+
+| Column | Notes |
+|---|---|
+| `Id` | PK |
+| `DmarcReportId` | FK → `dmarc_report`, **cascade**, indexed |
+| `ObjectKey` | max 1024 — the archive object; **unique with `DmarcReportId`**, so the same object seen again stages nothing twice |
+| `ValuesHash` | max 64 — SHA-256 over the columns below; the apply pass compares hashes, not columns |
+| `ReportFormat`, `NonexistentSubdomainPolicy`, `Testing`, `DiscoveryMethod`, `Generator`, `ReportErrors`, `PublishedPct`, `ParseMessages`, `ParseWarningCount` | the `dmarc_report` columns the backfill writes, as the current parser read them |
+| `CollectedAtUtc` | |
 
 ---
 

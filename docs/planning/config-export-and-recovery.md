@@ -178,6 +178,16 @@ exists, the archive is evidence, not a restore path.** Ship the archive first if
 that is the faster win, but do not describe it as recovery until the replay side
 lands.
 
+**The archive is also what makes a later re-parse possible.** When the parser
+learns to read something it used to discard — the RFC 9990 report-level fields
+and the parser's own messages were the first case — reports already stored can
+only be corrected from their original mail, and the archive is the only place
+that mail still exists once mailbox retention has run. The report backfill
+(`/admin/report-backfill/*`, see the API contract) walks the archive prefix and
+fills those columns on rows stored before they existed; a report that was never
+archived stays "not recorded". That is a reason to enable the archive before
+the need arises, not after.
+
 **The compliance trap.** Archiving to a bucket does not reduce the data footprint —
 it relocates it. An archive with no expiry re-creates precisely the unbounded
 second copy that bounded mailbox retention was introduced to remove, and it does it

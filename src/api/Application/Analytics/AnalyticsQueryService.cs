@@ -993,6 +993,7 @@ public sealed class AnalyticsQueryService(
                 x.ParseMessagesOrigin,
                 x.ParseWarningCount,
                 x.ParseMessages,
+                x.ParseMessagesRecordedAtUtc,
             })
             .ToListAsync(ct);
 
@@ -1013,7 +1014,8 @@ public sealed class AnalyticsQueryService(
                     x.IngestedAtUtc,
                     x.ParseMessagesOrigin ?? Reports.DmarcReportParseOrigins.Ingest,
                     x.ParseWarningCount ?? 0,
-                    Reports.DmarcReportParseMessagesJson.Deserialize(x.ParseMessages!)))
+                    Reports.DmarcReportParseMessagesJson.Deserialize(x.ParseMessages!),
+                    x.ParseMessagesRecordedAtUtc))
                 .ToList());
     }
 

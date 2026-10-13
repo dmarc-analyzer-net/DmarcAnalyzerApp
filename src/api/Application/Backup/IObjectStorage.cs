@@ -13,9 +13,18 @@ public enum ObjectStorageVersioning
     Disabled,
 }
 
+/// <summary>One object as a listing describes it.</summary>
+public sealed record StoredObject(string Key, long Size, DateTime LastModifiedUtc);
+
+/// <summary>
+/// One page of a listing. <paramref name="NextContinuationToken"/> is null on the last page.
+/// </summary>
+public sealed record ObjectListing(IReadOnlyList<StoredObject> Objects, string? NextContinuationToken);
+
 /// <summary>
 /// The bucket, as much of it as backup needs. Deliberately small: put an object, ask how
-/// big a stored object is, copy one key to another, and ask whether versioning is on.
+/// big a stored object is, copy one key to another, list a prefix, and ask whether
+/// versioning is on.
 /// <para>
 /// It exists as an interface mainly so the offload pass is testable without a bucket —
 /// the alternative is a feature whose only test is a live S3 account.
@@ -44,6 +53,18 @@ public interface IObjectStorage
 
     /// <summary>Server-side copy, used to keep a dated snapshot beside config/latest.json.</summary>
     Task CopyAsync(string sourceKey, string destinationKey, CancellationToken ct);
+
+    /// <summary>
+    /// One page of the objects under <paramref name="prefix"/>, in key order.
+    /// <para>
+    /// Two ways to continue: <paramref name="continuationToken"/> from the previous page,
+    /// for the next page of the same walk; or <paramref name="startAfter"/>, a key, for a
+    /// walk that resumes after a restart — a token is opaque and short-lived, a key means
+    /// the same thing to any client at any time. <c>startAfter</c> only applies to the first
+    /// page of a walk; pass the token after that.
+    /// </para>
+    /// </summary>
+    Task<ObjectListing> ListAsync(string prefix, string? startAfter, string? continuationToken, CancellationToken ct);
 
     /// <summary>Whether the bucket versions overwrites — surfaced on the status card.</summary>
     Task<ObjectStorageVersioning> GetVersioningAsync(CancellationToken ct);

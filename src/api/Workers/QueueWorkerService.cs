@@ -55,6 +55,7 @@ public sealed class QueueWorkerService(
                 await RunMtaStsPassIfDueAsync(stoppingToken);
                 await RunBackupOffloadPassIfDueAsync(stoppingToken);
                 await RunMailboxRetentionPassIfDueAsync(stoppingToken);
+                await RunReportBackfillIfRequestedAsync(stoppingToken);
                 consecutiveFailures = 0;
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
@@ -358,6 +359,31 @@ public sealed class QueueWorkerService(
         {
             logger.LogError(ex, "Mailbox retention pass failed; ingestion is unaffected");
             _lastMailboxRetentionUtc = DateTime.UtcNow;
+        }
+    }
+
+    /// <summary>
+    /// Runs the report backfill when an admin has asked for one, or resumes one a previous
+    /// worker left running. No cadence: the request row is the gate, and the service itself
+    /// records its own failures in that row, so this only has to catch what escapes.
+    /// Swallows its exceptions like the passes above, and for the same reason — it walks a
+    /// bucket, and must not stop ingestion when the bucket is unreachable.
+    /// </summary>
+    private async Task RunReportBackfillIfRequestedAsync(CancellationToken ct)
+    {
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var backfill = scope.ServiceProvider.GetRequiredService<IReportBackfillService>();
+            await backfill.RunIfRequestedAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Report backfill pass failed; ingestion is unaffected");
         }
     }
 

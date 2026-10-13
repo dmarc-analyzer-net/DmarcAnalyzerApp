@@ -42,6 +42,7 @@ public static class AuditEvents
 
     public const string AlertStatusChanged = "alert.status.changed";
     public const string RetentionPurgeRan = "retention.purge.ran";
+    public const string ReportBackfillRequested = "admin.report_backfill.requested";
     public const string NotificationRecipientAdded = "notification_recipient.added";
     public const string NotificationRecipientRemoved = "notification_recipient.removed";
     public const string NotificationRecipientRoutingChanged = "notification_recipient.routing.changed";

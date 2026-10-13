@@ -694,6 +694,8 @@ export type ReportNote = {
   /** Warning and error entries in `messages`. */
   warningCount: number
   messages: ReportNoteMessage[]
+  /** When the messages were written: ingest time, or the re-parse for a backfilled row. null on rows that predate the column. */
+  messagesRecordedAtUtc: string | null
 }
 
 /**

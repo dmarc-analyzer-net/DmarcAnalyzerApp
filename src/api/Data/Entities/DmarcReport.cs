@@ -66,6 +66,12 @@ public sealed class DmarcReport
     /// null exactly when <see cref="ParseMessages"/> is.
     /// </summary>
     public string? ParseMessagesOrigin { get; set; }
+    /// <summary>
+    /// When <see cref="ParseMessages"/> was written. At ingest that is the ingest time; for
+    /// a backfilled row it is when the archived mail was re-read, which is what the
+    /// console shows as "re-parsed on". null on rows that predate the column.
+    /// </summary>
+    public DateTime? ParseMessagesRecordedAtUtc { get; set; }
 
     public Domain? Domain { get; set; }
     public ReportSource? ReportSource { get; set; }

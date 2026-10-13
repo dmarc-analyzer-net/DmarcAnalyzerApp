@@ -148,6 +148,7 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddScoped<IBackupOffloadService, BackupOffloadService>();
     workerBuilder.Services.AddScoped<IMailboxRetentionPlanner, MailboxRetentionPlanner>();
     workerBuilder.Services.AddScoped<IMailboxRetentionService, MailboxRetentionService>();
+    workerBuilder.Services.AddScoped<IReportBackfillService, ReportBackfillService>();
     // Registered before the loop: hosted services start in order, so this refuses
     // a second worker before that worker connects to any mailbox.
     workerBuilder.Services.AddHostedService<WorkerSingleInstanceLock>();
@@ -312,6 +313,7 @@ builder.Services.AddScoped<IConfigImportPreviewService, ConfigImportPreviewServi
 builder.Services.AddScoped<IBackupOffloadService, BackupOffloadService>();
 builder.Services.AddScoped<IMailboxRetentionPlanner, MailboxRetentionPlanner>();
 builder.Services.AddScoped<IMailboxRetentionService, MailboxRetentionService>();
+builder.Services.AddScoped<IReportBackfillService, ReportBackfillService>();
 
 if (mode == AppMode.All)
 {

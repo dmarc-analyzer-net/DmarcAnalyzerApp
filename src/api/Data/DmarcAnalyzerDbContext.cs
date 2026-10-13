@@ -36,6 +36,8 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
     public DbSet<UserClientGrant> UserClientGrants => Set<UserClientGrant>();
     public DbSet<UserIdentity> UserIdentities => Set<UserIdentity>();
     public DbSet<BackupStreamState> BackupStreamStates => Set<BackupStreamState>();
+    public DbSet<ReportBackfillState> ReportBackfillStates => Set<ReportBackfillState>();
+    public DbSet<ReportBackfillCandidate> ReportBackfillCandidates => Set<ReportBackfillCandidate>();
     public DbSet<MtaStsState> MtaStsStates => Set<MtaStsState>();
     public DbSet<MtaStsPolicy> MtaStsPolicies => Set<MtaStsPolicy>();
     public DbSet<SmtpTlsReport> SmtpTlsReports => Set<SmtpTlsReport>();
@@ -502,6 +504,39 @@ public sealed class DmarcAnalyzerDbContext(DbContextOptions<DmarcAnalyzerDbConte
             entity.Property(x => x.LastError).HasMaxLength(4000);
             // One row per stream; the offload upserts on this.
             entity.HasIndex(x => x.Stream).IsUnique();
+        });
+
+        modelBuilder.Entity<ReportBackfillState>(entity =>
+        {
+            entity.ToTable("report_backfill_state");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Status).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.Pass).HasMaxLength(16);
+            // An S3 key is at most 1024 bytes.
+            entity.Property(x => x.LastObjectKey).HasMaxLength(1024);
+            entity.Property(x => x.LastError).HasMaxLength(4000);
+        });
+
+        modelBuilder.Entity<ReportBackfillCandidate>(entity =>
+        {
+            entity.ToTable("report_backfill_candidate");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ObjectKey).HasMaxLength(1024).IsRequired();
+            entity.Property(x => x.ValuesHash).HasMaxLength(64).IsRequired();
+            entity.Property(x => x.ReportFormat).HasMaxLength(16).IsRequired();
+            entity.Property(x => x.NonexistentSubdomainPolicy).HasMaxLength(16);
+            entity.Property(x => x.DiscoveryMethod).HasMaxLength(16);
+            entity.Property(x => x.Generator).HasMaxLength(256);
+            entity.Property(x => x.ReportErrors).HasColumnType("jsonb");
+            entity.Property(x => x.ParseMessages).HasColumnType("jsonb").IsRequired();
+            // The same object seen twice stages nothing twice.
+            entity.HasIndex(x => new { x.DmarcReportId, x.ObjectKey }).IsUnique();
+
+            // Staged values are worthless without their report; a purged report takes them.
+            entity.HasOne(x => x.Report)
+                .WithMany()
+                .HasForeignKey(x => x.DmarcReportId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<MtaStsState>(entity =>

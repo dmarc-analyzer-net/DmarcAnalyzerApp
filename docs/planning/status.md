@@ -99,7 +99,8 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     threw in the serializer and lost the report; no substitute for an optional tag
     is honest (`sp=none` on a `p=reject` domain reads as a regression), so absent
     is the reading.
-  - Not yet: the backfill of rows stored before the columns existed (PR 4).
+  - Rows stored before the columns existed are filled by the backfill below, as far
+    as the report-mail archive reaches.
 - Parser messages stored and shown (PR 2 of [`rfc-9990-plan.md`](rfc-9990-plan.md);
   closes the backlog item *Surface parse validation warnings instead of discarding
   them*):
@@ -121,8 +122,8 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     marked "re-parsed later", and the summary line names what the list cannot
     show. On an existing install the not-recorded count is nearly everything until
     PR 4's backfill or new ingests fill it.
-  - "Re-parsed on *date*" is not possible yet: no column records when a backfill
-    wrote the messages. PR 4 needs to add one if the date is wanted.
+  - Backfilled rows say "re-parsed on *date*": `ParseMessagesRecordedAtUtc` records
+    when the messages were written (added with the backfill, PR 4 below).
 - Record inspection uses the report-level fields (PR 3 of
   [`rfc-9990-plan.md`](rfc-9990-plan.md)):
   - `observed` carries `pct`, `np` and `testing` as nullable, plus the report's
@@ -137,6 +138,23 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - The console shows the live `np=`, `t=` and `psd=` values beside the DMARC
     record, the two new rows, which RFC the observing report follows, and the
     reporter's `generator` on the source-detail reporters list.
+- Backfill of the report-level fields from the report-mail archive (PR 4 of
+  [`rfc-9990-plan.md`](rfc-9990-plan.md)):
+  - `GET /admin/report-backfill/preview`, `GET .../status`, `POST .../run` (admin,
+    audited). The run is queued for the worker; `report_backfill_state` is its
+    cursor and result, `report_backfill_candidate` its staging table.
+  - Two passes: collect walks `{Backup:Prefix}/reports/` and stages what each
+    archived copy says, apply writes a report only when every copy of it agrees.
+    Matching is by the dedup key and the row's own source; rows with a format,
+    copies from another source and unknown reports are skipped; disagreeing copies
+    leave the row unchanged. Report-level columns only — records are never
+    rewritten. Resumes after the last object key it finished.
+  - `IObjectStorage.ListAsync` (ListObjectsV2 with `StartAfter` and the continuation
+    token) is the one new storage operation.
+  - Reaches only what the archive holds: pushed (`api`) sources and installs
+    without `Backup:ArchiveReportMail` stay "not recorded", and `preview` says how
+    many. Enabling the archive is what makes a later re-parse possible.
+  - No console page: the three endpoints are the operator surface for now.
 - Worker-driven mailbox ingestion orchestration:
   - sequential mailbox processing
   - checkpointed sync (`LastProcessedUid`, `LastProcessedUidValidity`)

@@ -1226,8 +1226,14 @@ export function ReportNotesList({ notes }: { notes: ReportNotes }) {
                     {formatShortDate(report.rangeBeginUtc)} – {formatShortDate(report.rangeEndUtc)}
                   </span>
                   {/* A backfilled row's notes come from the parser that re-read the archived
-                      mail, not necessarily the one that stored the records. */}
-                  {report.origin === 'backfill' ? <Badge variant="muted">re-parsed later</Badge> : null}
+                      mail on that date, not necessarily the one that stored the records. */}
+                  {report.origin === 'backfill' ? (
+                    <Badge variant="muted">
+                      {report.messagesRecordedAtUtc
+                        ? `re-parsed on ${formatShortDate(report.messagesRecordedAtUtc)}`
+                        : 're-parsed later'}
+                    </Badge>
+                  ) : null}
                   <Badge variant={report.warningCount > 0 ? 'warning' : 'neutral'}>{noteCountLabel(report)}</Badge>
                 </button>
                 {open ? (

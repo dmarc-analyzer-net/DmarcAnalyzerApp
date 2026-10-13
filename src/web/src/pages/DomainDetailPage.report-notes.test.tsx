@@ -26,6 +26,7 @@ function note(overrides: Partial<ReportNote> = {}): ReportNote {
       { severity: 'info', text: "stripped XML namespace 'urn:ietf:params:xml:ns:dmarc-2.0' for compatibility" },
       { severity: 'warning', text: "replaced unrecognised policy_evaluated/dkim value 'x' with 'fail' for compatibility" },
     ],
+    messagesRecordedAtUtc: '2026-10-02T12:00:00Z',
     ...overrides,
   }
 }
@@ -91,8 +92,18 @@ describe('ReportNotesList', () => {
     expect(screen.getByText('report id abc-123')).toBeInTheDocument()
   })
 
-  it('marks a backfilled row as re-parsed, since its notes come from a later parser', () => {
+  it('marks a backfilled row with the day it was re-parsed, since its notes come from that parser', () => {
     render(<ReportNotesList notes={notes({ reports: [note({ origin: 'backfill' })] })} />)
+
+    expect(screen.getByText('re-parsed on Oct 2')).toBeInTheDocument()
+  })
+
+  it('still says a backfilled row was re-parsed when the day was not recorded', () => {
+    render(
+      <ReportNotesList
+        notes={notes({ reports: [note({ origin: 'backfill', messagesRecordedAtUtc: null })] })}
+      />,
+    )
 
     expect(screen.getByText('re-parsed later')).toBeInTheDocument()
   })

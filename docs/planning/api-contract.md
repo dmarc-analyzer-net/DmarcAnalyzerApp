@@ -118,6 +118,9 @@ never a redirect) and `GET /mta-sts/ask?domain=` (Caddy's on-demand-TLS gate —
 | POST | `/admin/backup/offload` | admin — runs an offload pass now rather than waiting for the worker |
 | GET | `/admin/mailbox-retention/preview` | admin — per source: cutoff, eligible messages, and which rule is suspending it; deletes nothing |
 | POST | `/admin/mailbox-retention/purge` | admin — **irreversible**: expunges report mail past retention from the mailbox. Opt-in per source, suspended for any source serving a client under legal hold |
+| GET | `/admin/report-backfill/preview` | admin — what a backfill of report-level fields from the report-mail archive would find: archived objects and their day range, reports stored before the fields existed, and how many certainly stay unrecorded (pushed sources, reports older than the archive). Writes nothing |
+| GET | `/admin/report-backfill/status` | admin — the backfill's cursor row: `status` (`idle`/`requested`/`running`/`completed`/`failed`), `pass` (`collect`/`apply`), the resume key, counts, last error |
+| POST | `/admin/report-backfill/run` | admin — queues a backfill for the worker (202 with the cursor row). 409 without an archive bucket, or while one is requested or running. A failed run resumes where it stopped. Audited |
 | GET | `/alerts` | any — alert history (`days`, default 30); client-scoped for viewers |
 | PATCH | `/alerts/{id}` | staff — triage: `status` of `open`, `acknowledged` or `closed` |
 | POST | `/admin/alerts/evaluate` | admin — evaluates alert rules now |
@@ -384,6 +387,36 @@ client and as totals) and `tlsReportsDeleted` (the orphan sweep: report rows
 whose every policy aged out, swept past the longest retention any client has).
 In a **dry run** the orphan count reads 0 unless reports are already
 policy-less — the policies it would delete still exist when the sweep counts.
+
+### Report backfill
+
+`/admin/report-backfill/*` fills the report-level columns that arrived with the
+RFC 9990 work (`ReportFormat`, `np`, `testing`, `discovery_method`, `generator`,
+`error`, a nullable `pct`, and the parser's messages) on reports stored before
+those columns existed, by re-reading their mail from the report-mail archive
+with the current parser. It reaches only what the archive holds — mailbox and S3
+sources on installs with `Backup:ArchiveReportMail` on, within the archive's
+lifecycle — so reports pushed to `POST /reports`, and reports from installs
+without the archive, stay "not recorded"; `preview` says how many that is.
+
+The run is queued for the worker (`202`), not executed in the request, and
+`status` is how progress is read. Two passes: **collect** walks the archive and
+stages what each copy says (copies of one report can be archived under
+different days, one per mailbox that received it), **apply** writes a report
+only once the whole archive has been seen and every copy of it agrees. Copies
+that disagree leave the row unchanged and count as `ambiguous`. Copies archived
+by a source other than the one whose row was stored, rows that already have a
+format, and reports the database does not hold count as `skipped`; objects that
+cannot be fetched or parsed count as `failed` and do not stop the run. It writes
+**report-level columns only** — records, and historic `pass` dispositions stored
+as `none`, are not rewritten.
+
+Resumable at the object: the collect pass saves the last key it finished, a
+restarted worker resumes after it, and a run that failed resumes on the next
+`run` with its staged copies intact. A report already written has a format and
+is skipped, which is what makes re-running safe. Counts are cumulative across a
+resume. Backfilled rows carry `parseMessagesOrigin: backfill` and the re-parse
+date, which the report-notes panel shows as "re-parsed on".
 
 ## 7) Reports and Records
 

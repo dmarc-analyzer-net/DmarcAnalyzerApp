@@ -147,6 +147,36 @@ public sealed class S3ObjectStorage : IObjectStorage, IDisposable
         }, ct);
     }
 
+    /// <inheritdoc />
+    public async Task<ObjectListing> ListAsync(
+        string prefix, string? startAfter, string? continuationToken, CancellationToken ct)
+    {
+        var client = Require();
+
+        var response = await client.ListObjectsV2Async(new ListObjectsV2Request
+        {
+            BucketName = _options.Bucket,
+            Prefix = prefix,
+            // The SDK ignores StartAfter once a ContinuationToken is set, which is the
+            // documented S3 behaviour; passing both is harmless and keeps the call simple.
+            StartAfter = string.IsNullOrEmpty(startAfter) ? null : startAfter,
+            ContinuationToken = string.IsNullOrEmpty(continuationToken) ? null : continuationToken,
+            MaxKeys = 1000,
+        }, ct);
+
+        var objects = (response.S3Objects ?? [])
+            // Directory markers — zero-byte keys ending in a slash, which a console creates
+            // when you make a folder — are not objects anyone archived.
+            .Where(x => !x.Key.EndsWith('/') && x.Size is > 0)
+            .Select(x => new StoredObject(
+                x.Key, x.Size ?? 0, (x.LastModified ?? DateTime.UtcNow).ToUniversalTime()))
+            .ToList();
+
+        return new ObjectListing(
+            objects,
+            response.IsTruncated == true ? response.NextContinuationToken : null);
+    }
+
     /// <summary>
     /// Asked once per pass and never allowed to fail the pass. A backup that refuses to
     /// run because it could not read a bucket setting is worse than an unversioned one —

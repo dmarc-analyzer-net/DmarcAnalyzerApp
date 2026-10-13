@@ -435,6 +435,9 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<DateTime?>("ParseMessagesRecordedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<int?>("ParseWarningCount")
                         .HasColumnType("integer");
 
@@ -1001,6 +1004,130 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                         .IsUnique();
 
                     b.ToTable("notification_recipient_client", (string)null);
+                });
+
+            modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.ReportBackfillCandidate", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CollectedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DiscoveryMethod")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<Guid>("DmarcReportId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Generator")
+                        .HasMaxLength(256)
+                        .HasColumnType("character varying(256)");
+
+                    b.Property<string>("NonexistentSubdomainPolicy")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("ObjectKey")
+                        .IsRequired()
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<string>("ParseMessages")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("ParseWarningCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("PublishedPct")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ReportErrors")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("ReportFormat")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<bool?>("Testing")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("ValuesHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DmarcReportId", "ObjectKey")
+                        .IsUnique();
+
+                    b.ToTable("report_backfill_candidate", (string)null);
+                });
+
+            modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.ReportBackfillState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Ambiguous")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Failed")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("FinishedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)");
+
+                    b.Property<string>("LastObjectKey")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)");
+
+                    b.Property<int>("Matched")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ObjectsSeen")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Pass")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int>("PayloadsParsed")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("RequestedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("Skipped")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("StartedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<int>("Updated")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("report_backfill_state", (string)null);
                 });
 
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.ReportIngestReceipt", b =>
@@ -1674,6 +1801,17 @@ namespace DmarcAnalyzer.Api.Data.Migrations
                     b.Navigation("Client");
 
                     b.Navigation("Recipient");
+                });
+
+            modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.ReportBackfillCandidate", b =>
+                {
+                    b.HasOne("DmarcAnalyzer.Api.Data.Entities.DmarcReport", "Report")
+                        .WithMany()
+                        .HasForeignKey("DmarcReportId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Report");
                 });
 
             modelBuilder.Entity("DmarcAnalyzer.Api.Data.Entities.ReportIngestReceipt", b =>

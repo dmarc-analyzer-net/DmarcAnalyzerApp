@@ -334,7 +334,8 @@ public sealed record ReportNoteDto(
     DateTime IngestedAtUtc,
     string Origin,
     int WarningCount,
-    IReadOnlyList<Reports.DmarcReportParseMessage> Messages);
+    IReadOnlyList<Reports.DmarcReportParseMessage> Messages,
+    DateTime? MessagesRecordedAtUtc = null);
 
 /// <summary>
 /// Reports in the window with something to say, newest first, capped. The counts cover

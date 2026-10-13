@@ -77,6 +77,16 @@ public sealed class BackupOffloadTests
 
         public Task<ObjectStorageVersioning> GetVersioningAsync(CancellationToken ct)
             => Task.FromResult(Versioning);
+
+        public Task<ObjectListing> ListAsync(string prefix, string? startAfter, string? continuationToken, CancellationToken ct)
+            => Task.FromResult(new ObjectListing(
+                Objects.Keys
+                    .Where(k => k.StartsWith(prefix, StringComparison.Ordinal)
+                        && (startAfter is null || string.CompareOrdinal(k, startAfter) > 0))
+                    .OrderBy(k => k, StringComparer.Ordinal)
+                    .Select(k => new StoredObject(k, Objects[k].Length, DateTime.UtcNow))
+                    .ToList(),
+                null));
     }
 
     private static DmarcAnalyzerDbContext NewDb()
