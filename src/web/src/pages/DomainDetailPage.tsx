@@ -1290,13 +1290,12 @@ function ReportNotesCard({ domainId, days }: { domainId: string; days: Analytics
         <p className="mt-4 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
           {error}
         </p>
-      ) : busy ? (
-        <div className="flex items-center gap-2 py-4 text-sm text-secondary">
-          <Icon name="loader-circle" size={16} className="animate-spin" />
-          Loading report notes…
-        </div>
       ) : notes ? (
-        <ReportNotesList notes={notes} />
+        // Kept mounted through a reload (the toggle), so an expanded row stays expanded;
+        // the list only dims while the new answer is on its way.
+        <div className={cn(busy && 'opacity-60')}>
+          <ReportNotesList notes={notes} />
+        </div>
       ) : null}
     </Card>
   )
