@@ -204,7 +204,12 @@ public sealed record SourceDkimAuthDto(string Domain, string Selector, string Re
 public sealed record SourceSpfAuthDto(string Domain, string Scope, string Result, long Messages);
 
 /// <summary>Which reporting organisations observed this source, and how much of it.</summary>
-public sealed record SourceReporterDto(string OrganizationName, int Reports, long Messages);
+/// <param name="Generator">
+/// The reporter's self-description from report_metadata/generator (RFC 9990), when any of
+/// its reports in the window carried one; null for RFC 7489 reporters and rows stored
+/// before it was recorded.
+/// </param>
+public sealed record SourceReporterDto(string OrganizationName, int Reports, long Messages, string? Generator = null);
 
 /// <summary>
 /// The source drill-down: everything the reports say about one IP sending for

@@ -468,11 +468,33 @@ DNS and the reported policy disagree.
 
 Each `comparison[]` entry carries a `status` of `match`, `differs`, `inherited`,
 or `not_reported`, plus an optional `note`. **Only `differs` is a finding.**
-`inherited` means DNS publishes no such tag and RFC 7489 derives it — this is
+`inherited` means DNS publishes no such tag and the RFC derives it — this is
 how an absent `sp` is reported, since a subdomain policy that is not published
-cannot disagree with anything. `not_reported` means the tag is published but the
-reporter sent no value for it. A published `sp` weaker than `p` is a genuine gap
-and surfaces in `dmarc.issues[]` rather than as a comparison difference.
+cannot disagree with anything, and how an absent `np` is reported (RFC 9989
+derives it from `sp`, then `p`). `not_reported` means the tag is published but
+the reporter sent no value for it. A published `sp` weaker than `p` is a genuine
+gap and surfaces in `dmarc.issues[]` rather than as a comparison difference.
+
+The rows are `p`, `sp`, `pct`, `adkim`, `aspf`, `np` and `t`. `observed` carries
+`pct`, `nonexistentSubdomainPolicy` and `testing` as nullable, plus
+`reportFormat` (`rfc7489` or `rfc9990`; null on a report stored before the
+format was recorded, in which case a null tag is "not recorded" rather than "not
+sent", and the note says so):
+
+- `pct`: an unpublished tag compares as 100 (its RFC 7489 default). An
+  unreported one is `not_reported` — RFC 9990 removed `pct` from the report, so
+  every conformant RFC 9990 report sends none, and no 100 is invented. A record
+  that still publishes `pct=` while the newest report is RFC 9990 gets a
+  `dmarc.issues[]` entry: RFC 9989 removed `pct` and replaced it with `t`.
+- `np`: not published is `inherited`; not sent is `not_reported`; otherwise
+  `match` or `differs`.
+- `t`: not published compares as `n` (its fixed default). Not sent — every
+  RFC 7489 report — is `not_reported`, and the note says which RFC the report
+  follows.
+
+`dmarc` also carries the live `testing`, `publicSuffixDomain` and
+`nonExistentSubdomainPolicy` values (RFC 9989 `t=`, `psd=`, `np=`), null when
+not published.
 
 ### GET `/analytics/domains/{domainId}/mta-sts`
 

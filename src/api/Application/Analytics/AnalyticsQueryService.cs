@@ -523,12 +523,15 @@ public sealed class AnalyticsQueryService(
                 OrganizationName = g.Key,
                 Reports = g.Select(r => r.DmarcReportId).Distinct().Count(),
                 Messages = g.Sum(r => (long)r.MessageCount),
+                // One reporter, one generator in practice; Max picks a value over a null when
+                // a reporter's older rows predate the column, and translates to SQL.
+                Generator = g.Max(r => r.DmarcReport!.Generator),
             })
             .OrderByDescending(x => x.Messages)
             .Take(10)
             .ToListAsync(ct);
         var reporters = reporterRows
-            .Select(x => new SourceReporterDto(x.OrganizationName, x.Reports, x.Messages))
+            .Select(x => new SourceReporterDto(x.OrganizationName, x.Reports, x.Messages, x.Generator))
             .ToArray();
 
         return new SourceDetailDto(

@@ -57,6 +57,9 @@ public sealed class RecordInspectionService(
                 x.SpfAlignment,
                 x.RangeEndUtc,
                 x.OrganizationName,
+                x.NonexistentSubdomainPolicy,
+                x.Testing,
+                x.ReportFormat,
             })
             .FirstOrDefaultAsync(ct);
 
@@ -70,15 +73,32 @@ public sealed class RecordInspectionService(
             : new ObservedPolicyDto(
                 observedRow.PublishedPolicy,
                 observedRow.SubdomainPolicy,
-                // The column is nullable now (RFC 9990 reports send no pct), but this DTO
-                // and its pct comparison still assume a value; 100 is what the parser used
-                // to store for an absent tag, so the API answer is unchanged until the
-                // comparison learns to say "not reported" (docs/planning/rfc-9990-plan.md, PR 3).
-                observedRow.PublishedPct ?? 100,
+                observedRow.PublishedPct,
                 observedRow.DkimAlignment,
                 observedRow.SpfAlignment,
                 observedRow.RangeEndUtc,
-                observedRow.OrganizationName);
+                observedRow.OrganizationName,
+                observedRow.NonexistentSubdomainPolicy,
+                observedRow.Testing,
+                observedRow.ReportFormat);
+
+        // RFC 9989 removed pct and added t. A record that still publishes pct= while the
+        // newest report is RFC 9990 is publishing a tag that reporter does not apply, which
+        // is a record problem rather than a disagreement, so it goes with the record's issues.
+        if (dmarc.Pct is not null && observed?.ReportFormat == Reports.DmarcReportFormats.Rfc9990)
+        {
+            dmarc = dmarc with
+            {
+                Issues =
+                [
+                    .. dmarc.Issues,
+                    $"pct={dmarc.Pct} is published, but {observed.ReportedBy} reports under RFC 9990, " +
+                    "where RFC 9989 removed pct and replaced it with t. Receivers on the new " +
+                    "RFC apply the full policy regardless; remove pct=, and publish t=y if a " +
+                    "trial run is wanted.",
+                ],
+            };
+        }
 
         return new RecordInspectionDto(
             domain.Id,
@@ -459,20 +479,94 @@ public sealed class RecordInspectionService(
             return [];
         }
 
-        var publishedPct = dmarc.Pct ?? 100;
-
         return
         [
             new RecordComparisonDto("p", dmarc.Policy, observed.Policy,
                 Verdict(string.Equals(dmarc.Policy, observed.Policy, StringComparison.OrdinalIgnoreCase))),
             CompareSubdomainPolicy(dmarc, observed),
-            new RecordComparisonDto("pct", publishedPct.ToString(), observed.Pct.ToString(),
-                Verdict(publishedPct == observed.Pct)),
+            ComparePct(dmarc, observed),
             new RecordComparisonDto("adkim", dmarc.DkimAlignment ?? "r", NormalizeAlignment(observed.DkimAlignment),
                 Verdict(AlignmentMatches(dmarc.DkimAlignment, observed.DkimAlignment))),
             new RecordComparisonDto("aspf", dmarc.SpfAlignment ?? "r", NormalizeAlignment(observed.SpfAlignment),
                 Verdict(AlignmentMatches(dmarc.SpfAlignment, observed.SpfAlignment))),
+            CompareNonexistentSubdomainPolicy(dmarc, observed),
+            CompareTesting(dmarc, observed),
         ];
+    }
+
+    /// <summary>
+    /// pct defaults to 100 in DNS (RFC 7489 §6.3), so an unpublished tag still compares.
+    /// An unreported one does not: RFC 9990 removed pct from the report, so every
+    /// conformant RFC 9990 report sends none, and comparing against an invented 100 would
+    /// read a pct=50 record as a disagreement with a reporter that said nothing.
+    /// </summary>
+    private static RecordComparisonDto ComparePct(DnsDmarcRecordDto dmarc, ObservedPolicyDto observed)
+    {
+        var publishedPct = dmarc.Pct ?? 100;
+
+        if (observed.Pct is null)
+        {
+            return new RecordComparisonDto("pct", publishedPct.ToString(), null,
+                RecordComparisonStatus.NotReported,
+                $"{observed.ReportedBy} sent no pct value — RFC 9990 reports do not carry one.");
+        }
+
+        return new RecordComparisonDto("pct", publishedPct.ToString(), observed.Pct.Value.ToString(),
+            Verdict(publishedPct == observed.Pct.Value));
+    }
+
+    /// <summary>
+    /// np follows sp's rule: not published means derived — from sp, and failing that from p
+    /// (RFC 9989 §5.3) — so there is nothing a reporter can contradict. Not sent is
+    /// "not reported", except on a row stored before np was recorded, where it is not known.
+    /// </summary>
+    private static RecordComparisonDto CompareNonexistentSubdomainPolicy(DnsDmarcRecordDto dmarc, ObservedPolicyDto observed)
+    {
+        if (dmarc.NonExistentSubdomainPolicy is null)
+        {
+            var (inheritedFrom, inherited) = dmarc.SubdomainPolicy is null
+                ? ("p", dmarc.Policy ?? "none")
+                : ("sp", dmarc.SubdomainPolicy);
+            return new RecordComparisonDto("np", null, observed.NonexistentSubdomainPolicy,
+                RecordComparisonStatus.Inherited,
+                $"Not published — non-existent subdomains inherit {inheritedFrom}={inherited}.");
+        }
+
+        if (observed.NonexistentSubdomainPolicy is null)
+        {
+            return new RecordComparisonDto("np", dmarc.NonExistentSubdomainPolicy, null,
+                RecordComparisonStatus.NotReported,
+                observed.ReportFormat is null
+                    ? $"{observed.ReportedBy}'s last report was stored before np was recorded."
+                    : $"{observed.ReportedBy} sent no np value in its last report.");
+        }
+
+        return new RecordComparisonDto("np", dmarc.NonExistentSubdomainPolicy, observed.NonexistentSubdomainPolicy,
+            Verdict(string.Equals(dmarc.NonExistentSubdomainPolicy, observed.NonexistentSubdomainPolicy, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    /// <summary>
+    /// t has a fixed default (n, RFC 9989 §5.3), so an unpublished tag compares as n. Not
+    /// sent is the norm rather than the exception: no RFC 7489 report carries a testing flag,
+    /// so the note says which it was, and a row stored before it was recorded says that.
+    /// </summary>
+    private static RecordComparisonDto CompareTesting(DnsDmarcRecordDto dmarc, ObservedPolicyDto observed)
+    {
+        var published = (dmarc.Testing ?? "n").ToLowerInvariant();
+
+        if (observed.Testing is null)
+        {
+            var note = observed.ReportFormat switch
+            {
+                null => $"{observed.ReportedBy}'s last report was stored before testing was recorded.",
+                Reports.DmarcReportFormats.Rfc7489 => $"{observed.ReportedBy}'s last report is RFC 7489, which carries no testing flag.",
+                _ => $"{observed.ReportedBy} sent no testing value in its last report.",
+            };
+            return new RecordComparisonDto("t", published, null, RecordComparisonStatus.NotReported, note);
+        }
+
+        var reported = observed.Testing.Value ? "y" : "n";
+        return new RecordComparisonDto("t", published, reported, Verdict(published == reported));
     }
 
     /// <summary>

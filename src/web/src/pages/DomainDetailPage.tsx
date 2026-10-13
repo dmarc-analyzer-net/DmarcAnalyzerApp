@@ -32,6 +32,7 @@ import {
   type AnalyticsDays,
   type DomainDrilldown,
   type DomainSourceAnalytics,
+  type DnsDmarcRecord,
   type DrilldownDomain,
   type DrilldownTotals,
   type EnforcementGuidance,
@@ -444,6 +445,7 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
             title="DMARC (live DNS)"
             statusMeta={LOOKUP_STATUS_META[inspection.dmarc.status]}
             raw={inspection.dmarc.raw}
+            meta={describeRfc9989Tags(inspection.dmarc)}
             issues={inspection.dmarc.issues}
           />
           <RecordBlock
@@ -499,6 +501,13 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
                 )}
                 <span className="text-xs text-secondary">
                   observed by {inspection.observed.reportedBy} · {formatRelativeOrDate(inspection.observed.asOfUtc)}
+                  {/* Which RFC the reporter follows decides which tags it can echo: no pct
+                      from RFC 9990, no t from RFC 7489. Said here so the chips below read right. */}
+                  {inspection.observed.reportFormat === 'rfc9990'
+                    ? ' · RFC 9990 report'
+                    : inspection.observed.reportFormat === 'rfc7489'
+                      ? ' · RFC 7489 report'
+                      : ''}
                 </span>
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -517,7 +526,11 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
                     >
                       <span className="font-semibold">{row.field}=</span>
                       {row.status === 'inherited' ? (
-                        <span className="font-sans italic opacity-70">inherits p</span>
+                        // sp inherits p; np inherits sp, or p when there is no sp. The note
+                        // below names which, so the chip only says it is derived.
+                        <span className="font-sans italic opacity-70">
+                          {row.field === 'sp' ? 'inherits p' : 'inherited'}
+                        </span>
                       ) : (
                         <>
                           <span>{row.published ?? '—'}</span>
@@ -560,6 +573,19 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
       ) : null}
     </Card>
   )
+}
+
+/**
+ * The RFC 9989 tags, shown beside the record status the way SPF shows its lookup count:
+ * `np=reject · t=y · psd=n`. Only the ones actually published; null when none are, which
+ * is most domains today.
+ */
+function describeRfc9989Tags(dmarc: DnsDmarcRecord): string | null {
+  const parts: string[] = []
+  if (dmarc.nonExistentSubdomainPolicy) parts.push(`np=${dmarc.nonExistentSubdomainPolicy}`)
+  if (dmarc.testing) parts.push(`t=${dmarc.testing}`)
+  if (dmarc.publicSuffixDomain) parts.push(`psd=${dmarc.publicSuffixDomain}`)
+  return parts.length > 0 ? parts.join(' · ') : null
 }
 
 /** Full sentence for assistive tech: the chips are terse by design. */
@@ -1921,7 +1947,14 @@ function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPanelProps)
             <ul className="mt-2 space-y-1.5">
               {detail.reporters.map((reporter) => (
                 <li key={reporter.organizationName} className="flex items-baseline justify-between gap-3">
-                  <span className="min-w-0 break-all text-sm text-body">{reporter.organizationName}</span>
+                  <span className="min-w-0 break-all text-sm text-body">
+                    {reporter.organizationName}
+                    {/* RFC 9990's self-description, when the reporter sends one. Mono: it is a
+                        version string, not prose. */}
+                    {reporter.generator ? (
+                      <span className="ml-2 font-mono text-xs text-secondary">{reporter.generator}</span>
+                    ) : null}
+                  </span>
                   <span className="whitespace-nowrap text-xs tabular-nums text-secondary">
                     {formatCompact(reporter.messages)} msgs · {formatCompact(reporter.reports)} rpts
                   </span>

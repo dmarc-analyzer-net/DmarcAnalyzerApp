@@ -53,14 +53,24 @@ public sealed record DnsSpfRecordDto(
     IReadOnlyList<string> Issues);
 
 /// <summary>The DMARC policy reporters most recently observed (policy_published).</summary>
+/// <param name="Pct">null when the reporter sent no pct — every conformant RFC 9990 report.</param>
+/// <param name="NonexistentSubdomainPolicy">np as the reporter saw it; null when not sent, or not recorded.</param>
+/// <param name="Testing">testing as the reporter saw it; null when not sent (every RFC 7489 report), or not recorded.</param>
+/// <param name="ReportFormat">
+/// rfc7489 or rfc9990. null means the report was stored before the format was recorded, so
+/// a null np, testing or pct on it is "not recorded" rather than "not sent".
+/// </param>
 public sealed record ObservedPolicyDto(
     string Policy,
     string? SubdomainPolicy,
-    int Pct,
+    int? Pct,
     string DkimAlignment,
     string SpfAlignment,
     DateTime AsOfUtc,
-    string ReportedBy);
+    string ReportedBy,
+    string? NonexistentSubdomainPolicy = null,
+    bool? Testing = null,
+    string? ReportFormat = null);
 
 /// <summary>How a published tag lines up with what the reporter echoed back.</summary>
 public static class RecordComparisonStatus

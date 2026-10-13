@@ -43,6 +43,10 @@ public sealed class DispositionAnalyticsTests
     /// <summary>One report carrying one record per disposition, all from the same source.</summary>
     private static void AddReport(
         DmarcAnalyzerDbContext db, Guid domainId, params (string Disposition, int Count)[] records)
+        => AddReport(db, domainId, generator: null, records);
+
+    private static void AddReport(
+        DmarcAnalyzerDbContext db, Guid domainId, string? generator, params (string Disposition, int Count)[] records)
     {
         var report = new DmarcReport
         {
@@ -52,6 +56,7 @@ public sealed class DispositionAnalyticsTests
             RangeEndUtc = DateTime.UtcNow.AddDays(-1).AddHours(23),
             RecordCount = records.Length, IngestedAtUtc = DateTime.UtcNow,
             PublishedPolicy = "reject", SubdomainPolicy = "reject", PublishedPct = 100,
+            Generator = generator,
         };
         db.Add(report);
         foreach (var r in records)
@@ -64,6 +69,28 @@ public sealed class DispositionAnalyticsTests
                 Disposition = r.Disposition, DkimResult = "pass", SpfResult = "pass",
             });
         }
+    }
+
+    /// <summary>
+    /// The reporter's generator (RFC 9990) rides along on the source-detail reporters list.
+    /// One reporter sends one generator, but its older rows predate the column, so the
+    /// value has to win over a null rather than depend on which row the grouping saw first.
+    /// </summary>
+    [Fact]
+    public async Task SourceDetailReportersCarryTheGeneratorWhenAnyReportHasOne()
+    {
+        using var db = NewDb();
+        var domain = SeedDomain(db);
+        AddReport(db, domain.Id, generator: null, ("none", 1));
+        AddReport(db, domain.Id, generator: "Example Reporter v1.2", ("none", 1));
+        await db.SaveChangesAsync();
+
+        var detail = await TestAnalytics.Service(db, TestCurrentUserContext.Admin())
+            .GetSourceDetailAsync(domain.Id, "203.0.113.5", 30, CancellationToken.None);
+
+        var reporter = Assert.Single(detail!.Reporters);
+        Assert.Equal("google.com", reporter.OrganizationName);
+        Assert.Equal("Example Reporter v1.2", reporter.Generator);
     }
 
     [Fact]

@@ -99,9 +99,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     threw in the serializer and lost the report; no substitute for an optional tag
     is honest (`sp=none` on a `p=reject` domain reads as a regression), so absent
     is the reading.
-  - Not yet: record inspection using the new fields (PR 3), and the backfill of
-    rows stored before the columns existed (PR 4). Record inspection still reports
-    an absent `pct` as 100 until PR 3.
+  - Not yet: the backfill of rows stored before the columns existed (PR 4).
 - Parser messages stored and shown (PR 2 of [`rfc-9990-plan.md`](rfc-9990-plan.md);
   closes the backlog item *Surface parse validation warnings instead of discarding
   them*):
@@ -125,6 +123,20 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     PR 4's backfill or new ingests fill it.
   - "Re-parsed on *date*" is not possible yet: no column records when a backfill
     wrote the messages. PR 4 needs to add one if the date is wanted.
+- Record inspection uses the report-level fields (PR 3 of
+  [`rfc-9990-plan.md`](rfc-9990-plan.md)):
+  - `observed` carries `pct`, `np` and `testing` as nullable, plus the report's
+    format. An absent `pct` is `not_reported` instead of being compared against an
+    invented 100; a record still publishing `pct=` while the newest report is
+    RFC 9990 gets a record issue (RFC 9989 replaced `pct` with `t`).
+  - Two new comparison rows: `np` (not published is `inherited` from `sp`, then
+    `p`; not sent is `not_reported`) and `t` (not published compares as `n`; not
+    sent — every RFC 7489 report — is `not_reported`, with the note naming which
+    RFC the report follows). A null tag on a report stored before the format was
+    recorded says "not recorded", not "not sent".
+  - The console shows the live `np=`, `t=` and `psd=` values beside the DMARC
+    record, the two new rows, which RFC the observing report follows, and the
+    reporter's `generator` on the source-detail reporters list.
 - Worker-driven mailbox ingestion orchestration:
   - sequential mailbox processing
   - checkpointed sync (`LastProcessedUid`, `LastProcessedUidValidity`)

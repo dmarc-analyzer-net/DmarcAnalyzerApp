@@ -271,8 +271,14 @@ export type SourceDetail = {
   envelopeFroms: ValueCount[]
   dkimAuth: DkimAuthResult[]
   spfAuth: SpfAuthResult[]
-  reporters: TopReporter[]
+  reporters: SourceReporter[]
   trend: TrendPoint[]
+}
+
+/** A reporter of one source, with its RFC 9990 self-description when any of its reports carried one. */
+export type SourceReporter = TopReporter & {
+  /** report_metadata/generator; null for RFC 7489 reporters and rows stored before it was recorded. */
+  generator: string | null
 }
 
 // --- Enforcement guidance (GET /api/v1/analytics/domains/{domainId}/enforcement) ---
@@ -375,11 +381,18 @@ export type ObservedPolicy = {
   policy: string
   /** null when the reporter sent no sp tag — subdomains inherit p. */
   subdomainPolicy: string | null
-  pct: number
+  /** null when the reporter sent no pct — every conformant RFC 9990 report. */
+  pct: number | null
   dkimAlignment: string
   spfAlignment: string
   asOfUtc: string
   reportedBy: string
+  /** np as the reporter saw it; null when not sent, or not recorded. */
+  nonexistentSubdomainPolicy: string | null
+  /** testing as the reporter saw it; null when not sent (every RFC 7489 report), or not recorded. */
+  testing: boolean | null
+  /** 'rfc7489' | 'rfc9990'; null when the report was stored before the format was recorded. */
+  reportFormat: string | null
 }
 
 /**

@@ -1,4 +1,5 @@
 using DmarcAnalyzer.Api.Application.Analytics;
+using DmarcAnalyzer.Api.Application.Reports;
 using DmarcAnalyzer.Api.Data;
 using DmarcAnalyzer.Api.Data.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -165,9 +166,15 @@ public sealed class RecordInspectionTests
         return new DmarcAnalyzerDbContext(options);
     }
 
+    /// <summary>
+    /// <paramref name="pct"/> defaults to the 100 an RFC 7489 reporter sends; pass null for an
+    /// RFC 9990 report, which carries none. <paramref name="reportFormat"/> null is a row from
+    /// before the format was recorded.
+    /// </summary>
     private static async Task<Guid> SeedDomainWithReportAsync(
         DmarcAnalyzerDbContext db, string policy, string? subdomainPolicy = null, bool spReported = true,
-        string domainName = "acme.example")
+        string domainName = "acme.example",
+        int? pct = 100, string? np = null, bool? testing = null, string? reportFormat = DmarcReportFormats.Rfc7489)
     {
         var client = new Client
         {
@@ -187,7 +194,10 @@ public sealed class RecordInspectionTests
             RecordCount = 0, IngestedAtUtc = DateTime.UtcNow,
             PublishedPolicy = policy,
             SubdomainPolicy = spReported ? subdomainPolicy ?? policy : null,
-            PublishedPct = 100,
+            PublishedPct = pct,
+            NonexistentSubdomainPolicy = np,
+            Testing = testing,
+            ReportFormat = reportFormat,
         });
         await db.SaveChangesAsync();
         return domain.Id;
@@ -292,6 +302,186 @@ public sealed class RecordInspectionTests
         Assert.Equal(RecordComparisonStatus.Differs, sp.Status);
         Assert.Equal("quarantine", sp.Published);
         Assert.Equal("none", sp.Observed);
+    }
+
+    private static FakeDns DnsPublishing(string dmarcRecord) => new(new()
+    {
+        ["_dmarc.acme.example"] = [dmarcRecord],
+        ["acme.example"] = ["v=spf1 -all"],
+    });
+
+    private static async Task<RecordInspectionDto> InspectAsync(DmarcAnalyzerDbContext db, Guid domainId, FakeDns dns)
+    {
+        var dto = await new RecordInspectionService(db, TestCurrentUserContext.Admin(), dns, new DmarcPolicyResolver(dns))
+            .InspectAsync(domainId, CancellationToken.None);
+        Assert.NotNull(dto);
+        return dto;
+    }
+
+    // --- pct, np and t (PR 3 of docs/planning/rfc-9990-plan.md) ---
+
+    /// <summary>
+    /// RFC 9990 removed pct from the report. Comparing an absent value against an invented
+    /// 100 read every pct=50 record as a disagreement with a reporter that said nothing.
+    /// </summary>
+    [Fact]
+    public async Task Inspect_PctNotSentByAnRfc9990Reporter_IsNotReported()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject", pct: null, reportFormat: DmarcReportFormats.Rfc9990);
+
+        var dto = await InspectAsync(db, domainId, DnsPublishing("v=DMARC1; p=reject; rua=mailto:d@acme.example"));
+
+        var pct = dto.Comparison.Single(c => c.Field == "pct");
+        Assert.Equal(RecordComparisonStatus.NotReported, pct.Status);
+        Assert.Equal("100", pct.Published);
+        Assert.Null(pct.Observed);
+        Assert.Contains("RFC 9990", pct.Note);
+        Assert.Null(dto.Observed!.Pct);
+        Assert.Equal(DmarcReportFormats.Rfc9990, dto.Observed.ReportFormat);
+        Assert.DoesNotContain(dto.Comparison, c => c.Status == RecordComparisonStatus.Differs);
+    }
+
+    /// <summary>A record still publishing pct= to RFC 9990 reporters publishes a tag they do not apply.</summary>
+    [Fact]
+    public async Task Inspect_PctPublishedToAnRfc9990Reporter_IsARecordIssue()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject", pct: null, reportFormat: DmarcReportFormats.Rfc9990);
+
+        var dto = await InspectAsync(db, domainId, DnsPublishing("v=DMARC1; p=reject; pct=50; rua=mailto:d@acme.example"));
+
+        Assert.Contains(dto.Dmarc.Issues, i => i.StartsWith("pct=50 is published", StringComparison.Ordinal) && i.Contains("RFC 9989"));
+        Assert.Equal(RecordComparisonStatus.NotReported, dto.Comparison.Single(c => c.Field == "pct").Status);
+    }
+
+    [Fact]
+    public async Task Inspect_PctPublishedToAnRfc7489Reporter_IsComparedAsBefore()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject", pct: 100);
+
+        var dto = await InspectAsync(db, domainId, DnsPublishing("v=DMARC1; p=reject; pct=50; rua=mailto:d@acme.example"));
+
+        Assert.DoesNotContain(dto.Dmarc.Issues, i => i.Contains("RFC 9989"));
+        var pct = dto.Comparison.Single(c => c.Field == "pct");
+        Assert.Equal(RecordComparisonStatus.Differs, pct.Status);
+        Assert.Equal("50", pct.Published);
+        Assert.Equal("100", pct.Observed);
+    }
+
+    /// <summary>np is derived like sp: from sp when published, else from p. Nothing a reporter can contradict.</summary>
+    [Theory]
+    [InlineData("v=DMARC1; p=reject; rua=mailto:d@acme.example", "p=reject")]
+    [InlineData("v=DMARC1; p=reject; sp=quarantine; rua=mailto:d@acme.example", "sp=quarantine")]
+    public async Task Inspect_NpNotPublished_IsInherited(string record, string inheritedFrom)
+    {
+        await using var db = NewDb();
+        // sp echoed as the published value so the only row that could differ is np's.
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject", subdomainPolicy: "quarantine", np: "none");
+
+        var dto = await InspectAsync(db, domainId, DnsPublishing(record));
+
+        var np = dto.Comparison.Single(c => c.Field == "np");
+        Assert.Equal(RecordComparisonStatus.Inherited, np.Status);
+        Assert.Null(np.Published);
+        Assert.Equal("none", np.Observed);
+        Assert.Contains($"inherit {inheritedFrom}", np.Note);
+        Assert.DoesNotContain(dto.Comparison, c => c.Status == RecordComparisonStatus.Differs);
+    }
+
+    [Fact]
+    public async Task Inspect_NpPublishedButNotSent_IsNotReported()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject", np: null);
+
+        var dto = await InspectAsync(db, domainId, DnsPublishing("v=DMARC1; p=reject; np=reject; rua=mailto:d@acme.example"));
+
+        var np = dto.Comparison.Single(c => c.Field == "np");
+        Assert.Equal(RecordComparisonStatus.NotReported, np.Status);
+        Assert.Equal("reject", np.Published);
+        Assert.Contains("sent no np value", np.Note);
+    }
+
+    /// <summary>A row from before PR 1 has no np because nothing recorded it, not because the reporter omitted it.</summary>
+    [Fact]
+    public async Task Inspect_NpOnAReportStoredBeforeTheColumn_SaysNotRecorded()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject", np: null, reportFormat: null);
+
+        var dto = await InspectAsync(db, domainId, DnsPublishing("v=DMARC1; p=reject; np=reject; rua=mailto:d@acme.example"));
+
+        var np = dto.Comparison.Single(c => c.Field == "np");
+        Assert.Equal(RecordComparisonStatus.NotReported, np.Status);
+        Assert.Contains("stored before np was recorded", np.Note);
+    }
+
+    [Theory]
+    [InlineData("reject", RecordComparisonStatus.Match)]
+    [InlineData("quarantine", RecordComparisonStatus.Differs)]
+    public async Task Inspect_NpPublishedAndSent_IsCompared(string observedNp, string expected)
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject", np: observedNp);
+
+        var dto = await InspectAsync(db, domainId, DnsPublishing("v=DMARC1; p=reject; np=reject; rua=mailto:d@acme.example"));
+
+        var np = dto.Comparison.Single(c => c.Field == "np");
+        Assert.Equal(expected, np.Status);
+        Assert.Equal("reject", np.Published);
+        Assert.Equal(observedNp, np.Observed);
+    }
+
+    /// <summary>t has a fixed default, so an unpublished tag compares as n — unlike sp and np, nothing is derived.</summary>
+    [Fact]
+    public async Task Inspect_TestingNotPublished_ComparesAsN()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject", testing: false, reportFormat: DmarcReportFormats.Rfc9990);
+
+        var dto = await InspectAsync(db, domainId, DnsPublishing("v=DMARC1; p=reject; rua=mailto:d@acme.example"));
+
+        var t = dto.Comparison.Single(c => c.Field == "t");
+        Assert.Equal(RecordComparisonStatus.Match, t.Status);
+        Assert.Equal("n", t.Published);
+        Assert.Equal("n", t.Observed);
+    }
+
+    /// <summary>No RFC 7489 report carries a testing flag, so the note says which RFC the report follows.</summary>
+    [Theory]
+    [InlineData(DmarcReportFormats.Rfc7489, "RFC 7489")]
+    [InlineData(DmarcReportFormats.Rfc9990, "sent no testing value")]
+    [InlineData(null, "stored before testing was recorded")]
+    public async Task Inspect_TestingNotSent_IsNotReportedWithTheReason(string? reportFormat, string expectedNote)
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject", testing: null, reportFormat: reportFormat);
+
+        var dto = await InspectAsync(db, domainId, DnsPublishing("v=DMARC1; p=reject; t=y; rua=mailto:d@acme.example"));
+
+        var t = dto.Comparison.Single(c => c.Field == "t");
+        Assert.Equal(RecordComparisonStatus.NotReported, t.Status);
+        Assert.Equal("y", t.Published);
+        Assert.Null(t.Observed);
+        Assert.Contains(expectedNote, t.Note);
+    }
+
+    [Theory]
+    [InlineData(true, RecordComparisonStatus.Match)]
+    [InlineData(false, RecordComparisonStatus.Differs)]
+    public async Task Inspect_TestingPublishedAndSent_IsCompared(bool observedTesting, string expected)
+    {
+        await using var db = NewDb();
+        var domainId = await SeedDomainWithReportAsync(db, policy: "reject", testing: observedTesting, reportFormat: DmarcReportFormats.Rfc9990);
+
+        var dto = await InspectAsync(db, domainId, DnsPublishing("v=DMARC1; p=reject; t=y; rua=mailto:d@acme.example"));
+
+        var t = dto.Comparison.Single(c => c.Field == "t");
+        Assert.Equal(expected, t.Status);
+        Assert.Equal("y", t.Published);
+        Assert.Equal(observedTesting ? "y" : "n", t.Observed);
     }
 
     [Fact]
