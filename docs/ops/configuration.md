@@ -30,10 +30,10 @@ List values take an index: `Network__TrustedNetworks__0`,
 The settings this app binds to its own options — the `Worker__*`, `Email__*`,
 `Alerts__*`, `Digest__*`, `Branding__*`, `Dns__*`, `MtaSts__*`, `Retention__*`, `Network__*`,
 `Backup__*` and `Auth__Oidc__*` groups below, plus `Database__MigrateOnStartup`
-— are typed, and a value that does not convert stops the process at startup with
-a message naming the variable. That is deliberate: a setting silently falling
-back to its default is the failure mode the rule above already warns about, and
-it is worse.
+and `Database__IamAuth` — are typed, and a value that does not convert stops the
+process at startup with a message naming the variable. That is deliberate: a
+setting silently falling back to its default is the failure mode the rule above
+already warns about, and it is worse.
 
 Two things are outside that check, and neither is an oversight. Variables read
 by the framework or another SDK rather than by this app — `ASPNETCORE_*`,
@@ -87,6 +87,7 @@ Two settings have no usable default.
 |---|---|---|
 | `APP_MODE` | `api` | `api` (console + HTTP), `worker` (ingestion loop only), `all` (both in one process), `migrate` (apply pending migrations and exit), or `mta-sts` (only the public MTA-STS policy routes plus health probes — an internet-facing policy host separate from the console; see [mta-sts-hosting.md](./mta-sts-hosting.md)). Any other value fails startup rather than falling back. |
 | `Database__MigrateOnStartup` | `false` | Apply pending EF migrations at boot. The Compose files set it true. On Kubernetes leave it false and use the migration Job — with more than one replica, startup migration races. |
+| `Database__IamAuth` | `false` | Log in to Amazon RDS or Aurora with an IAM authentication token instead of a password. Leave the password out of the connection string; the token is generated from the AWS ambient credential chain (ECS task role, instance profile, or IRSA) and a fresh one is generated for each new connection. The database user needs the `rds_iam` role and the credential needs `rds-db:connect` for it. TLS is required and the server is verified: `sslmode=disable` fails startup, and `allow`, `prefer` or `require` are raised to `verify-full` against the Amazon RDS CA bundle that ships with the app (`Certificates/rds-global-bundle.pem`), unless the connection string sets its own `Root Certificate`. Use the RDS endpoint as the host, not a custom DNS name: AWS does not accept tokens generated for one, and the certificate only names the endpoint. Applies to every mode; `dotnet ef` at design time still uses a password. |
 | `ASPNETCORE_URLS` | `http://+:8080` | Set in the image; override only for an unusual port inside the container. |
 
 Worker mode does **not** apply migrations, whatever this is set to — only the web

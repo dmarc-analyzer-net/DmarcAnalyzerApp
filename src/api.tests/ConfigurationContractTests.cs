@@ -43,6 +43,7 @@ public sealed class ConfigurationContractTests
         "ConnectionStrings__Default",
         "DATABASE_URL",
         "Database__MigrateOnStartup",
+        "Database__IamAuth",
         "APP_MODE",
     ];
 

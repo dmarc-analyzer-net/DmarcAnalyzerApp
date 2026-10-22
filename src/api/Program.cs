@@ -42,8 +42,9 @@ if (mode == AppMode.Migrate)
         ?? throw new InvalidOperationException(
             "ConnectionStrings:Default or DATABASE_URL is required in migrate mode.");
 
+    var migrateDataSource = DatabaseDataSource.Create(migrateBuilder.Configuration, migrateConnectionString);
     migrateBuilder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
-        options.UseNpgsql(migrateConnectionString));
+        options.UseNpgsql(migrateDataSource));
     migrateBuilder.Services.AddHttpContextAccessor();
     migrateBuilder.Services.AddScoped<ICurrentUserContext, SystemUserContext>();
     migrateBuilder.Services.AddScoped<IAuditLog, AuditLog>();
@@ -95,8 +96,9 @@ if (mode == AppMode.Worker)
     var workerConnectionString = ConnectionStringResolver.Resolve(workerBuilder.Configuration)
         ?? "Host=localhost;Port=5432;Database=dmarc_analyzer;Username=postgres;Password=postgres";
 
+    var workerDataSource = DatabaseDataSource.Create(workerBuilder.Configuration, workerConnectionString);
     workerBuilder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
-        options.UseNpgsql(workerConnectionString));
+        options.UseNpgsql(workerDataSource));
     workerBuilder.Services.AddCredentialProtection(workerBuilder.Configuration);
     workerBuilder.Services.AddScoped<IDmarcReportParser, DmarcRuaReportParser>();
     workerBuilder.Services.AddScoped<ITlsRptReportParser, TlsRptReportParser>();
@@ -181,8 +183,9 @@ if (mode == AppMode.MtaSts)
         ?? throw new InvalidOperationException(
             "ConnectionStrings:Default or DATABASE_URL is required in mta-sts mode.");
 
+    var mtaStsDataSource = DatabaseDataSource.Create(mtaStsBuilder.Configuration, mtaStsConnectionString);
     mtaStsBuilder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
-        options.UseNpgsql(mtaStsConnectionString));
+        options.UseNpgsql(mtaStsDataSource));
     mtaStsBuilder.Services.AddMemoryCache();
     mtaStsBuilder.Services.Configure<MtaStsOptions>(mtaStsBuilder.Configuration.GetSection("MtaSts"));
     mtaStsBuilder.Services.AddScoped<IMtaStsPolicyHostService, MtaStsPolicyHostService>();
@@ -240,8 +243,12 @@ builder.Services.AddCarter();
 // startup crash rather than becoming a 500 on an endpoint.
 builder.Services.AddSingleton(new AppRuntimeInfo(mode));
 builder.Services.AddRouting(options => options.LowercaseUrls = true);
+// Built once, outside the options callback: a data source owns the connection
+// pool (and, with IAM auth, the token refresh timer), so one per DbContext would
+// mean one pool per request.
+var dataSource = DatabaseDataSource.Create(builder.Configuration, connectionString);
 builder.Services.AddDbContext<DmarcAnalyzerDbContext>(options =>
-    options.UseNpgsql(connectionString));
+    options.UseNpgsql(dataSource));
 builder.Services.AddCredentialProtection(builder.Configuration);
 builder.Services.AddOidcAuthentication(builder.Configuration);
 builder.Services.AddScoped<IOidcSignInService, OidcSignInService>();

@@ -76,6 +76,7 @@ public static class ConfigurationPreflight
     private static readonly (string Key, Type Type)[] LooseSettings =
     [
         ("Database:MigrateOnStartup", typeof(bool)),
+        ("Database:IamAuth", typeof(bool)),
     ];
 
     /// <summary>

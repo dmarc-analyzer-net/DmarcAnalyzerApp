@@ -17,7 +17,10 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   advisory lock. A Render Blueprint (`render.yaml`, repo root) is a third deploy
   path — provisions the app plus a managed Postgres and wires them together via
   `DATABASE_URL`, which the app accepts as a `postgres://` URI alongside the
-  existing ADO.NET `ConnectionStrings__Default`.
+  existing ADO.NET `ConnectionStrings__Default`. On Amazon RDS or Aurora,
+  `Database__IamAuth` replaces the stored password with an IAM authentication
+  token from the ambient AWS credential chain, generated per connection, in every
+  mode including the worker's advisory-lock connection.
 - **Backup, offload and recovery** (ADR 0009, design detail in
   `config-export-and-recovery.md`). A JSON configuration artifact — clients, domains,
   report sources with their encrypted credentials, recipients, users, identities,

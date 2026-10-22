@@ -38,6 +38,7 @@ public sealed class WorkerSingleInstanceLock(
     /// </summary>
     private const long LockKey = 0x444D_4152_4357_4B52; // "DMARCWKR"
 
+    private NpgsqlDataSource? _dataSource;
     private NpgsqlConnection? _connection;
 
     /// <summary>
@@ -68,9 +69,13 @@ public sealed class WorkerSingleInstanceLock(
 
         // A dedicated connection, held open for the life of the process: advisory
         // locks are scoped to a session, so it has to be this connection rather
-        // than one borrowed from the pool and returned.
-        _connection = new NpgsqlConnection(connectionString);
-        await _connection.OpenAsync(cancellationToken);
+        // than one borrowed from the pool and returned. Pooling is off so that
+        // disposing it really closes the session, and the data source is still
+        // the shared one so it authenticates the same way (password or IAM token) as
+        // everything else.
+        var unpooled = new NpgsqlConnectionStringBuilder(connectionString) { Pooling = false };
+        _dataSource = DatabaseDataSource.Create(configuration, unpooled.ConnectionString);
+        _connection = await _dataSource.OpenConnectionAsync(cancellationToken);
 
         await using var command = _connection.CreateCommand();
         command.CommandText = "SELECT pg_try_advisory_lock(@key)";
@@ -107,6 +112,12 @@ public sealed class WorkerSingleInstanceLock(
         {
             await _connection.DisposeAsync();
             _connection = null;
+        }
+
+        if (_dataSource is not null)
+        {
+            await _dataSource.DisposeAsync();
+            _dataSource = null;
         }
     }
 }
