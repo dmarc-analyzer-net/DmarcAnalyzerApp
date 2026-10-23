@@ -22,13 +22,15 @@ collect one.
 
 ## What AWS needs
 
-- The database user has the `rds_iam` role:
-  `GRANT rds_iam TO dmarc;`
-- The compute role may connect as that user:
+- The compute role may connect as the database user:
   `rds-db:connect` on `arn:aws:rds-db:<region>:<account>:dbuser:<resource-id>/dmarc`.
-  The resource id is the instance's `DbiResourceId` (or the cluster's
-  `DbClusterResourceId`), not its name.
-- IAM database authentication is enabled on the instance or cluster.
+  The resource id names whatever the connection string's host is — the
+  instance's `DbiResourceId` or the cluster's `DbClusterResourceId` for a direct
+  endpoint, the proxy's `prx-…` id for an RDS Proxy endpoint — never its name.
+- For a direct endpoint: IAM database authentication is enabled on the instance
+  or cluster, and the database user has the `rds_iam` role
+  (`GRANT rds_iam TO dmarc;`). For a proxy with standard IAM authentication,
+  neither — see below.
 - **The region is the database's region.** The token is signed for whatever
   region the SDK resolves — `AWS_REGION`, `AWS_DEFAULT_REGION`, or the EC2
   instance metadata — not for the region in the hostname. ECS, Fargate and IRSA
@@ -130,9 +132,12 @@ the pods; nothing else about the region is needed on EKS.
 ## RDS Proxy specifics
 
 - **Standard IAM authentication** at the proxy (the proxy itself holds a
-  Secrets Manager password for the database) works without any change on the
-  database side: no `rds_iam` grant, no IAM-enabled instance. The token is
-  signed for the proxy hostname, which is what the connection string names.
+  Secrets Manager password for the database) needs no change on the database
+  side: no IAM-enabled instance, and no `rds_iam` grant — AWS warns that a user
+  holding `rds_iam` while the proxy logs in with its password sees connections
+  terminated and reopened. The `rds-db:connect` ARN names the proxy's `prx-…`
+  resource id, and the token is signed for the proxy hostname, which is what
+  the connection string names.
 - **No CA file.** Leave `PGSSLROOTCERT` and `Root Certificate` unset. Pointing
   them at the RDS bundle makes every connection fail verification, because the
   proxy's certificate chains to Amazon Trust Services, not to the RDS CA.
