@@ -84,7 +84,7 @@ Six things worth doing deliberately:
   `extraEnv`, an IRSA role on `serviceAccount.annotations`, and a password-less
   `externalDatabase.connectionString`. An RDS or Aurora endpoint also needs the
   Amazon RDS CA bundle mounted through `extraVolumes`/`extraVolumeMounts` and
-  named in the connection string; an RDS Proxy endpoint needs no file. The
+  named in `PGSSLROOTCERT` via `extraEnv`; an RDS Proxy endpoint needs no file. The
   worked example is [`docs/ops/aws-rds-iam.md`](../../../docs/ops/aws-rds-iam.md).
 - **Pin `image.digest` for immutable deployments.** A tag is still convenient
   for evaluation, and an empty `image.tag` follows the chart's `appVersion`, but

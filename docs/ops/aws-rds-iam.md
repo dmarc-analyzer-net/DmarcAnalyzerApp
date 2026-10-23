@@ -54,8 +54,8 @@ exist and nothing in the connection string says which applies:
 
 Npgsql finds the CA the same way `psql` does, first match wins:
 
-1. `Root Certificate=/path/to/bundle.pem` in the connection string (a
-   `DATABASE_URL` carries only `sslmode`, so use the next one there);
+1. `Root Certificate=/path/to/bundle.pem` in the connection string, or
+   `?sslrootcert=/path/to/bundle.pem` on a `DATABASE_URL`;
 2. the `PGSSLROOTCERT` environment variable;
 3. `~/.postgresql/root.crt`, if the file exists;
 4. the system trust store.
@@ -109,7 +109,7 @@ externalDatabase:
   # requires Host and Username in IAM mode.
   connectionString: "Host=db.cluster-abc.eu-west-1.rds.amazonaws.com;Database=dmarc_analyzer;Username=dmarc"
 auth:
-  existingSecret: dmarc-creds        # the encryption key; db-password is unused
+  existingSecret: dmarc-creds        # encryption-key only; db-password may be omitted
 serviceAccount:
   annotations:
     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/dmarc-analyzer
@@ -139,7 +139,12 @@ the pods; nothing else about the region is needed on EKS.
   holding `rds_iam` while the proxy logs in with its password sees connections
   terminated and reopened. The `rds-db:connect` ARN names the proxy's `prx-…`
   resource id, and the token is signed for the proxy hostname, which is what
-  the connection string names.
+  the connection string names. The proxy's *own* IAM role is a separate
+  prerequisite: it needs `secretsmanager:GetSecretValue` on that secret (and
+  `kms:Decrypt` on the key if the secret uses a customer-managed one), or the
+  proxy accepts the app's token and then cannot log in to Postgres itself. That
+  role is part of creating the proxy, not of this deployment — see
+  [Setting up AWS Identity and Access Management (IAM) policies for RDS Proxy](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/rds-proxy-setup.html#rds-proxy-iam-setup).
 - **No CA file.** Leave `PGSSLROOTCERT` and `Root Certificate` unset. Pointing
   them at the RDS bundle makes every connection fail verification, because the
   proxy's certificate chains to Amazon Trust Services, not to the RDS CA.
