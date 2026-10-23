@@ -151,7 +151,7 @@ public sealed class DatabaseDataSourceTests
 
         var description = DatabaseDataSource.DescribeTrustStore(settings, "/ignored.pem", "/also/ignored.crt");
 
-        Assert.StartsWith("/etc/ssl/rds.pem", description);
+        Assert.StartsWith("'/etc/ssl/rds.pem'", description);
         Assert.Contains("Root Certificate", description);
     }
 
@@ -162,7 +162,7 @@ public sealed class DatabaseDataSourceTests
 
         var description = DatabaseDataSource.DescribeTrustStore(settings, "/etc/ssl/rds.pem", "/home/x/.postgresql/root.crt");
 
-        Assert.StartsWith("/etc/ssl/rds.pem", description);
+        Assert.StartsWith("'/etc/ssl/rds.pem'", description);
         Assert.Contains(DatabaseDataSource.RootCertificateVariable, description);
     }
 
@@ -173,7 +173,7 @@ public sealed class DatabaseDataSourceTests
 
         var description = DatabaseDataSource.DescribeTrustStore(settings, null, "/home/x/.postgresql/root.crt");
 
-        Assert.StartsWith("/home/x/.postgresql/root.crt", description);
+        Assert.StartsWith("/home/x/.postgresql/root.crt", description); // default path is not quoted: it is never empty
     }
 
     [Fact]
