@@ -65,7 +65,7 @@ every container in the release. Use the digest published for the release you
 intend to run — the chart refuses a shortened or malformed one. The two cannot
 be set together, and leaving both empty follows the chart's `appVersion`.
 
-Five things worth doing deliberately:
+Six things worth doing deliberately:
 
 - **`auth.existingSecret`.** Otherwise the encryption key sits in your values
   file, your shell history, and `helm get values`.
@@ -80,6 +80,12 @@ Five things worth doing deliberately:
   a configuration export shipped to S3-compatible object storage, refused
   outright if the credential key above isn't set. See
   [`docs/ops/configuration.md`](../../../docs/ops/configuration.md#backup-offload-backup).
+- **On AWS, drop the database password.** `Database__IamAuth: "true"` in
+  `extraEnv`, an IRSA role on `serviceAccount.annotations`, and a password-less
+  `externalDatabase.connectionString`. An RDS or Aurora endpoint also needs the
+  Amazon RDS CA bundle mounted through `extraVolumes`/`extraVolumeMounts` and
+  named in the connection string; an RDS Proxy endpoint needs no file. The
+  worked example is [`docs/ops/aws-rds-iam.md`](../../../docs/ops/aws-rds-iam.md).
 - **Pin `image.digest` for immutable deployments.** A tag is still convenient
   for evaluation, and an empty `image.tag` follows the chart's `appVersion`, but
   tags can be moved. The chart refuses a non-empty tag and digest together so

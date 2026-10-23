@@ -20,7 +20,9 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   existing ADO.NET `ConnectionStrings__Default`. On Amazon RDS or Aurora,
   `Database__IamAuth` replaces the stored password with an IAM authentication
   token from the ambient AWS credential chain, generated per connection, in every
-  mode including the worker's advisory-lock connection.
+  mode including the worker's advisory-lock connection, with the server verified
+  against a CA the operator names (RDS bundle, or the system store for RDS Proxy)
+  — recipe in `docs/ops/aws-rds-iam.md`.
 - **Backup, offload and recovery** (ADR 0009, design detail in
   `config-export-and-recovery.md`). A JSON configuration artifact — clients, domains,
   report sources with their encrypted credentials, recipients, users, identities,

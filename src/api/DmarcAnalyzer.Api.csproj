@@ -48,14 +48,4 @@
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- The Amazon RDS CA bundle, from
-         https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem. With
-         Database:IamAuth on, connections verify the server against it
-         (DatabaseDataSource), so it ships next to the app in every build. -->
-    <None Include="Certificates/rds-global-bundle.pem"
-          CopyToOutputDirectory="PreserveNewest"
-          CopyToPublishDirectory="PreserveNewest" />
-  </ItemGroup>
-
 </Project>
