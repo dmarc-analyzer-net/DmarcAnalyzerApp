@@ -87,14 +87,17 @@ public static class DatabaseDataSource
     public static string DescribeTrustStore(
         NpgsqlConnectionStringBuilder settings, string? rootCertificateVariable, string? defaultRootCertificate)
     {
-        if (!string.IsNullOrEmpty(settings.RootCertificate))
+        // Null checks, not empty checks: Npgsql coalesces these with ??, so an
+        // empty value is still *selected* — and then fails to load as a path.
+        // The log line has to point at that, not past it.
+        if (settings.RootCertificate is not null)
         {
-            return $"{settings.RootCertificate} (Root Certificate in the connection string)";
+            return $"'{settings.RootCertificate}' (Root Certificate in the connection string)";
         }
 
-        if (!string.IsNullOrEmpty(rootCertificateVariable))
+        if (rootCertificateVariable is not null)
         {
-            return $"{rootCertificateVariable} ({RootCertificateVariable})";
+            return $"'{rootCertificateVariable}' ({RootCertificateVariable})";
         }
 
         if (defaultRootCertificate is not null)

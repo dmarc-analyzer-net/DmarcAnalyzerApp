@@ -177,6 +177,20 @@ public sealed class DatabaseDataSourceTests
     }
 
     [Fact]
+    public void TrustStore_EmptyEnvironmentValueIsStillSelected()
+    {
+        // Npgsql coalesces with ??, so PGSSLROOTCERT="" is used as a (bad) path
+        // rather than skipped; the log line must say so instead of claiming the
+        // system store.
+        var settings = new NpgsqlConnectionStringBuilder("Host=h");
+
+        var description = DatabaseDataSource.DescribeTrustStore(settings, "", null);
+
+        Assert.Contains(DatabaseDataSource.RootCertificateVariable, description);
+        Assert.DoesNotContain("system trust store", description);
+    }
+
+    [Fact]
     public void TrustStore_SystemStoreWhenNothingIsSet()
     {
         var settings = new NpgsqlConnectionStringBuilder("Host=h");

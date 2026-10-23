@@ -3,8 +3,10 @@
 `Database__IamAuth=true` makes every process — console, worker, migration Job,
 MTA-STS host — log in to Amazon RDS, Aurora or RDS Proxy with a short-lived IAM
 authentication token instead of a stored password. Combined with the S3 report
-source and backup offload, which use the same credential chain, an AWS
-deployment then holds no database secret at all.
+source and backup offload, which use the same credential chain, a deployment
+that connects directly to RDS or Aurora then holds no database password at all.
+Behind an RDS Proxy the proxy still keeps one in Secrets Manager; the app does
+not — see [RDS Proxy specifics](#rds-proxy-specifics).
 
 This page is the recipe. [`configuration.md`](./configuration.md) has the
 one-line reference for the setting itself.
