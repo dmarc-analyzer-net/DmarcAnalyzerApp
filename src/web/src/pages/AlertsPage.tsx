@@ -127,7 +127,7 @@ export function AlertsPage() {
       </div>
 
       {error ? (
-        <div className="mb-3.5 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+        <div className="mb-3.5 rounded-md border border-(--status-danger-bg) bg-(--status-danger-bg) px-3 py-2 text-sm text-(--status-danger-fg)">
           {error}
         </div>
       ) : null}
@@ -173,7 +173,7 @@ export function AlertsPage() {
             </div>
             {alerts.length === 0 ? (
               <div className="flex flex-col items-center gap-2 px-5 pb-10 pt-4 text-center">
-                <Icon name="circle-check" size={32} className="text-[var(--status-ok-dot)]" />
+                <Icon name="circle-check" size={32} className="text-(--status-ok-dot)" />
                 <p className="text-sm font-semibold text-body">Nothing to report</p>
                 <p className="max-w-md text-sm text-secondary">
                   No compliance drops or policy regressions in this window.
@@ -235,7 +235,7 @@ export function AlertsPage() {
                             {alert.notifiedAtUtc ? (
                               formatRelativeOrDate(alert.notifiedAtUtc)
                             ) : (
-                              <span className="text-[var(--status-warn-fg)]">not sent</span>
+                              <span className="text-(--status-warn-fg)">not sent</span>
                             )}
                           </TableCell>
                           {staff ? (

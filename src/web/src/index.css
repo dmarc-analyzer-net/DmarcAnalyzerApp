@@ -1,17 +1,119 @@
 /* Self-hosted fonts (no CDN dependency) via Fontsource. */
-@import '@fontsource/space-grotesk/400.css';
-@import '@fontsource/space-grotesk/500.css';
-@import '@fontsource/space-grotesk/700.css';
-@import '@fontsource/public-sans/400.css';
-@import '@fontsource/public-sans/500.css';
-@import '@fontsource/public-sans/600.css';
-@import '@fontsource/public-sans/700.css';
-@import '@fontsource/jetbrains-mono/400.css';
-@import '@fontsource/jetbrains-mono/500.css';
+@import '@fontsource/space-grotesk/400.css' layer(base);
+@import '@fontsource/space-grotesk/500.css' layer(base);
+@import '@fontsource/space-grotesk/700.css' layer(base);
+@import '@fontsource/public-sans/400.css' layer(base);
+@import '@fontsource/public-sans/500.css' layer(base);
+@import '@fontsource/public-sans/600.css' layer(base);
+@import '@fontsource/public-sans/700.css' layer(base);
+@import '@fontsource/jetbrains-mono/400.css' layer(base);
+@import '@fontsource/jetbrains-mono/500.css' layer(base);
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@theme {
+  --color-teal-50: #effaf7;
+  --color-teal-100: #d7f4ec;
+  --color-teal-200: #afe9db;
+  --color-teal-300: #7eddc7;
+  --color-teal-400: #45c7aa;
+  --color-teal-500: #16ad8d;
+  --color-teal-600: #0e9481;
+  --color-teal-700: #0c7568;
+  --color-teal-800: #0b5d54;
+  --color-teal-900: #0a4a44;
+  --color-teal-950: #062f2b;
+
+  --color-mint-300: #5ff0c0;
+  --color-mint-400: #3ae0b0;
+  --color-mint-500: #22c996;
+
+  --color-ink-700: #123029;
+  --color-ink-800: #0e2620;
+  --color-ink-900: #0b1d18;
+
+  --color-gray-25: #fafcfb;
+  --color-gray-50: #f5f8f7;
+  --color-gray-100: #eef3f1;
+  --color-gray-200: #e3eae8;
+  --color-gray-300: #cfdad6;
+  --color-gray-400: #9fb0ab;
+  --color-gray-500: #6b807a;
+  --color-gray-600: #54685f;
+  --color-gray-700: #3d4f49;
+  --color-gray-800: #25332f;
+  --color-gray-900: #101f1c;
+
+  --color-amber-100: #fdf0d5;
+  --color-amber-500: #d97706;
+  --color-amber-600: #b45309;
+  --color-amber-800: #8a4406;
+
+  --color-red-100: #fde5ea;
+  --color-red-600: #dc3d5c;
+  --color-red-800: #a81f3d;
+
+  --color-blue-100: #dbeafe;
+  --color-blue-600: #2563ab;
+
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-brand-active: var(--brand-active);
+  --color-brand-subtle: var(--brand-subtle);
+
+  --color-border: var(--border-default);
+  --color-border-strong: var(--border-strong);
+
+  --color-surface-page: var(--surface-page);
+  --color-surface-card: var(--surface-card);
+  --color-surface-sunken: var(--surface-sunken);
+  --color-surface-ink: var(--surface-ink);
+
+  --color-body: var(--text-body);
+  --color-secondary: var(--text-secondary);
+  --color-faint: var(--text-faint);
+  --color-link: var(--link);
+
+  --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+  --font-body:
+    'Public Sans', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SF Mono, Menlo, monospace;
+
+  /* v3 set font-size only and let line-height inherit from body. Clearing the
+     namespace drops v4's paired --text-*--line-height defaults, which would
+     otherwise change the line height of every sized element. */
+  --text-*: initial;
+  --text-xs: 12px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 18px;
+  --text-xl: 22px;
+  --text-2xl: 28px;
+  --text-3xl: 36px;
+  --text-4xl: 48px;
+  --text-5xl: 60px;
+
+  --tracking-tightest: -0.03em;
+  --tracking-tight: -0.02em;
+  --tracking-wide: 0.06em;
+
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --radius-pill: 999px;
+
+  --shadow-card: 0 1px 2px rgba(11, 29, 24, 0.05);
+  --shadow-raised:
+    0 4px 12px rgba(11, 29, 24, 0.08), 0 1px 2px rgba(11, 29, 24, 0.05);
+  --shadow-overlay:
+    0 20px 48px rgba(11, 29, 24, 0.18), 0 4px 12px rgba(11, 29, 24, 0.08);
+  --shadow-ink-panel: 0 24px 60px rgba(6, 47, 43, 0.25);
+
+  --ease-out: cubic-bezier(0.2, 0.8, 0.3, 1);
+}
 
 :root {
   /* Semantic aliases — the source of truth referenced by the Tailwind theme. */
@@ -87,8 +189,19 @@
 }
 
 @layer base {
-  * {
+  /* v4 defaults borders to currentcolor; v3 used the theme's gray-200. */
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
     border-color: var(--border-default);
+  }
+
+  /* v4 preflight dropped v3's pointer cursor on buttons. */
+  button:not(:disabled),
+  [role='button']:not(:disabled) {
+    cursor: pointer;
   }
 
   body {
@@ -112,11 +225,9 @@
   }
 }
 
-@layer utilities {
-  .focus-ring {
-    outline: none;
-  }
-  .focus-ring:focus-visible {
+@utility focus-ring {
+  outline: none;
+  &:focus-visible {
     box-shadow: var(--focus-ring);
   }
 }

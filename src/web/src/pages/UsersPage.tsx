@@ -275,7 +275,7 @@ export function UsersPage() {
       </div>
 
       {error ? (
-        <div className="mb-3.5 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+        <div className="mb-3.5 rounded-md border border-(--status-danger-bg) bg-(--status-danger-bg) px-3 py-2 text-sm text-(--status-danger-fg)">
           {error}
         </div>
       ) : null}
@@ -398,7 +398,7 @@ export function UsersPage() {
           {editingUserId ? (
             <form className="grid gap-4" onSubmit={updateUser}>
               {dialogError ? (
-                <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+                <p className="rounded-md border border-(--status-danger-bg) bg-(--status-danger-bg) px-3 py-2 text-sm text-(--status-danger-fg)">
                   {dialogError}
                 </p>
               ) : null}
@@ -487,7 +487,7 @@ export function UsersPage() {
           ) : (
             <form className="grid gap-4" onSubmit={createUser}>
               {dialogError ? (
-                <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+                <p className="rounded-md border border-(--status-danger-bg) bg-(--status-danger-bg) px-3 py-2 text-sm text-(--status-danger-fg)">
                   {dialogError}
                 </p>
               ) : null}

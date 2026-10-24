@@ -145,7 +145,7 @@ export function AuditPage() {
       </div>
 
       {error ? (
-        <div className="mb-3.5 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+        <div className="mb-3.5 rounded-md border border-(--status-danger-bg) bg-(--status-danger-bg) px-3 py-2 text-sm text-(--status-danger-fg)">
           {error}
         </div>
       ) : null}
@@ -380,13 +380,13 @@ function AuditRow({
               {event.details ? (
                 <>
                   <dt className="font-medium text-secondary">Details</dt>
-                  <dd className="whitespace-pre-wrap break-words text-body">{event.details}</dd>
+                  <dd className="whitespace-pre-wrap wrap-break-word text-body">{event.details}</dd>
                 </>
               ) : null}
               {event.userAgent ? (
                 <>
                   <dt className="font-medium text-secondary">User agent</dt>
-                  <dd className="break-words text-body">{event.userAgent}</dd>
+                  <dd className="wrap-break-word text-body">{event.userAgent}</dd>
                 </>
               ) : null}
             </dl>

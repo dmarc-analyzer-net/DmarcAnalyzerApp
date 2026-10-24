@@ -26,7 +26,7 @@ export function TableRow({ className, last, onClick, ...props }: TableRowProps) 
     <tr
       onClick={onClick}
       className={cn(
-        'border-b border-[var(--gray-100)] transition-colors duration-[120ms] ease-out hover:bg-gray-50',
+        'border-b border-(--gray-100) transition-colors duration-120 ease-out hover:bg-gray-50',
         last && 'border-0',
         onClick && 'cursor-pointer',
         className,

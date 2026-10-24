@@ -49,7 +49,7 @@ type ImportCandidate = {
 
 /** Styled native file input. There is no dropzone or file-input primitive, and this needs no more than tokens. */
 const FILE_INPUT_CLASS =
-  'block w-full cursor-pointer rounded-md border border-border bg-surface-card px-3 py-[7px] font-body text-base text-body transition-colors duration-[120ms] ease-out hover:bg-gray-100 focus-visible:border-brand focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none file:mr-3 file:cursor-pointer file:rounded-xs file:border-0 file:bg-[var(--surface-sunken)] file:px-2.5 file:py-1 file:font-body file:text-sm file:font-semibold file:text-body'
+  'block w-full cursor-pointer rounded-md border border-border bg-surface-card px-3 py-[7px] font-body text-base text-body transition-colors duration-120 ease-out hover:bg-gray-100 focus-visible:border-brand focus-visible:shadow-(--focus-ring) focus-visible:outline-hidden file:mr-3 file:cursor-pointer file:rounded-xs file:border-0 file:bg-(--surface-sunken) file:px-2.5 file:py-1 file:font-body file:text-sm file:font-semibold file:text-body'
 
 type ConfigImportPanelProps = {
   preview: ConfigImportPreview

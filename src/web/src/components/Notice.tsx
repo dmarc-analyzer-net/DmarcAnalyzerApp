@@ -20,17 +20,17 @@ type NoticeTone = 'ok' | 'warn' | 'danger'
 const TONE: Record<NoticeTone, { surface: string; icon: IconName }> = {
   ok: {
     surface:
-      'border-[var(--status-ok-bg)] bg-[var(--status-ok-bg)] text-[var(--status-ok-fg)]',
+      'border-(--status-ok-bg) bg-(--status-ok-bg) text-(--status-ok-fg)',
     icon: 'circle-check',
   },
   warn: {
     surface:
-      'border-[var(--status-warn-bg)] bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]',
+      'border-(--status-warn-bg) bg-(--status-warn-bg) text-(--status-warn-fg)',
     icon: 'triangle-alert',
   },
   danger: {
     surface:
-      'border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]',
+      'border-(--status-danger-bg) bg-(--status-danger-bg) text-(--status-danger-fg)',
     icon: 'circle-alert',
   },
 }

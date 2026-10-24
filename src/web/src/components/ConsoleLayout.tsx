@@ -42,7 +42,7 @@ function NavItemLink({ item, onNavigate }: { item: NavItem; onNavigate: () => vo
         cn(
           // py-2.5 below lg keeps the row near the 44px touch target; the desktop
           // sidebar goes back to the tighter py-2 rhythm.
-          'flex items-center gap-2.5 rounded-md px-3 py-2.5 font-body text-base transition-colors duration-[120ms] ease-out focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none lg:py-2',
+          'flex items-center gap-2.5 rounded-md px-3 py-2.5 font-body text-base transition-colors duration-120 ease-out focus-visible:shadow-(--focus-ring) focus-visible:outline-hidden lg:py-2',
           isActive
             ? 'bg-brand-subtle font-semibold text-teal-800'
             : 'font-medium text-gray-600 hover:bg-gray-100',
@@ -121,7 +121,7 @@ export function ConsoleLayout() {
           // Wider as a drawer than as a sidebar: 230px has no room left for the
           // close button once the lockup is in, and there is no reason to be
           // narrow when the space is borrowed from a backdrop rather than content.
-          'fixed inset-y-0 left-0 z-50 flex h-screen w-[280px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border bg-surface-card px-3 py-[18px] transition-transform duration-200 ease-out lg:w-[var(--sidebar-w)]',
+          'fixed inset-y-0 left-0 z-50 flex h-screen w-[280px] shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-border bg-surface-card px-3 py-[18px] transition-transform duration-200 ease-out lg:w-(--sidebar-w)',
           // At lg the drawer machinery switches off: back to a sticky in-flow
           // column that is always visible and never animates.
           'lg:sticky lg:top-0 lg:z-auto lg:visible lg:translate-x-0 lg:transition-none',
@@ -137,7 +137,7 @@ export function ConsoleLayout() {
             type="button"
             onClick={closeNav}
             aria-label="Close navigation"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-gray-600 transition-colors duration-[120ms] ease-out hover:bg-gray-100 focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none lg:hidden"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-gray-600 transition-colors duration-120 ease-out hover:bg-gray-100 focus-visible:shadow-(--focus-ring) focus-visible:outline-hidden lg:hidden"
           >
             <Icon name="x" size={20} />
           </button>
@@ -167,7 +167,7 @@ export function ConsoleLayout() {
           <button
             type="button"
             onClick={() => void logout()}
-            className="mt-3 flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 font-body text-base font-medium text-gray-600 transition-colors duration-[120ms] ease-out hover:bg-gray-100 focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none lg:py-2"
+            className="mt-3 flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 font-body text-base font-medium text-gray-600 transition-colors duration-120 ease-out hover:bg-gray-100 focus-visible:shadow-(--focus-ring) focus-visible:outline-hidden lg:py-2"
           >
             <Icon name="log-out" size={16} />
             <span className="flex-1 text-left">Sign out</span>
@@ -211,7 +211,7 @@ export function ConsoleLayout() {
             aria-label="Open navigation"
             aria-expanded={navOpen}
             aria-controls="console-nav"
-            className="flex h-11 w-11 items-center justify-center rounded-md text-gray-600 transition-colors duration-[120ms] ease-out hover:bg-gray-100 focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none"
+            className="flex h-11 w-11 items-center justify-center rounded-md text-gray-600 transition-colors duration-120 ease-out hover:bg-gray-100 focus-visible:shadow-(--focus-ring) focus-visible:outline-hidden"
           >
             <Icon name="menu" size={20} />
           </button>
