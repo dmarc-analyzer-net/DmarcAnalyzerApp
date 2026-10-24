@@ -32,7 +32,7 @@ export function SortHeader<K extends string>({
       type="button"
       onClick={() => onSort(column)}
       className={cn(
-        'group inline-flex items-center gap-1 rounded-xs font-semibold text-secondary transition-colors duration-[120ms] ease-out hover:text-body focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none',
+        'group inline-flex items-center gap-1 rounded-xs font-semibold text-secondary transition-colors duration-120 ease-out hover:text-body focus-visible:shadow-(--focus-ring) focus-visible:outline-hidden',
         active && 'text-body',
       )}
     >

@@ -14,11 +14,11 @@ const badgeVariants = cva(
       variant: {
         brand: 'bg-brand-subtle text-teal-800',
         default: 'bg-brand-subtle text-teal-800',
-        success: 'bg-[var(--status-ok-bg)] text-[var(--status-ok-fg)]',
-        warning: 'bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]',
-        danger: 'bg-[var(--status-danger-bg)] text-[var(--status-danger-fg)]',
-        neutral: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
-        muted: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
+        success: 'bg-(--status-ok-bg) text-(--status-ok-fg)',
+        warning: 'bg-(--status-warn-bg) text-(--status-warn-fg)',
+        danger: 'bg-(--status-danger-bg) text-(--status-danger-fg)',
+        neutral: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
+        muted: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
       },
     },
     defaultVariants: {

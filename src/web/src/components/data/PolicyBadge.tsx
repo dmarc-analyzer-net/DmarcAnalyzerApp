@@ -3,9 +3,9 @@ import { cn } from '@/lib/utils'
 export type DmarcPolicy = 'none' | 'quarantine' | 'reject'
 
 const TONES: Record<DmarcPolicy, string> = {
-  reject: 'bg-[var(--status-ok-bg)] text-[var(--status-ok-fg)]',
-  quarantine: 'bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]',
-  none: 'bg-[var(--status-neutral-bg)] text-[var(--status-neutral-fg)]',
+  reject: 'bg-(--status-ok-bg) text-(--status-ok-fg)',
+  quarantine: 'bg-(--status-warn-bg) text-(--status-warn-fg)',
+  none: 'bg-(--status-neutral-bg) text-(--status-neutral-fg)',
 }
 
 /** DMARC policy chip: mono `p=reject` on a tinted, square-ish chip. */

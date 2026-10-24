@@ -25,7 +25,7 @@ export function DaysSelector({ value, onChange, disabled }: DaysSelectorProps) {
             aria-pressed={active}
             onClick={() => onChange(days)}
             className={cn(
-              'rounded-[7px] px-3 py-[5px] font-body text-sm font-semibold transition-colors duration-[120ms] ease-out focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50',
+              'rounded-[7px] px-3 py-[5px] font-body text-sm font-semibold transition-colors duration-120 ease-out focus-visible:shadow-(--focus-ring) focus-visible:outline-hidden disabled:pointer-events-none disabled:opacity-50',
               active ? 'bg-surface-card text-body shadow-card' : 'text-secondary hover:text-body',
             )}
           >

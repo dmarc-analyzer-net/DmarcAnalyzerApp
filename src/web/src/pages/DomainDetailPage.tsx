@@ -169,16 +169,16 @@ function PanelSectionTitle({ children }: { children: ReactNode }) {
 /** Colors a raw DKIM/SPF verdict: pass ok, hard failures danger, soft results warn. */
 function resultTone(result: string): string {
   const value = result.toLowerCase()
-  if (value === 'pass') return 'text-[var(--status-ok-fg)]'
+  if (value === 'pass') return 'text-(--status-ok-fg)'
   if (value === 'fail' || value === 'permerror' || value === 'temperror')
-    return 'text-[var(--status-danger-fg)]'
-  return 'text-[var(--status-warn-fg)]'
+    return 'text-(--status-danger-fg)'
+  return 'text-(--status-warn-fg)'
 }
 
 function EvaluatedChip({ combo }: { combo: EvaluatedCombo }) {
   const compliant = combo.dkim === 'pass' || combo.spf === 'pass'
   const tone = (result: 'pass' | 'fail') =>
-    result === 'pass' ? 'text-[var(--status-ok-fg)]' : 'text-[var(--status-danger-fg)]'
+    result === 'pass' ? 'text-(--status-ok-fg)' : 'text-(--status-danger-fg)'
   return (
     <div className="flex items-center gap-2 rounded-md border border-border bg-surface-card px-3 py-1.5 text-xs">
       <span className="text-secondary">
@@ -372,7 +372,7 @@ function RecordBlock({
       {issues.length > 0 ? (
         <ul className="mt-2 space-y-1">
           {issues.map((issue) => (
-            <li key={issue} className="flex items-start gap-1.5 text-xs text-[var(--status-warn-fg)]">
+            <li key={issue} className="flex items-start gap-1.5 text-xs text-(--status-warn-fg)">
               <Icon name="triangle-alert" size={13} className="mt-px shrink-0" />
               {issue}
             </li>
@@ -417,7 +417,7 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
           Looking up live DNS records…
         </div>
       ) : error ? (
-        <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+        <p className="rounded-md border border-(--status-danger-bg) bg-(--status-danger-bg) px-3 py-2 text-sm text-(--status-danger-fg)">
           {error}
         </p>
       ) : inspection ? (
@@ -450,9 +450,9 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
                     className={cn(
                       'flex items-start gap-1.5 text-xs leading-relaxed',
                       dest.status === 'not_authorized'
-                        ? 'text-[var(--status-danger-fg)]'
+                        ? 'text-(--status-danger-fg)'
                         : dest.status === 'lookup_failed'
-                          ? 'text-[var(--status-warn-fg)]'
+                          ? 'text-(--status-warn-fg)'
                           : 'text-secondary',
                     )}
                   >
@@ -500,7 +500,7 @@ function RecordInspectionCard({ domainId }: { domainId: string }) {
                       className={cn(
                         'flex items-center gap-2 rounded-md border px-3 py-1.5 font-mono text-xs',
                         differs
-                          ? 'border-[var(--status-warn-bg)] bg-[var(--status-warn-bg)] text-[var(--status-warn-fg)]'
+                          ? 'border-(--status-warn-bg) bg-(--status-warn-bg) text-(--status-warn-fg)'
                           : 'border-border bg-surface-card text-secondary',
                       )}
                       aria-label={describeComparison(row)}
@@ -709,7 +709,7 @@ function TransportSecurityCard({ domainId }: { domainId: string }) {
           Loading MTA-STS state…
         </div>
       ) : error ? (
-        <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+        <p className="rounded-md border border-(--status-danger-bg) bg-(--status-danger-bg) px-3 py-2 text-sm text-(--status-danger-fg)">
           {error}
         </p>
       ) : !state ? null : !state.checked ? (
@@ -790,7 +790,7 @@ function TransportSecurityCard({ domainId }: { domainId: string }) {
                     key={`${mx.preference}-${mx.host}`}
                     className={cn(
                       'flex items-start gap-1.5 text-xs leading-relaxed',
-                      mx.matched === false ? 'text-[var(--status-danger-fg)]' : 'text-secondary',
+                      mx.matched === false ? 'text-(--status-danger-fg)' : 'text-secondary',
                     )}
                   >
                     <Icon
@@ -808,7 +808,7 @@ function TransportSecurityCard({ domainId }: { domainId: string }) {
               </ul>
             </div>
           ) : state.mxLookupStatus === 'lookup_failed' ? (
-            <p className="text-xs text-[var(--status-warn-fg)]">
+            <p className="text-xs text-(--status-warn-fg)">
               MX lookup failed — the policy&apos;s mx patterns could not be cross-checked.
             </p>
           ) : null}
@@ -818,7 +818,7 @@ function TransportSecurityCard({ domainId }: { domainId: string }) {
               {state.issues.map((issue) => (
                 <li
                   key={issue}
-                  className="flex items-start gap-1.5 text-xs leading-relaxed text-[var(--status-warn-fg)]"
+                  className="flex items-start gap-1.5 text-xs leading-relaxed text-(--status-warn-fg)"
                 >
                   <Icon name="triangle-alert" size={13} className="mt-px shrink-0" />
                   {issue}
@@ -1217,7 +1217,7 @@ export function ReportNotesList({ notes }: { notes: ReportNotes }) {
                         <Badge variant={NOTE_SEVERITY_BADGE[message.severity]} className="shrink-0">
                           {message.severity}
                         </Badge>
-                        <span className="min-w-0 break-words font-mono text-xs">{message.text}</span>
+                        <span className="min-w-0 wrap-break-word font-mono text-xs">{message.text}</span>
                       </li>
                     ))}
                     <li className="font-mono text-xs text-secondary">report id {report.reportId}</li>
@@ -1278,7 +1278,7 @@ function ReportNotesCard({ domainId, days }: { domainId: string; days: Analytics
         }
       />
       {error ? (
-        <p className="mt-4 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+        <p className="mt-4 rounded-md border border-(--status-danger-bg) bg-(--status-danger-bg) px-3 py-2 text-sm text-(--status-danger-fg)">
           {error}
         </p>
       ) : notes ? (
@@ -1316,7 +1316,7 @@ function TlsReportingCard({ domainId, days }: { domainId: string; days: Analytic
           Looking up the TLS-RPT record…
         </div>
       ) : error ? (
-        <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+        <p className="rounded-md border border-(--status-danger-bg) bg-(--status-danger-bg) px-3 py-2 text-sm text-(--status-danger-fg)">
           {error}
         </p>
       ) : summary ? (
@@ -1601,7 +1601,7 @@ function MtaStsPolicyEditor({
             <label className="grid gap-1 text-xs text-secondary">
               mx patterns — one per line{mode === 'none' ? ' (optional for mode none)' : ''}
               <textarea
-                className="min-h-20 rounded-md border border-border bg-surface-card px-3 py-2 font-mono text-[16px] text-body focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)] sm:text-xs"
+                className="min-h-20 rounded-md border border-border bg-surface-card px-3 py-2 font-mono text-[16px] text-body focus-visible:outline-hidden focus-visible:shadow-(--focus-ring) sm:text-xs"
                 value={patternsText}
                 onChange={(e) => setPatternsText(e.target.value)}
                 placeholder={'mx1.example.com\n*.mail.example.com'}
@@ -1754,7 +1754,7 @@ function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPanelProps)
   if (error) {
     return (
       <div className="px-5 py-4">
-        <p className="rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+        <p className="rounded-md border border-(--status-danger-bg) bg-(--status-danger-bg) px-3 py-2 text-sm text-(--status-danger-fg)">
           {error}
         </p>
       </div>
@@ -1985,7 +1985,7 @@ export function SourceIpCell({
         event.stopPropagation()
         onToggle()
       }}
-      className="inline-flex items-start gap-1.5 rounded-xs text-left font-mono text-xs font-medium text-body transition-colors hover:text-brand focus-visible:shadow-[var(--focus-ring)] focus-visible:outline-none"
+      className="inline-flex items-start gap-1.5 rounded-xs text-left font-mono text-xs font-medium text-body transition-colors hover:text-brand focus-visible:shadow-(--focus-ring) focus-visible:outline-hidden"
     >
       <Icon
         name="chevron-right"
@@ -2204,7 +2204,7 @@ export function DomainDetailPage() {
       </div>
 
       {error ? (
-        <div className="mb-3.5 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+        <div className="mb-3.5 rounded-md border border-(--status-danger-bg) bg-(--status-danger-bg) px-3 py-2 text-sm text-(--status-danger-fg)">
           {error}
         </div>
       ) : null}
@@ -2257,8 +2257,8 @@ export function DomainDetailPage() {
                   className={cn(
                     'mb-3.5 rounded-md border px-3 py-2.5',
                     guidance.readyToAdvance
-                      ? 'border-[var(--status-ok-bg)] bg-[var(--status-ok-bg)]'
-                      : 'border-[var(--status-warn-bg)] bg-[var(--status-warn-bg)]',
+                      ? 'border-(--status-ok-bg) bg-(--status-ok-bg)'
+                      : 'border-(--status-warn-bg) bg-(--status-warn-bg)',
                   )}
                 >
                   <div className="flex items-start gap-2">
@@ -2273,8 +2273,8 @@ export function DomainDetailPage() {
                         className={cn(
                           'text-sm font-semibold',
                           guidance.readyToAdvance
-                            ? 'text-[var(--status-ok-fg)]'
-                            : 'text-[var(--status-warn-fg)]',
+                            ? 'text-(--status-ok-fg)'
+                            : 'text-(--status-warn-fg)',
                         )}
                       >
                         {guidance.recommendedAction}
@@ -2406,7 +2406,7 @@ export function DomainDetailPage() {
                         // address to look up, so it is left unobserved.
                         ref={attributable ? observeSource(source.sourceIp) : undefined}
                         className={cn(
-                          'border-b border-[var(--gray-100)] transition-colors duration-[120ms] ease-out hover:bg-gray-50',
+                          'border-b border-(--gray-100) transition-colors duration-120 ease-out hover:bg-gray-50',
                           expanded && 'bg-gray-50',
                         )}
                       >
@@ -2433,7 +2433,7 @@ export function DomainDetailPage() {
                             align="right"
                             className={cn(
                               'tabular-nums',
-                              source.failedMessages > 0 && 'font-medium text-[var(--status-danger-fg)]',
+                              source.failedMessages > 0 && 'font-medium text-(--status-danger-fg)',
                             )}
                           >
                             {formatCompact(source.failedMessages)}
@@ -2484,7 +2484,7 @@ export function DomainDetailPage() {
                               {/* Quarantined and Rejected live here rather than as columns:
                                   the two of them cost 216px of table width, which is what
                                   kept this table wider than its container. */}
-                              <dl className="flex gap-6 border-b border-[var(--gray-100)] px-4 py-2.5 text-xs">
+                              <dl className="flex gap-6 border-b border-(--gray-100) px-4 py-2.5 text-xs">
                                 <div className="flex gap-1.5">
                                   <dt className="text-secondary">Quarantined</dt>
                                   <dd className="tabular-nums text-body">{formatCompact(source.quarantined)}</dd>

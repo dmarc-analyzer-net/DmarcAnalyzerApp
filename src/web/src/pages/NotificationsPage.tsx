@@ -193,12 +193,12 @@ export function NotificationsPage() {
       </div>
 
       {error ? (
-        <div className="mb-3.5 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+        <div className="mb-3.5 rounded-md border border-(--status-danger-bg) bg-(--status-danger-bg) px-3 py-2 text-sm text-(--status-danger-fg)">
           {error}
         </div>
       ) : null}
       {notice ? (
-        <div className="mb-3.5 rounded-md border border-[var(--status-ok-bg)] bg-[var(--status-ok-bg)] px-3 py-2 text-sm text-[var(--status-ok-fg)]">
+        <div className="mb-3.5 rounded-md border border-(--status-ok-bg) bg-(--status-ok-bg) px-3 py-2 text-sm text-(--status-ok-fg)">
           {notice}
         </div>
       ) : null}
@@ -469,7 +469,7 @@ function RoutingDialog({
         </DialogHeader>
         <form className="grid gap-4" onSubmit={save}>
           {error ? (
-            <div className="rounded-md bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+            <div className="rounded-md bg-(--status-danger-bg) px-3 py-2 text-sm text-(--status-danger-fg)">
               {error}
             </div>
           ) : null}

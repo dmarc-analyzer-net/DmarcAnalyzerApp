@@ -420,7 +420,7 @@ export function ReportSourcesPage() {
       </div>
 
       {error ? (
-        <div className="mb-3.5 rounded-md border border-[var(--status-danger-bg)] bg-[var(--status-danger-bg)] px-3 py-2 text-sm text-[var(--status-danger-fg)]">
+        <div className="mb-3.5 rounded-md border border-(--status-danger-bg) bg-(--status-danger-bg) px-3 py-2 text-sm text-(--status-danger-fg)">
           {error}
         </div>
       ) : null}
@@ -537,7 +537,7 @@ export function ReportSourcesPage() {
                     key={health.reportSourceId}
                     className="flex items-center gap-2 text-sm text-secondary"
                   >
-                    <span className="inline-flex shrink-0 text-[var(--status-danger-dot)]">
+                    <span className="inline-flex shrink-0 text-(--status-danger-dot)">
                       <Icon name="circle-alert" size={15} />
                     </span>
                     <span className="font-mono text-xs">{source?.host ?? health.name}</span>
