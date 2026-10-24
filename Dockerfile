@@ -8,7 +8,7 @@
 # for six hours until the runner killed them, with identical inputs to a build
 # that had passed the day before. Emulate only the stages that produce
 # platform-specific artifacts.
-FROM --platform=$BUILDPLATFORM node:22-alpine AS web-build
+FROM --platform=$BUILDPLATFORM node:24-alpine AS web-build
 WORKDIR /web
 RUN npm install -g npm@11.6.2
 COPY src/web/package*.json ./
