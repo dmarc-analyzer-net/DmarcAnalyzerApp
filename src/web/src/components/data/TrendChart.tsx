@@ -40,7 +40,7 @@ export function TrendChart({ data = [], height = 160, showLabels = true, classNa
           const x = i * (bw + gap)
           return (
             <g key={`${d.label}-${i}`}>
-              <rect x={x} width={bw} y={40 - ph} height={ph} rx="0.6" fill="#0e9481" />
+              <rect x={x} width={bw} y={40 - ph} height={ph} rx="0.6" fill="var(--brand-chart)" />
               {fh > 0 ? (
                 <rect x={x} width={bw} y={40 - ph - fh - 0.5} height={fh} rx="0.6" fill="#dc3d5c" />
               ) : null}

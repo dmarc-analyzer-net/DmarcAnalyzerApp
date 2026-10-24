@@ -12,8 +12,8 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        brand: 'bg-brand-subtle text-teal-800',
-        default: 'bg-brand-subtle text-teal-800',
+        brand: 'bg-brand-subtle text-brand-strong',
+        default: 'bg-brand-subtle text-brand-strong',
         success: 'bg-(--status-ok-bg) text-(--status-ok-fg)',
         warning: 'bg-(--status-warn-bg) text-(--status-warn-fg)',
         danger: 'bg-(--status-danger-bg) text-(--status-danger-fg)',

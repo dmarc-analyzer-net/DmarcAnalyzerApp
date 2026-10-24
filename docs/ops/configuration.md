@@ -236,13 +236,16 @@ mail of its own for each client set to *separate*.
 
 ## Branding (`Branding`)
 
-The agency's identity on digest mail. One brand for the whole instance.
+The agency's identity on digest mail and in the console: the sign-in page, the header,
+and the browser tab title. One brand for the whole instance. The console reads it from
+the public `GET /api/v1/branding`, so a client sees it before signing in.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `Branding__Name` | `DMARC Analyzer` | Name shown at the top and bottom of every digest. |
-| `Branding__LogoUrl` | *(empty)* | Absolute `https://` URL of a logo, shown 32px high in place of the name at the top. The footer still names the agency in text, because many mail clients hold images back until the reader allows them. Anything that is not an http(s) URL is ignored. |
-| `Branding__AccentColor` | `#0c7568` | Six-digit hex colour for the top rule, links and the button. Anything else falls back to the default. |
+| `Branding__Name` | `DMARC Analyzer` | Name shown at the top and bottom of every digest, in the console header when no logo is set, and in the tab title (`Domains · <name>`). |
+| `Branding__LogoUrl` | *(empty)* | Absolute `https://` URL of a logo. In a digest it is shown 32px high in place of the name at the top, and the footer still names the agency in text, because many mail clients hold images back until the reader allows them. In the console it replaces the product's logo and name on the sign-in page and in the header, so it should carry the agency's name itself; it is shown on a light background. Anything that is not an http(s) URL is ignored. |
+| `Branding__AccentColor` | `#0c7568` | Six-digit hex colour. In a digest: the top rule, links and the button. In the console: primary buttons, links, focus rings and the active navigation item; hover and tint shades are derived from it, and text on it turns dark when white would not be legible. Anything else falls back to the default. |
+| `Branding__HidePoweredBy` | `false` | Once any of the three settings above is changed, the console shows a small "powered by DMARC Analyzer" line on the sign-in page and at the foot of the navigation. `true` hides it. An unbranded instance never shows it. |
 
 ## DNS policy checks (`Dns`)
 

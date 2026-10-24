@@ -19,6 +19,7 @@ public sealed class SessionAuthMiddleware(RequestDelegate next)
         "/api/v1/auth/logout",
         "/api/v1/auth/setup",
         "/api/v1/auth/providers",
+        "/api/v1/branding",
         "/health/live",
         "/health/ready",
     ];

@@ -6,21 +6,20 @@ import { Icon, type IconName } from '@/components/ui/icon'
 import { cn } from '@/lib/utils'
 
 /**
- * Design-system button. Solid teal `primary`, bordered `secondary`/`outline`,
+ * Design-system button. Solid brand-coloured `primary`, bordered `secondary`/`outline`,
  * and `ghost`; hover always DARKENS (never lightens) and focus draws the 3px
- * teal ring. `icon` renders a leading lucide glyph by kebab name.
+ * brand ring. `icon` renders a leading lucide glyph by kebab name.
  */
 const buttonVariants = cva(
   'inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md font-body font-semibold transition-colors duration-120 ease-out focus-visible:outline-hidden focus-visible:shadow-(--focus-ring) disabled:pointer-events-none disabled:opacity-50',
   {
     variants: {
       variant: {
-        primary: 'bg-brand text-white hover:bg-brand-hover',
+        primary: 'bg-brand text-on-brand hover:bg-brand-hover',
         secondary: 'border border-border bg-surface-card text-body hover:bg-gray-100',
         outline: 'border border-border bg-surface-card text-body hover:bg-gray-100',
         ghost: 'text-body hover:bg-gray-100',
         danger: 'bg-red-600 text-white hover:bg-red-800',
-        mint: 'bg-mint-400 text-ink-900 hover:bg-mint-300',
         inkOutline: 'border border-white/20 text-white/90 hover:bg-white/6',
       },
       // Each size gains 4px below sm — a 32px control is an awkward tap target,

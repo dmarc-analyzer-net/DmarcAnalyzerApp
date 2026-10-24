@@ -416,8 +416,9 @@ zero undocumented. The problems are everywhere else.
 - [ ] (todo) **`.github/profile/README.md` advertises two features that do not
       exist** — threat detection "with sending IP, volume, and geography" (no
       geolocation anywhere; already tracked in the Parking Lot) and "white-label
-      client reports … per domain" (the digest carries one instance-wide brand,
-      `Branding:*`, but there is no per-client branding and no PDF). This is the most public surface the project has.
+      client reports … per domain" (the digest and the console carry one
+      instance-wide brand, `Branding:*`, but there is no per-client branding and
+      no PDF). This is the most public surface the project has.
 - [ ] (todo) **Open-source hygiene files are missing across both repos:** no
       `SECURITY.md` (the disclosure policy exists only as website content, so
       GitHub's "Report a vulnerability" affordance is absent for a product that

@@ -60,6 +60,8 @@
   --color-brand-hover: var(--brand-hover);
   --color-brand-active: var(--brand-active);
   --color-brand-subtle: var(--brand-subtle);
+  --color-brand-strong: var(--brand-strong);
+  --color-on-brand: var(--text-on-brand);
 
   --color-border: var(--border-default);
   --color-border-strong: var(--border-strong);
@@ -126,6 +128,14 @@
   --brand-active: #0a4a44;
   --brand-subtle: #effaf7;
   --brand-ring: rgba(14, 148, 129, 0.28);
+  /* Brand-coloured text on --brand-subtle or a card (the active nav item, badges). */
+  --brand-strong: #0b5d54;
+  /* Brand-coloured data marks; teal-600, which only has to clear 3:1. */
+  --brand-chart: #0e9481;
+  /* Every brand variable above, plus --text-on-brand and --link*, is overridden
+     on :root at runtime when Branding__AccentColor is set — see
+     deriveBrandPalette in src/lib/branding.ts, which keeps the same contrast
+     rules for an arbitrary accent. */
 
   --surface-page: #f5f8f7;
   --surface-card: #ffffff;

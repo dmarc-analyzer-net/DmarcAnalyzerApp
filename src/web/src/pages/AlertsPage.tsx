@@ -209,7 +209,7 @@ export function AlertsPage() {
                             {alert.domainId ? (
                               <Link
                                 to={`/domains/${alert.domainId}`}
-                                className="text-sm font-medium text-body underline decoration-dotted underline-offset-2 hover:text-brand"
+                                className="text-sm font-medium text-body underline decoration-dotted underline-offset-2 hover:text-link"
                               >
                                 {alert.title}
                               </Link>

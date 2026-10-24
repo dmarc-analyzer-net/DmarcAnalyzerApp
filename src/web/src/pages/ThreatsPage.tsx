@@ -225,7 +225,7 @@ export function ThreatsPage() {
                           <TableCell>
                             <Link
                               to={`/domains/${source.domainId}${domainQuery ? `?${domainQuery}` : ''}`}
-                              className="font-mono text-xs text-body underline decoration-dotted underline-offset-2 hover:text-brand"
+                              className="font-mono text-xs text-body underline decoration-dotted underline-offset-2 hover:text-link"
                               title={
                                 attributable
                                   ? 'Open the domain drill-down with this source expanded'
