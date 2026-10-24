@@ -91,6 +91,8 @@ const WHITE: Rgb = [255, 255, 255]
 const BLACK: Rgb = [0, 0, 0]
 /** --surface-ink, the dark text used on a light accent. */
 const INK = '#0b1d18'
+/** --surface-page, the darkest surface brand-coloured text sits on. */
+const PAGE = '#f5f8f7'
 
 function toRgb(hex: string): Rgb {
   const n = Number.parseInt(hex.slice(1), 16)
@@ -148,36 +150,54 @@ export type BrandPalette = {
  *
  * The accent itself is used as given on primary buttons, and the text on them is
  * white when that clears WCAG AA (4.5:1) and dark when it does not — so a yellow
- * accent keeps its yellow and gets legible text. Everything that is text on a
- * light surface (links, the active nav item, badges) is darkened from the accent
- * until it clears 4.5:1, and chart bars until they clear the 3:1 graphics bar.
+ * accent keeps its yellow and gets legible text. A mid-tone where neither clears
+ * it (a #808080 grey) is darkened until white does. Hover and pressed shades stay
+ * at 4.5:1 against that same text.
+ *
+ * Everything that is text on a light surface (links, the active nav item, badges)
+ * is darkened from the accent until it clears 4.5:1 on the page background, the
+ * darkest light surface; chart bars and the focus ring until they clear the 3:1
+ * graphics bar, so a white accent still draws a visible ring.
  */
 export function deriveBrandPalette(accent: string): BrandPalette {
-  const base = toRgb(accent)
-  const whiteText = contrast(accent, '#ffffff') >= 4.5
-  const onBrand = whiteText
-    ? '#ffffff'
-    : contrast(accent, INK) >= contrast(accent, '#ffffff')
-      ? INK
-      : '#ffffff'
-  // Hover always darkens. Under dark text it darkens less, so the pressed state
-  // does not drag the button into its own text colour.
-  const [hover, active] = onBrand === INK ? [0.1, 0.2] : [0.2, 0.37]
-  const subtle = toHex(mix(base, WHITE, 0.93))
-  const link = darkenUntil(base, '#ffffff', 4.5)
+  const accentRgb = toRgb(accent)
+  const [brand, onBrand] =
+    contrast(accent, '#ffffff') >= 4.5
+      ? [accent, '#ffffff']
+      : contrast(accent, INK) >= 4.5
+        ? [accent, INK]
+        : [darkenUntil(accentRgb, '#ffffff', 4.5), '#ffffff']
+  const base = toRgb(brand)
+  const subtle = toHex(mix(accentRgb, WHITE, 0.93))
+  const link = darkenUntil(accentRgb, PAGE, 4.5)
+  const graphic = darkenUntil(accentRgb, '#ffffff', 3)
 
   return {
-    '--brand': accent,
-    '--brand-hover': toHex(mix(base, BLACK, hover)),
-    '--brand-active': toHex(mix(base, BLACK, active)),
+    '--brand': brand,
+    '--brand-hover': pressShade(base, onBrand, 0.2),
+    '--brand-active': pressShade(base, onBrand, 0.37),
     '--brand-subtle': subtle,
-    '--brand-ring': `rgba(${base.join(', ')}, 0.28)`,
-    '--brand-strong': darkenUntil(base, subtle, 4.5, 0.2),
-    '--brand-chart': darkenUntil(base, '#ffffff', 3),
+    '--brand-ring': `rgba(${toRgb(graphic).join(', ')}, 0.28)`,
+    '--brand-strong': darkenUntil(accentRgb, subtle, 4.5, 0.2),
+    '--brand-chart': graphic,
     '--text-on-brand': onBrand,
     '--link': link,
     '--link-hover': toHex(mix(toRgb(link), BLACK, 0.2)),
   }
+}
+
+/**
+ * A hover or pressed shade of `base` that keeps 4.5:1 against `text`. It darkens
+ * by up to `weight`, as every other button does; under dark text there may be no
+ * room to darken at all, and then it lightens by the same step instead, which only
+ * adds contrast.
+ */
+function pressShade(base: Rgb, text: string, weight: number): string {
+  for (let w = weight; w > 0.001; w -= 0.05) {
+    const candidate = toHex(mix(base, BLACK, w))
+    if (contrast(candidate, text) >= 4.5) return candidate
+  }
+  return toHex(mix(base, WHITE, weight))
 }
 
 /**

@@ -3,16 +3,29 @@ import { describe, expect, it } from 'vitest'
 import { applyBranding, contrast, DEFAULT_BRANDING, deriveBrandPalette, parseBranding } from '@/lib/branding'
 
 describe('deriveBrandPalette', () => {
-  // A dark accent, the default, a mid tone, and three that fail white text.
-  const accents = ['#0c7568', '#1d4ed8', '#e11d48', '#f5c400', '#ffffff', '#7dd3fc']
+  // The default, dark and mid tones, three that fail white text, and two greys
+  // where neither white nor dark text clears AA or the pressed state has no room.
+  const accents = ['#0c7568', '#1d4ed8', '#e11d48', '#f5c400', '#ffffff', '#7dd3fc', '#808080', '#999999']
 
   it.each(accents)('keeps every text pairing at AA for %s', (accent) => {
     const p = deriveBrandPalette(accent)
 
-    expect(contrast(p['--text-on-brand'], p['--brand'])).toBeGreaterThanOrEqual(4.5)
-    expect(contrast(p['--link'], '#ffffff')).toBeGreaterThanOrEqual(4.5)
+    for (const fill of [p['--brand'], p['--brand-hover'], p['--brand-active']]) {
+      expect(contrast(p['--text-on-brand'], fill)).toBeGreaterThanOrEqual(4.5)
+    }
+    expect(contrast(p['--link'], '#f5f8f7')).toBeGreaterThanOrEqual(4.5)
     expect(contrast(p['--brand-strong'], p['--brand-subtle'])).toBeGreaterThanOrEqual(4.5)
     expect(contrast(p['--brand-chart'], '#ffffff')).toBeGreaterThanOrEqual(3)
+  })
+
+  it('draws the focus ring from a colour that clears 3:1, so a white accent still shows one', () => {
+    expect(deriveBrandPalette('#ffffff')['--brand-ring']).not.toBe('rgba(255, 255, 255, 0.28)')
+  })
+
+  it('darkens a mid grey until white text clears AA, rather than failing with either', () => {
+    const p = deriveBrandPalette('#808080')
+    expect(p['--text-on-brand']).toBe('#ffffff')
+    expect(p['--brand']).not.toBe('#808080')
   })
 
   it('keeps the accent itself on the button', () => {
@@ -24,8 +37,8 @@ describe('deriveBrandPalette', () => {
     expect(deriveBrandPalette('#f5c400')['--text-on-brand']).toBe('#0b1d18')
   })
 
-  it('darkens on hover rather than lightening', () => {
-    for (const accent of accents) {
+  it('darkens on hover rather than lightening whenever there is room to', () => {
+    for (const accent of accents.filter((a) => a !== '#999999')) {
       const p = deriveBrandPalette(accent)
       expect(contrast(p['--brand-hover'], '#ffffff')).toBeGreaterThan(contrast(p['--brand'], '#ffffff'))
     }
