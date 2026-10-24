@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -26,6 +26,7 @@ import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin } from '@/lib/authz'
 import type { Client } from '@/lib/entities'
+import { loadErrorMessage, useLoader } from '@/lib/use-loader'
 import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
 
@@ -47,6 +48,8 @@ const NEW_CLIENTS_LABEL: Record<DigestMode, string> = {
   off: 'New clients are not included',
 }
 
+const NO_CLIENTS: Client[] = []
+
 type PreviewMail = { subject: string; isRollup: boolean; clientIds: string[] }
 
 /**
@@ -59,10 +62,23 @@ export function NotificationsPage() {
   const { user } = useAuth()
   const admin = isAdmin(user)
 
-  const [recipients, setRecipients] = useState<NotificationRecipient[] | null>(null)
-  const [clients, setClients] = useState<Client[]>([])
-  const [busy, setBusy] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const loader = useLoader(
+    useCallback(async () => {
+      const [recipients, clients] = await Promise.all([
+        fetchJson<NotificationRecipient[]>('/api/v1/notification-recipients'),
+        fetchJson<Client[]>('/api/v1/clients'),
+      ])
+      return { recipients, clients }
+    }, []),
+  )
+  const recipients = loader.data?.recipients ?? null
+  const clients = loader.data?.clients ?? NO_CLIENTS
+  const busy = loader.loading
+  const [actionError, setError] = useState<string | null>(null)
+  const error = actionError ?? loadErrorMessage(loader.error, 'Failed to load recipients')
+  const { reload } = loader
+  /** Reloads, and answers with the fresh rows — null if the reload failed. */
+  const loadData = useCallback(async () => (await reload())?.recipients ?? null, [reload])
   const [notice, setNotice] = useState<string | null>(null)
 
   const [email, setEmail] = useState('')
@@ -81,29 +97,6 @@ export function NotificationsPage() {
 
   const sortedClients = useMemo(() => [...clients].sort((a, b) => a.name.localeCompare(b.name)), [clients])
   const clientIds = useMemo(() => sortedClients.map((c) => c.id), [sortedClients])
-
-  const loadData = useCallback(async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      const [recipientData, clientData] = await Promise.all([
-        fetchJson<NotificationRecipient[]>('/api/v1/notification-recipients'),
-        fetchJson<Client[]>('/api/v1/clients'),
-      ])
-      setRecipients(recipientData)
-      setClients(clientData)
-      return recipientData
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load recipients')
-      return null
-    } finally {
-      setBusy(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadData()
-  }, [loadData])
 
   const addRecipient = async (event: FormEvent) => {
     event.preventDefault()

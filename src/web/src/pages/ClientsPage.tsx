@@ -19,6 +19,7 @@ import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin } from '@/lib/authz'
 import type { Client, DigestDefaults, DigestThresholds } from '@/lib/entities'
+import { loadErrorMessage, useLoader } from '@/lib/use-loader'
 import { usePageTitle } from '@/lib/use-page-title'
 
 const initialClientForm = {
@@ -49,31 +50,18 @@ export function ClientsPage() {
   const { user } = useAuth()
   const canManage = isAdmin(user)
 
-  const [clients, setClients] = useState<Client[]>([])
+  const loader = useLoader(useCallback(() => fetchJson<Client[]>('/api/v1/clients'), []))
+  const clients = useMemo(() => loader.data ?? [], [loader.data])
+  const busy = loader.loading
+  const loadData = loader.reload
   const [search, setSearch] = useState('')
-  const [busy, setBusy] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setError] = useState<string | null>(null)
+  const error = actionError ?? loadErrorMessage(loader.error, 'Failed to load clients')
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingClientId, setEditingClientId] = useState<string | null>(null)
   const [clientForm, setClientForm] = useState(initialClientForm)
   const [digestDefaults, setDigestDefaults] = useState<DigestDefaults | null>(null)
-
-  const loadData = useCallback(async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      setClients(await fetchJson<Client[]>('/api/v1/clients'))
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load clients')
-    } finally {
-      setBusy(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadData()
-  }, [loadData])
 
   // Only for the placeholders; the form works without them.
   useEffect(() => {

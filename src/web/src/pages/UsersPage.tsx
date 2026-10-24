@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import { Badge } from '@/components/ui/badge'
@@ -19,6 +19,7 @@ import { fetchJson } from '@/lib/api'
 import { USER_ROLES, type UserRole } from '@/lib/auth-context'
 import type { Client, ManagedUser } from '@/lib/entities'
 import { formatRelativeOrDate } from '@/lib/format'
+import { loadErrorMessage, useLoader } from '@/lib/use-loader'
 import { usePageTitle } from '@/lib/use-page-title'
 
 type BadgeVariant = 'brand' | 'neutral'
@@ -50,6 +51,12 @@ const initialCreateForm = {
 /** Only the part of GET /api/v1/auth/providers this page needs. */
 type SsoProvider = { displayName: string } | null
 
+const NO_USERS: { users: ManagedUser[]; clients: Client[]; sso: SsoProvider } = {
+  users: [],
+  clients: [],
+  sso: null,
+}
+
 const initialEditForm = {
   displayName: '',
   role: 'client_viewer' as ManagedUser['role'],
@@ -74,25 +81,9 @@ function RoleOptions({ currentRole }: { currentRole?: string }) {
 
 export function UsersPage() {
   usePageTitle('Users')
-  const [users, setUsers] = useState<ManagedUser[]>([])
-  const [clients, setClients] = useState<Client[]>([])
-  const [sso, setSso] = useState<SsoProvider>(null)
-  const [search, setSearch] = useState('')
-  const [busy, setBusy] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingUserId, setEditingUserId] = useState<string | null>(null)
-  const [createForm, setCreateForm] = useState(initialCreateForm)
-  const [editForm, setEditForm] = useState(initialEditForm)
-  const [dialogError, setDialogError] = useState<string | null>(null)
-  const [saving, setSaving] = useState(false)
-
-  const loadData = useCallback(async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      const [userData, clientData, providers] = await Promise.all([
+  const loader = useLoader(
+    useCallback(async () => {
+      const [users, clients, providers] = await Promise.all([
         fetchJson<ManagedUser[]>('/api/v1/users'),
         fetchJson<Client[]>('/api/v1/clients'),
         // Whether SSO exists decides if a passwordless account can sign in at
@@ -102,19 +93,22 @@ export function UsersPage() {
           () => ({ oidc: null }),
         ),
       ])
-      setUsers(userData)
-      setClients(clientData)
-      setSso(providers.oidc)
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load users')
-    } finally {
-      setBusy(false)
-    }
-  }, [])
+      return { users, clients, sso: providers.oidc }
+    }, []),
+  )
+  const { users, clients, sso } = loader.data ?? NO_USERS
+  const busy = loader.loading
+  const loadData = loader.reload
+  const [search, setSearch] = useState('')
+  const [actionError, setError] = useState<string | null>(null)
+  const error = actionError ?? loadErrorMessage(loader.error, 'Failed to load users')
 
-  useEffect(() => {
-    void loadData()
-  }, [loadData])
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingUserId, setEditingUserId] = useState<string | null>(null)
+  const [createForm, setCreateForm] = useState(initialCreateForm)
+  const [editForm, setEditForm] = useState(initialEditForm)
+  const [dialogError, setDialogError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const sortedClients = useMemo(
     () => [...clients].sort((a, b) => a.name.localeCompare(b.name)),

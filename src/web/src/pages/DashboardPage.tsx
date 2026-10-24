@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 
 import { DaysSelector } from '@/components/DaysSelector'
@@ -14,6 +14,7 @@ import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isStaff } from '@/lib/authz'
 import { formatCompact, formatFullDate, formatPercent, formatShortDate } from '@/lib/format'
+import { loadErrorMessage, useLoader } from '@/lib/use-loader'
 import { usePageTitle } from '@/lib/use-page-title'
 
 type BadgeVariant = 'success' | 'warning' | 'danger'
@@ -33,30 +34,16 @@ export function DashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const days = parseAnalyticsDays(searchParams.get('days'))
 
-  const [summary, setSummary] = useState<AnalyticsSummary | null>(null)
-  const [busy, setBusy] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const requestSeq = useRef(0)
-
-  const loadData = useCallback(async () => {
-    const seq = ++requestSeq.current
-    setBusy(true)
-    setError(null)
-    try {
-      const payload = await fetchJson<AnalyticsSummary>(`/api/v1/analytics/summary?days=${days}`)
-      if (seq === requestSeq.current) setSummary(payload)
-    } catch (loadError) {
-      if (seq === requestSeq.current) {
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load analytics')
-      }
-    } finally {
-      if (seq === requestSeq.current) setBusy(false)
-    }
-  }, [days])
-
-  useEffect(() => {
-    void loadData()
-  }, [loadData])
+  const loader = useLoader(
+    useCallback(
+      () => fetchJson<AnalyticsSummary>(`/api/v1/analytics/summary?days=${days}`),
+      [days],
+    ),
+  )
+  const summary = loader.data ?? null
+  const busy = loader.loading
+  const error = loadErrorMessage(loader.error, 'Failed to load analytics')
+  const loadData = loader.reload
 
   const setDays = (next: AnalyticsDays) => {
     setSearchParams(next === 30 ? {} : { days: String(next) }, { replace: true })

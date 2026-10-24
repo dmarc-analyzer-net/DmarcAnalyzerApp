@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { StatCard } from '@/components/data/StatCard'
@@ -21,6 +21,7 @@ import { fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin, isStaff } from '@/lib/authz'
 import { formatRelativeOrDate } from '@/lib/format'
+import { loadErrorMessage, useLoader } from '@/lib/use-loader'
 import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
 
@@ -36,32 +37,16 @@ export function AlertsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const days = parseAnalyticsDays(searchParams.get('days'))
 
-  const [alerts, setAlerts] = useState<AlertEvent[] | null>(null)
-  const [busy, setBusy] = useState(true)
+  const loader = useLoader(
+    useCallback(() => fetchJson<AlertEvent[]>(`/api/v1/alerts?days=${days}`), [days]),
+  )
+  const alerts = loader.data ?? null
+  const busy = loader.loading
+  const { reload: loadData, setData: setAlerts } = loader
   const [evaluating, setEvaluating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setError] = useState<string | null>(null)
+  const error = actionError ?? loadErrorMessage(loader.error, 'Failed to load alerts')
   const [notice, setNotice] = useState<string | null>(null)
-  const requestSeq = useRef(0)
-
-  const loadData = useCallback(async () => {
-    const seq = ++requestSeq.current
-    setBusy(true)
-    setError(null)
-    try {
-      const payload = await fetchJson<AlertEvent[]>(`/api/v1/alerts?days=${days}`)
-      if (seq === requestSeq.current) setAlerts(payload)
-    } catch (loadError) {
-      if (seq === requestSeq.current) {
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load alerts')
-      }
-    } finally {
-      if (seq === requestSeq.current) setBusy(false)
-    }
-  }, [days])
-
-  useEffect(() => {
-    void loadData()
-  }, [loadData])
 
   const setDays = (next: AnalyticsDays) => {
     setSearchParams(

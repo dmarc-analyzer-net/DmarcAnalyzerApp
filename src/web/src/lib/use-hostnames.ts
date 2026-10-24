@@ -66,35 +66,42 @@ export function useHostnames(): HostnameLookup {
   const refCallbacks = useRef(new Map<string, (node: Element | null) => void>())
 
   const flush = useCallback(() => {
-    flushTimer.current = null
-    if (!mounted.current) return
+    // Named so a long queue can schedule the next batch from inside this one. Handing
+    // the callback itself to setTimeout would read `flush` before its own declaration
+    // has finished, which React's compiler lint rejects.
+    function flushBatch() {
+      flushTimer.current = null
+      if (!mounted.current) return
 
-    const batch: string[] = []
-    for (const ip of queued.current) {
-      if (batch.length === MAX_IPS_PER_REQUEST) break
-      batch.push(ip)
+      const batch: string[] = []
+      for (const ip of queued.current) {
+        if (batch.length === MAX_IPS_PER_REQUEST) break
+        batch.push(ip)
+      }
+      for (const ip of batch) queued.current.delete(ip)
+      if (batch.length === 0) return
+
+      // A queue longer than one batch waits for the next window instead of going
+      // out as a second request now. Scrolling fast past hundreds of rows should
+      // still cost a request every BATCH_WINDOW_MS, not a burst of them.
+      if (queued.current.size > 0) {
+        flushTimer.current = window.setTimeout(flushBatch, BATCH_WINDOW_MS)
+      }
+
+      void fetchJson<Record<string, string | null>>(
+        `/api/v1/analytics/hostnames?ips=${encodeURIComponent(batch.join(','))}`,
+      )
+        .then((resolved) => {
+          if (mounted.current) setHostnames((prev) => ({ ...prev, ...resolved }))
+        })
+        .catch(() => {
+          // Enrichment is best-effort; the row keeps its IP. The batch stays marked
+          // as asked, so a failing lookup is not retried every time the row is
+          // scrolled past.
+        })
     }
-    for (const ip of batch) queued.current.delete(ip)
-    if (batch.length === 0) return
 
-    // A queue longer than one batch waits for the next window instead of going
-    // out as a second request now. Scrolling fast past hundreds of rows should
-    // still cost a request every BATCH_WINDOW_MS, not a burst of them.
-    if (queued.current.size > 0) {
-      flushTimer.current = window.setTimeout(flush, BATCH_WINDOW_MS)
-    }
-
-    void fetchJson<Record<string, string | null>>(
-      `/api/v1/analytics/hostnames?ips=${encodeURIComponent(batch.join(','))}`,
-    )
-      .then((resolved) => {
-        if (mounted.current) setHostnames((prev) => ({ ...prev, ...resolved }))
-      })
-      .catch(() => {
-        // Enrichment is best-effort; the row keeps its IP. The batch stays marked
-        // as asked, so a failing lookup is not retried every time the row is
-        // scrolled past.
-      })
+    flushBatch()
   }, [])
 
   const request = useCallback(

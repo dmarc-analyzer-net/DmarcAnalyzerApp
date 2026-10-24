@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { PolicyBadge } from '@/components/data/PolicyBadge'
@@ -19,6 +19,7 @@ import {
 import { fetchJson } from '@/lib/api'
 import type { Client } from '@/lib/entities'
 import { formatCompact, formatFullDate, formatPercent, formatRelativeOrDate } from '@/lib/format'
+import { loadErrorMessage, useLoader } from '@/lib/use-loader'
 import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
 
@@ -35,11 +36,7 @@ export function ThreatsPage() {
   const clientFilter = searchParams.get('client') ?? ''
 
   const [clients, setClients] = useState<Client[]>([])
-  const [feed, setFeed] = useState<ThreatFeed | null>(null)
-  const [busy, setBusy] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [hostnames, setHostnames] = useState<Record<string, string | null>>({})
-  const requestSeq = useRef(0)
 
   useEffect(() => {
     void fetchJson<Client[]>('/api/v1/clients').then(setClients).catch(() => {
@@ -47,28 +44,15 @@ export function ThreatsPage() {
     })
   }, [])
 
-  const loadData = useCallback(async () => {
-    const seq = ++requestSeq.current
-    setBusy(true)
-    setError(null)
-    try {
+  const loader = useLoader(
+    useCallback(() => {
       const clientParam = clientFilter ? `&clientId=${encodeURIComponent(clientFilter)}` : ''
-      const payload = await fetchJson<ThreatFeed>(
-        `/api/v1/analytics/threats?days=${days}&limit=100${clientParam}`,
-      )
-      if (seq === requestSeq.current) setFeed(payload)
-    } catch (loadError) {
-      if (seq === requestSeq.current) {
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load threat feed')
-      }
-    } finally {
-      if (seq === requestSeq.current) setBusy(false)
-    }
-  }, [days, clientFilter])
-
-  useEffect(() => {
-    void loadData()
-  }, [loadData])
+      return fetchJson<ThreatFeed>(`/api/v1/analytics/threats?days=${days}&limit=100${clientParam}`)
+    }, [days, clientFilter]),
+  )
+  const feed = loader.data ?? null
+  const busy = loader.loading
+  const error = loadErrorMessage(loader.error, 'Failed to load threat feed')
 
   const sortedClients = useMemo(
     () => [...clients].sort((a, b) => a.name.localeCompare(b.name)),
