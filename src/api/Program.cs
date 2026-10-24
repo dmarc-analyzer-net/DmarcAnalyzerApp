@@ -55,6 +55,7 @@ if (mode == AppMode.Migrate)
     var migrateLogger = scope.ServiceProvider
         .GetRequiredService<ILoggerFactory>().CreateLogger("Migrate");
     migrateLogger.LogTelemetryStatus(migrateTelemetry);
+    migrateLogger.LogDatabaseAuthStatus(migrateBuilder.Configuration, migrateDataSource);
 
     // The same budget the other two paths use. AddDmarcReportRecordRangeBegin
     // rewrites 5.3M rows in ~94s on a production-sized database, well past
@@ -157,8 +158,9 @@ if (mode == AppMode.Worker)
     workerBuilder.Services.AddHostedService<QueueWorkerService>();
 
     var workerHost = workerBuilder.Build();
-    workerHost.Services.GetRequiredService<ILoggerFactory>()
-        .CreateLogger("Telemetry").LogTelemetryStatus(workerTelemetry);
+    var workerLoggerFactory = workerHost.Services.GetRequiredService<ILoggerFactory>();
+    workerLoggerFactory.CreateLogger("Telemetry").LogTelemetryStatus(workerTelemetry);
+    workerLoggerFactory.CreateLogger("Database").LogDatabaseAuthStatus(workerBuilder.Configuration, workerDataSource);
     await workerHost.RunAsync();
     return;
 }
@@ -198,8 +200,9 @@ if (mode == AppMode.MtaSts)
         LoggerFactory.Create(b => b.AddConsole()).CreateLogger(nameof(ForwardedHeadersSetup)));
 
     var mtaStsApp = mtaStsBuilder.Build();
-    mtaStsApp.Services.GetRequiredService<ILoggerFactory>()
-        .CreateLogger("Telemetry").LogTelemetryStatus(mtaStsTelemetry);
+    var mtaStsLoggerFactory = mtaStsApp.Services.GetRequiredService<ILoggerFactory>();
+    mtaStsLoggerFactory.CreateLogger("Telemetry").LogTelemetryStatus(mtaStsTelemetry);
+    mtaStsLoggerFactory.CreateLogger("Database").LogDatabaseAuthStatus(mtaStsBuilder.Configuration, mtaStsDataSource);
 
     if (mtaStsUseForwardedHeaders)
     {
@@ -357,8 +360,9 @@ var useForwardedHeaders = ForwardedHeadersSetup.TryConfigure(
 
 var app = builder.Build();
 
-app.Services.GetRequiredService<ILoggerFactory>()
-    .CreateLogger("Telemetry").LogTelemetryStatus(apiTelemetry);
+var appLoggerFactory = app.Services.GetRequiredService<ILoggerFactory>();
+appLoggerFactory.CreateLogger("Telemetry").LogTelemetryStatus(apiTelemetry);
+appLoggerFactory.CreateLogger("Database").LogDatabaseAuthStatus(builder.Configuration, dataSource);
 
 if (useForwardedHeaders)
 {

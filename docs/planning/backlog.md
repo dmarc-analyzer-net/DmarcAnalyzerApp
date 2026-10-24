@@ -484,6 +484,15 @@ zero undocumented. The problems are everywhere else.
 - [x] (done) Add optional OIDC support for external identity providers (hybrid handler + JIT provisioning; Zitadel tested, any OIDC provider via config).
 - [ ] (todo) Add read-only client portal mode for selected clients.
 - [ ] (todo) Add mailbox connectors for Microsoft 365 and Google Workspace APIs.
+- [x] (done 2026-10-22) **Database login without a password on AWS.**
+      `Database__IamAuth` (#239, contributed) swaps the stored password for a
+      per-connection RDS IAM token and forces `verify-full`. The follow-up moved
+      the CA decision to the operator — `Root Certificate`, `PGSSLROOTCERT` or
+      the system store — because an RDS endpoint needs the Amazon RDS bundle
+      while an RDS Proxy endpoint needs the system store, and a bundled file
+      could only serve one of them. The chart gained `extraVolumes` /
+      `extraVolumeMounts` to carry the bundle; `docs/ops/aws-rds-iam.md` is the
+      recipe. Still unverified by the maintainers against a real RDS login.
 - [ ] (todo) Add forensic/failure (RUF) report ingestion and parsing (MVP is scoped to aggregate/RUA only; marketing site advertises "aggregate and forensic").
 - [ ] (todo) **Purge expired `user_session` rows.** Session expiry is enforced
       lazily at read time (`AuthService.GetSessionUserAsync`) and nothing ever

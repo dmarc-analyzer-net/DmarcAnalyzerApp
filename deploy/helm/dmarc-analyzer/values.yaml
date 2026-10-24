@@ -142,6 +142,21 @@ extraEnv: {}
 #       key: password
 extraEnvFromSecret: {}
 
+# Extra volumes and mounts, added to the app, worker and migration pods alike.
+# The containers run with a read-only root filesystem, so a file the app has to
+# read at runtime — a CA bundle for Database__IamAuth against an RDS endpoint,
+# say — arrives this way. See docs/ops/aws-rds-iam.md for that recipe.
+#   extraVolumes:
+#     - name: rds-ca
+#       configMap:
+#         name: rds-ca-bundle
+#   extraVolumeMounts:
+#     - name: rds-ca
+#       mountPath: /etc/ssl/rds
+#       readOnly: true
+extraVolumes: []
+extraVolumeMounts: []
+
 serviceAccount:
   create: true
   name: ""

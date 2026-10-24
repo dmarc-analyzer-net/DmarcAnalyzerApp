@@ -64,6 +64,19 @@ public sealed class ConnectionStringResolverTests
     }
 
     [Fact]
+    public void FromDatabaseUrl_MapsSslRootCertToRootCertificate()
+    {
+        // libpq's name for the CA file. A Database__IamAuth deployment behind a
+        // URI-issuing platform has nowhere else to name the RDS bundle.
+        var builder = new NpgsqlConnectionStringBuilder(
+            ConnectionStringResolver.FromDatabaseUrl(
+                "postgres://alice@db.example.com/dmarc_analyzer?sslmode=verify-full&sslrootcert=/etc/ssl/rds/global-bundle.pem"));
+
+        Assert.Equal(SslMode.VerifyFull, builder.SslMode);
+        Assert.Equal("/etc/ssl/rds/global-bundle.pem", builder.RootCertificate);
+    }
+
+    [Fact]
     public void FromDatabaseUrl_RejectsUnrecognizedSslMode()
     {
         Assert.Throws<InvalidOperationException>(() =>

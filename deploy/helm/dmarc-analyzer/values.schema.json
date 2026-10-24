@@ -219,6 +219,31 @@
       }
     },
 
+    "extraVolumes": {
+      "type": "array",
+      "description": "Extra pod volumes, added to the app, worker and migration pods alike. Kubernetes Volume objects, passed through as-is.",
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "extraVolumeMounts": {
+      "type": "array",
+      "description": "Container mounts for extraVolumes, on every application container.",
+      "items": {
+        "type": "object",
+        "required": ["name", "mountPath"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "mountPath": { "type": "string", "minLength": 1 },
+          "readOnly": { "type": "boolean" },
+          "subPath": { "type": "string" }
+        }
+      }
+    },
     "serviceAccount": {
       "type": "object",
       "additionalProperties": false,

@@ -65,6 +65,12 @@ public static class ConnectionStringResolver
             {
                 builder.SslMode = ParseSslMode(value);
             }
+            else if (key.Equals("sslrootcert", StringComparison.OrdinalIgnoreCase))
+            {
+                // libpq's name for the CA file; the same place a Database__IamAuth
+                // deployment behind a URI-issuing platform has to name the RDS bundle.
+                builder.RootCertificate = value;
+            }
         }
 
         return builder.ConnectionString;

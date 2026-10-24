@@ -85,6 +85,13 @@ never appears in a manifest, only in the Secret.
     secretKeyRef:
       name: {{ include "dmarc.secretName" . }}
       key: db-password
+      {{- /* A supplied connection string carries its own credential (or none,
+             with Database__IamAuth), so an existingSecret may omit db-password.
+             The variable is still defined when the key exists, for a connection
+             string that references $(DMARC_DB_PASSWORD) deliberately. */}}
+      {{- if and (not .Values.postgres.enabled) .Values.externalDatabase.connectionString }}
+      optional: true
+      {{- end }}
 - name: Security__CredentialEncryptionKey
   valueFrom:
     secretKeyRef:
