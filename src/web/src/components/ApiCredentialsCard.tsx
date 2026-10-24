@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import { Notice } from '@/components/Notice'
@@ -17,6 +17,9 @@ import { Select } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { fetchJson } from '@/lib/api'
 import type { ApiCredential, IssuedApiCredential, ReportSource } from '@/lib/entities'
+import { loadErrorMessage, useLoader } from '@/lib/use-loader'
+
+const NO_CREDENTIALS: ApiCredential[] = []
 
 /**
  * Issue and revoke the credentials that let an external system push reports in.
@@ -27,41 +30,33 @@ import type { ApiCredential, IssuedApiCredential, ReportSource } from '@/lib/ent
  * screen when it appears.
  */
 export function ApiCredentialsCard({ sources }: { sources: ReportSource[] }) {
-  const [credentials, setCredentials] = useState<ApiCredential[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const loader = useLoader(
+    useCallback(() => fetchJson<ApiCredential[]>('/api/v1/api-credentials'), []),
+  )
+  const credentials = loader.data ?? NO_CREDENTIALS
+  // Only the first load replaces the table with a spinner; a reload after issuing or
+  // revoking keeps the rows on screen until the new ones arrive.
+  const loading = loader.loading && loader.data === undefined
+  const load = loader.reload
+  const [actionError, setError] = useState<string | null>(null)
+  const error = actionError ?? loadErrorMessage(loader.error, 'Failed to load credentials')
 
   const [issuing, setIssuing] = useState(false)
   const [name, setName] = useState('')
-  const [sourceId, setSourceId] = useState('')
+  const [chosenSourceId, setSourceId] = useState('')
   const [issued, setIssued] = useState<IssuedApiCredential | null>(null)
   const [copied, setCopied] = useState(false)
 
   const apiSources = useMemo(() => sources.filter((s) => s.protocol === 'api'), [sources])
 
-  const load = useCallback(async () => {
-    try {
-      setCredentials(await fetchJson<ApiCredential[]>('/api/v1/api-credentials'))
-      setError(null)
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load credentials')
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void load()
-  }, [load])
-
-  useEffect(() => {
-    if (!sourceId && apiSources.length > 0) setSourceId(apiSources[0].id)
-  }, [apiSources, sourceId])
+  // Until someone picks one, the form issues for the first pushed source.
+  const sourceId = chosenSourceId || (apiSources[0]?.id ?? '')
 
   async function issue(event: FormEvent) {
     event.preventDefault()
     if (!sourceId || name.trim().length === 0) return
 
+    setError(null)
     try {
       const result = await fetchJson<IssuedApiCredential>('/api/v1/api-credentials', {
         method: 'POST',
@@ -84,6 +79,7 @@ export function ApiCredentialsCard({ sources }: { sources: ReportSource[] }) {
       return
     }
 
+    setError(null)
     try {
       await fetchJson(`/api/v1/api-credentials/${credential.id}/revoke`, { method: 'POST' })
       await load()

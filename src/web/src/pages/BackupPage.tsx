@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 
 import { ConfigImportPanel } from '@/components/ConfigImportPanel'
 import { Notice } from '@/components/Notice'
@@ -11,6 +11,7 @@ import { Icon } from '@/components/ui/icon'
 import { fetchJson } from '@/lib/api'
 import type { BackupStatus, ConfigImportPreview } from '@/lib/entities'
 import { formatRelativeOrDate, formatUtcDateTime } from '@/lib/format'
+import { loadErrorMessage, useLoader } from '@/lib/use-loader'
 import { usePageTitle } from '@/lib/use-page-title'
 
 /**
@@ -23,10 +24,20 @@ import { usePageTitle } from '@/lib/use-page-title'
  */
 export function BackupPage() {
   usePageTitle('Backup and recovery')
-  const [status, setStatus] = useState<BackupStatus | null>(null)
-  const [preview, setPreview] = useState<ConfigImportPreview | null>(null)
-  const [busy, setBusy] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const loader = useLoader(
+    useCallback(async () => {
+      const [status, preview] = await Promise.all([
+        fetchJson<BackupStatus>('/api/v1/admin/backup/status'),
+        fetchJson<ConfigImportPreview>('/api/v1/admin/config/import/preview'),
+      ])
+      return { status, preview }
+    }, []),
+  )
+  const status = loader.data?.status ?? null
+  const preview = loader.data?.preview ?? null
+  const busy = loader.loading
+  const error = loadErrorMessage(loader.error, 'Failed to load backup status')
+  const loadData = loader.reload
 
   const [allowPlaintext, setAllowPlaintext] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -40,27 +51,6 @@ export function BackupPage() {
    * the console, taking the import result off screen before it has been read.
    */
   const [sessionEnded, setSessionEnded] = useState(false)
-
-  const loadData = useCallback(async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      const [statusData, previewData] = await Promise.all([
-        fetchJson<BackupStatus>('/api/v1/admin/backup/status'),
-        fetchJson<ConfigImportPreview>('/api/v1/admin/config/import/preview'),
-      ])
-      setStatus(statusData)
-      setPreview(previewData)
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load backup status')
-    } finally {
-      setBusy(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadData()
-  }, [loadData])
 
   /**
    * Downloaded by hand rather than through `fetchJson`, which parses every response

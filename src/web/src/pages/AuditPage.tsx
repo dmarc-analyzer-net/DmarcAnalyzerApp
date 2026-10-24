@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 
 import { Badge } from '@/components/ui/badge'
@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { fetchJson } from '@/lib/api'
 import type { AuditEvent, AuditEventPage, Client } from '@/lib/entities'
 import { formatRelativeOrDate } from '@/lib/format'
+import { loadErrorMessage, useLoader } from '@/lib/use-loader'
 import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
 
@@ -87,13 +88,9 @@ export function AuditPage() {
   const [actorInput, setActorInput] = useState(searchParams.get('actor') ?? '')
   const actor = searchParams.get('actor') ?? ''
 
-  const [page, setPage] = useState<AuditEventPage | null>(null)
   const [clients, setClients] = useState<Client[]>([])
   const [offset, setOffset] = useState(0)
-  const [busy, setBusy] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
-  const requestSeq = useRef(0)
 
   // Filters are URL state so a findable trail stays linkable — an auditor
   // pasting "who changed this client last month" into a ticket is the point.
@@ -110,11 +107,8 @@ export function AuditPage() {
     )
   }
 
-  const loadData = useCallback(async () => {
-    const seq = ++requestSeq.current
-    setBusy(true)
-    setError(null)
-    try {
+  const loader = useLoader(
+    useCallback(() => {
       const query = new URLSearchParams({
         days: String(days),
         limit: String(PAGE_SIZE),
@@ -123,21 +117,12 @@ export function AuditPage() {
       if (eventType) query.set('eventType', eventType)
       if (actor) query.set('actor', actor)
       if (clientId) query.set('clientId', clientId)
-
-      const payload = await fetchJson<AuditEventPage>(`/api/v1/admin/audit-events?${query}`)
-      if (seq === requestSeq.current) setPage(payload)
-    } catch (loadError) {
-      if (seq === requestSeq.current) {
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load the audit trail')
-      }
-    } finally {
-      if (seq === requestSeq.current) setBusy(false)
-    }
-  }, [days, eventType, actor, clientId, offset])
-
-  useEffect(() => {
-    void loadData()
-  }, [loadData])
+      return fetchJson<AuditEventPage>(`/api/v1/admin/audit-events?${query}`)
+    }, [days, eventType, actor, clientId, offset]),
+  )
+  const page = loader.data ?? null
+  const busy = loader.loading
+  const error = loadErrorMessage(loader.error, 'Failed to load the audit trail')
 
   useEffect(() => {
     void fetchJson<Client[]>('/api/v1/clients')

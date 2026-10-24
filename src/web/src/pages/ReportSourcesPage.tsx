@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 
 import { ApiCredentialsCard } from '@/components/ApiCredentialsCard'
@@ -28,6 +28,7 @@ import type {
   SyncRunStatus,
 } from '@/lib/entities'
 import { formatRelativeOrDate } from '@/lib/format'
+import { loadErrorMessage, useLoader } from '@/lib/use-loader'
 import { usePageTitle } from '@/lib/use-page-title'
 
 type MailboxOpsFilter = 'all' | 'failed' | 'parse-failures' | 'stale-success'
@@ -39,6 +40,14 @@ type Protocol = 'imap' | 'pop3' | 's3' | 'api'
  * protocol's port behind — 993 on a POP3 mailbox connects to nothing and fails at sync time,
  * which is a long way from where the mistake was made. Zero for the two that have no port.
  */
+const NO_SOURCES: {
+  clients: Client[]
+  reportSources: ReportSource[]
+  mailboxHealth: MailboxHealth[]
+  syncRuns: MailboxSyncRun[]
+  loadedAtMs: number
+} = { clients: [], reportSources: [], mailboxHealth: [], syncRuns: [], loadedAtMs: 0 }
+
 const defaultPort: Record<Protocol, number> = { imap: 993, pop3: 995, s3: 0, api: 0 }
 
 const initialMailboxForm = {
@@ -135,15 +144,31 @@ export function ReportSourcesPage() {
   const { user } = useAuth()
   const canManage = isAdmin(user)
 
-  const [clients, setClients] = useState<Client[]>([])
-  const [reportSources, setReportSources] = useState<ReportSource[]>([])
-  const [mailboxHealth, setMailboxHealth] = useState<MailboxHealth[]>([])
-  const [syncRuns, setSyncRuns] = useState<MailboxSyncRun[]>([])
+  const loader = useLoader(
+    useCallback(async () => {
+      const [clients, reportSources] = await Promise.all([
+        fetchJson<Client[]>('/api/v1/clients'),
+        fetchJson<ReportSource[]>('/api/v1/report-sources'),
+      ])
+
+      const [mailboxHealth, syncRuns] = await Promise.all([
+        fetchJson<MailboxHealth[]>('/api/v1/mailbox-health'),
+        fetchJson<MailboxSyncRun[]>('/api/v1/mailbox-sync-runs?limit=40'),
+      ])
+
+      // What "stale" is measured against: the moment the health rows were read, not the
+      // moment the filter happens to render, so the same rows always filter the same way.
+      return { clients, reportSources, mailboxHealth, syncRuns, loadedAtMs: Date.now() }
+    }, []),
+  )
+  const { clients, reportSources, mailboxHealth, syncRuns, loadedAtMs } = loader.data ?? NO_SOURCES
+  const busy = loader.loading
+  const loadData = loader.reload
 
   const [search, setSearch] = useState('')
   const [mailboxOpsFilter, setMailboxOpsFilter] = useState<MailboxOpsFilter>('all')
-  const [busy, setBusy] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const [actionError, setError] = useState<string | null>(null)
+  const error = actionError ?? loadErrorMessage(loader.error, 'Failed to load data')
   const [syncingId, setSyncingId] = useState<string | null>(null)
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -157,35 +182,6 @@ export function ReportSourcesPage() {
   const isPushedSource = mailboxForm.protocol === 'api'
   const isBucketSource = mailboxForm.protocol === 's3'
   const isMailboxSource = !isPushedSource && !isBucketSource
-
-  const loadData = useCallback(async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      const [clientData, mailboxData] = await Promise.all([
-        fetchJson<Client[]>('/api/v1/clients'),
-        fetchJson<ReportSource[]>('/api/v1/report-sources'),
-      ])
-
-      const [healthData, syncRunData] = await Promise.all([
-        fetchJson<MailboxHealth[]>('/api/v1/mailbox-health'),
-        fetchJson<MailboxSyncRun[]>('/api/v1/mailbox-sync-runs?limit=40'),
-      ])
-
-      setClients(clientData)
-      setReportSources(mailboxData)
-      setMailboxHealth(healthData)
-      setSyncRuns(syncRunData)
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load data')
-    } finally {
-      setBusy(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    void loadData()
-  }, [loadData])
 
   const sortedClients = useMemo(
     () => [...clients].sort((a, b) => a.name.localeCompare(b.name)),
@@ -232,7 +228,6 @@ export function ReportSourcesPage() {
   )
 
   const filteredMailboxHealth = useMemo(() => {
-    const now = Date.now()
     const staleThresholdMs = 24 * 60 * 60 * 1000
 
     return mailboxHealth.filter((health) => {
@@ -248,12 +243,12 @@ export function ReportSourcesPage() {
         if (!health.lastSuccessSyncAtUtc) return true
         const lastSuccessMs = new Date(health.lastSuccessSyncAtUtc).getTime()
         if (Number.isNaN(lastSuccessMs)) return true
-        return now - lastSuccessMs > staleThresholdMs
+        return loadedAtMs - lastSuccessMs > staleThresholdMs
       }
 
       return true
     })
-  }, [mailboxHealth, mailboxOpsFilter])
+  }, [mailboxHealth, mailboxOpsFilter, loadedAtMs])
 
   const filteredReportSourcesForOps = useMemo(() => {
     const ids = new Set(filteredMailboxHealth.map((x) => x.reportSourceId))

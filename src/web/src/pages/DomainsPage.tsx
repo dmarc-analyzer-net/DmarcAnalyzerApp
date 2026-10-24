@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
@@ -34,8 +34,15 @@ import { useAuth } from '@/lib/auth-context'
 import { isAdmin } from '@/lib/authz'
 import type { Client, Domain } from '@/lib/entities'
 import { formatCompact } from '@/lib/format'
+import { loadErrorMessage, useLoader } from '@/lib/use-loader'
 import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
+
+const NO_DOMAINS: { clients: Client[]; domains: Domain[]; analytics: DomainAnalytics[] } = {
+  clients: [],
+  domains: [],
+  analytics: [],
+}
 
 const initialDomainForm = {
   name: '',
@@ -143,42 +150,29 @@ export function DomainsPage() {
   const days = parseAnalyticsDays(searchParams.get('days'))
   const clientFilter = searchParams.get('client') ?? ''
 
-  const [clients, setClients] = useState<Client[]>([])
-  const [domains, setDomains] = useState<Domain[]>([])
-  const [analytics, setAnalytics] = useState<DomainAnalytics[]>([])
-  const [search, setSearch] = useState('')
-  const [policyFilter, setPolicyFilter] = useState('')
-  const [sortKey, setSortKey] = useState<SortKey>('compliance')
-  const [sortDir, setSortDir] = useState<SortDir>('asc')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [editingDomainId, setEditingDomainId] = useState<string | null>(null)
-  const [domainForm, setDomainForm] = useState(initialDomainForm)
-
-  const loadData = useCallback(async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      const [clientData, domainData, analyticsData] = await Promise.all([
+  const loader = useLoader(
+    useCallback(async () => {
+      const [clients, domains, analytics] = await Promise.all([
         fetchJson<Client[]>('/api/v1/clients'),
         fetchJson<Domain[]>('/api/v1/domains'),
         fetchJson<DomainAnalytics[]>(`/api/v1/analytics/domains?days=${days}`),
       ])
-      setClients(clientData)
-      setDomains(domainData)
-      setAnalytics(analyticsData)
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load domains')
-    } finally {
-      setBusy(false)
-    }
-  }, [days])
+      return { clients, domains, analytics }
+    }, [days]),
+  )
+  const { clients, domains, analytics } = loader.data ?? NO_DOMAINS
+  const busy = loader.loading
+  const loadData = loader.reload
+  const [search, setSearch] = useState('')
+  const [policyFilter, setPolicyFilter] = useState('')
+  const [sortKey, setSortKey] = useState<SortKey>('compliance')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const [actionError, setError] = useState<string | null>(null)
+  const error = actionError ?? loadErrorMessage(loader.error, 'Failed to load domains')
 
-  useEffect(() => {
-    void loadData()
-  }, [loadData])
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingDomainId, setEditingDomainId] = useState<string | null>(null)
+  const [domainForm, setDomainForm] = useState(initialDomainForm)
 
   const setDays = (next: AnalyticsDays) => {
     setSearchParams(

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { FormEvent, ReactNode } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
@@ -61,6 +61,7 @@ import type {
 import { formatCompact, formatFullDate, formatPercent, formatRelativeOrDate, formatShortDate } from '@/lib/format'
 import { NOTE_SEVERITY_BADGE, noteCountLabel, reportNotesSummary } from '@/lib/report-notes'
 import { useHostnames } from '@/lib/use-hostnames'
+import { loadErrorMessage, useLoader } from '@/lib/use-loader'
 import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
 
@@ -388,35 +389,15 @@ function RecordBlock({
  * lookups — a slow resolver must never block the drill-down render.
  */
 function RecordInspectionCard({ domainId }: { domainId: string }) {
-  const [inspection, setInspection] = useState<RecordInspection | null>(null)
-  const [busy, setBusy] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const requestSeq = useRef(0)
-
-  // Loader idiom matches the other panels in this file: state is set inside a
-  // callback (not synchronously in the effect body), and a request sequence
-  // guards against out-of-order responses when domainId changes.
-  const loadInspection = useCallback(async () => {
-    const seq = ++requestSeq.current
-    setBusy(true)
-    setError(null)
-    try {
-      const payload = await fetchJson<RecordInspection>(
-        `/api/v1/analytics/domains/${domainId}/records`,
-      )
-      if (seq === requestSeq.current) setInspection(payload)
-    } catch (loadError) {
-      if (seq === requestSeq.current) {
-        setError(loadError instanceof Error ? loadError.message : 'Failed to inspect records')
-      }
-    } finally {
-      if (seq === requestSeq.current) setBusy(false)
-    }
-  }, [domainId])
-
-  useEffect(() => {
-    void loadInspection()
-  }, [loadInspection])
+  const loader = useLoader(
+    useCallback(
+      () => fetchJson<RecordInspection>(`/api/v1/analytics/domains/${domainId}/records`),
+      [domainId],
+    ),
+  )
+  const inspection = loader.data ?? null
+  const busy = loader.loading
+  const error = loadErrorMessage(loader.error, 'Failed to inspect records')
 
   // Only 'differs' counts. A tag DNS never published has nothing to disagree with,
   // and a tag the reporter omitted says nothing about the record either.
@@ -655,57 +636,50 @@ function TransportSecurityCard({ domainId }: { domainId: string }) {
   const { user } = useAuth()
   const staff = isStaff(user)
   const admin = isAdmin(user)
-  const [state, setState] = useState<MtaStsState | null>(null)
-  const [policyResponse, setPolicyResponse] = useState<MtaStsPolicyResponse | null>(null)
-  const [busy, setBusy] = useState(true)
-  const [rechecking, setRechecking] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const requestSeq = useRef(0)
-
-  const load = useCallback(async () => {
-    const seq = ++requestSeq.current
-    setBusy(true)
-    setError(null)
-    try {
-      const [statePayload, policyPayload] = await Promise.all([
+  const loader = useLoader(
+    useCallback(async () => {
+      const [state, policyResponse] = await Promise.all([
         fetchJson<MtaStsState>(`/api/v1/analytics/domains/${domainId}/mta-sts`),
         fetchJson<MtaStsPolicyResponse>(`/api/v1/domains/${domainId}/mta-sts-policy`),
       ])
-      if (seq === requestSeq.current) {
-        setState(statePayload)
-        setPolicyResponse(policyPayload)
-      }
-    } catch (loadError) {
-      if (seq === requestSeq.current) {
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load MTA-STS state')
-      }
-    } finally {
-      if (seq === requestSeq.current) setBusy(false)
-    }
-  }, [domainId])
-
-  useEffect(() => {
-    void load()
-  }, [load])
+      return { domainId, state, policyResponse }
+    }, [domainId]),
+  )
+  const state = loader.data?.state ?? null
+  const policyResponse = loader.data?.policyResponse ?? null
+  const busy = loader.loading
+  const { setData, reload: load } = loader
+  const [rechecking, setRechecking] = useState(false)
+  // Tagged with the domain it is about, like the recheck result below: this card is not
+  // remounted when the route moves to another domain, and a late answer for the old one
+  // must not land on the new one.
+  const [recheckError, setRecheckError] = useState<{ domainId: string; message: string } | null>(
+    null,
+  )
+  const error =
+    (recheckError?.domainId === domainId ? recheckError.message : null) ??
+    loadErrorMessage(loader.error, 'Failed to load MTA-STS state')
 
   const recheck = useCallback(async () => {
-    const seq = ++requestSeq.current
     setRechecking(true)
-    setError(null)
+    setRecheckError(null)
     try {
       const payload = await fetchJson<MtaStsState>(
         `/api/v1/analytics/domains/${domainId}/mta-sts/recheck`,
         { method: 'POST' },
       )
-      if (seq === requestSeq.current) setState(payload)
-    } catch (recheckError) {
-      if (seq === requestSeq.current) {
-        setError(recheckError instanceof Error ? recheckError.message : 'Recheck failed')
-      }
+      setData((current) =>
+        current?.domainId === domainId ? { ...current, state: payload } : current,
+      )
+    } catch (failure) {
+      setRecheckError({
+        domainId,
+        message: failure instanceof Error ? failure.message : 'Recheck failed',
+      })
     } finally {
-      if (seq === requestSeq.current) setRechecking(false)
+      setRechecking(false)
     }
-  }, [domainId])
+  }, [domainId, setData])
 
   const status = state?.dnsRecordStatus
   const statusMeta = status ? MTA_STS_RECORD_META[status] : null
@@ -1266,34 +1240,19 @@ export function ReportNotesList({ notes }: { notes: ReportNotes }) {
  * on error reads as "nothing wrong".
  */
 function ReportNotesCard({ domainId, days }: { domainId: string; days: AnalyticsDays }) {
-  const [notes, setNotes] = useState<ReportNotes | null>(null)
-  const [busy, setBusy] = useState(true)
   const [includeInfo, setIncludeInfo] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const requestSeq = useRef(0)
-
-  // Same loader idiom as the other panels in this file (see RecordInspectionCard).
-  const loadNotes = useCallback(async () => {
-    const seq = ++requestSeq.current
-    setBusy(true)
-    setError(null)
-    try {
-      const payload = await fetchJson<ReportNotes>(
-        `/api/v1/analytics/domains/${domainId}/report-notes?days=${days}&includeInfo=${includeInfo}`,
-      )
-      if (seq === requestSeq.current) setNotes(payload)
-    } catch (loadError) {
-      if (seq === requestSeq.current) {
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load report notes')
-      }
-    } finally {
-      if (seq === requestSeq.current) setBusy(false)
-    }
-  }, [domainId, days, includeInfo])
-
-  useEffect(() => {
-    void loadNotes()
-  }, [loadNotes])
+  const loader = useLoader(
+    useCallback(
+      () =>
+        fetchJson<ReportNotes>(
+          `/api/v1/analytics/domains/${domainId}/report-notes?days=${days}&includeInfo=${includeInfo}`,
+        ),
+      [domainId, days, includeInfo],
+    ),
+  )
+  const notes = loader.data ?? null
+  const busy = loader.loading
+  const error = loadErrorMessage(loader.error, 'Failed to load report notes')
 
   // Nothing while the first load is in flight, and nothing when there is nothing to say.
   // The toggle lives inside the card, so once shown the card stays through a reload.
@@ -1334,32 +1293,16 @@ function ReportNotesCard({ domainId, days }: { domainId: string; days: Analytics
 }
 
 function TlsReportingCard({ domainId, days }: { domainId: string; days: AnalyticsDays }) {
-  const [summary, setSummary] = useState<TlsRptSummary | null>(null)
-  const [busy, setBusy] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const requestSeq = useRef(0)
-
-  const load = useCallback(async () => {
-    const seq = ++requestSeq.current
-    setBusy(true)
-    setError(null)
-    try {
-      const payload = await fetchJson<TlsRptSummary>(
-        `/api/v1/analytics/domains/${domainId}/tls-rpt?days=${days}`,
-      )
-      if (seq === requestSeq.current) setSummary(payload)
-    } catch (loadError) {
-      if (seq === requestSeq.current) {
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load TLS reporting')
-      }
-    } finally {
-      if (seq === requestSeq.current) setBusy(false)
-    }
-  }, [domainId, days])
-
-  useEffect(() => {
-    void load()
-  }, [load])
+  const loader = useLoader(
+    useCallback(
+      () =>
+        fetchJson<TlsRptSummary>(`/api/v1/analytics/domains/${domainId}/tls-rpt?days=${days}`),
+      [domainId, days],
+    ),
+  )
+  const summary = loader.data ?? null
+  const busy = loader.loading
+  const error = loadErrorMessage(loader.error, 'Failed to load TLS reporting')
 
   return (
     <Card pad>
@@ -1784,33 +1727,20 @@ type SourceDetailPanelProps = {
 }
 
 function SourceDetailPanel({ domainId, sourceIp, days }: SourceDetailPanelProps) {
-  const [detail, setDetail] = useState<SourceDetail | null>(null)
-  const [busy, setBusy] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const requestSeq = useRef(0)
-
-  const loadDetail = useCallback(async () => {
-    const seq = ++requestSeq.current
-    setBusy(true)
-    setError(null)
-    setDetail(null)
-    try {
-      const payload = await fetchJson<SourceDetail>(
-        `/api/v1/analytics/domains/${domainId}/source-detail?ip=${encodeURIComponent(sourceIp)}&days=${days}`,
-      )
-      if (seq === requestSeq.current) setDetail(payload)
-    } catch (loadError) {
-      if (seq === requestSeq.current) {
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load source detail')
-      }
-    } finally {
-      if (seq === requestSeq.current) setBusy(false)
-    }
-  }, [domainId, sourceIp, days])
-
-  useEffect(() => {
-    void loadDetail()
-  }, [loadDetail])
+  const loader = useLoader(
+    useCallback(
+      () =>
+        fetchJson<SourceDetail>(
+          `/api/v1/analytics/domains/${domainId}/source-detail?ip=${encodeURIComponent(sourceIp)}&days=${days}`,
+        ),
+      [domainId, sourceIp, days],
+    ),
+  )
+  const busy = loader.loading
+  // Never the previous source's detail while the next one loads: the panel sits under
+  // a specific row, and another address's breakdown there would read as this one's.
+  const detail = busy ? null : (loader.data ?? null)
+  const error = loadErrorMessage(loader.error, 'Failed to load source detail')
 
   if (busy) {
     return (
@@ -2072,6 +2002,8 @@ export function SourceIpCell({
 // Quarantined and Rejected moved into the expanded row, so 8 remain in the table.
 const SOURCE_COLUMN_COUNT = 8
 
+const NO_SOURCES: DomainSourceAnalytics[] = []
+
 // The reverse-DNS hostname sits on its own row spanning the first four columns
 // (Source IP, Messages, Failed, Compliance) rather than inside the Source IP cell.
 // A 64-character AWS/Outlook hostname is 375px wide and was forcing that one column
@@ -2086,12 +2018,34 @@ export function DomainDetailPage() {
   const clientParam = searchParams.get('client')
   const selectedSource = searchParams.get('source')
 
-  const [drilldown, setDrilldown] = useState<DomainDrilldown | null>(null)
-  const [guidance, setGuidance] = useState<EnforcementGuidance | null>(null)
-  const [sources, setSources] = useState<DomainSourceAnalytics[]>([])
-  const [busy, setBusy] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [notFound, setNotFound] = useState(false)
+  const loader = useLoader(
+    useMemo(
+      () =>
+        domainId
+          ? async () => {
+              const [drilldown, sources, guidance] = await Promise.all([
+                fetchJson<DomainDrilldown>(
+                  `/api/v1/analytics/domains/${domainId}/drilldown?days=${days}`,
+                ),
+                fetchJson<DomainSourceAnalytics[]>(
+                  `/api/v1/analytics/domains/${domainId}/sources?days=${days}`,
+                ),
+                fetchJson<EnforcementGuidance>(
+                  `/api/v1/analytics/domains/${domainId}/enforcement?days=${days}`,
+                ),
+              ])
+              return { drilldown, sources, guidance }
+            }
+          : null,
+      [domainId, days],
+    ),
+  )
+  const drilldown = loader.data?.drilldown ?? null
+  const guidance = loader.data?.guidance ?? null
+  const sources = loader.data?.sources ?? NO_SOURCES
+  const busy = loader.loading
+  const notFound = loader.error instanceof ApiError && loader.error.status === 404
+  const error = notFound ? null : loadErrorMessage(loader.error, 'Failed to load domain analytics')
   const [sortKey, setSortKey] = useState<SourceSortKey | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>('desc')
 
@@ -2099,43 +2053,6 @@ export function DomainDetailPage() {
   // Reverse-DNS enrichment, resolved per row as it scrolls into view: this table
   // renders every source it has and a real domain reached 1176 of them.
   const { hostnames, observeSource } = useHostnames()
-  const requestSeq = useRef(0)
-
-  const loadData = useCallback(async () => {
-    if (!domainId) return
-    const seq = ++requestSeq.current
-    setBusy(true)
-    setError(null)
-    try {
-      const [drilldownData, sourceData, guidanceData] = await Promise.all([
-        fetchJson<DomainDrilldown>(`/api/v1/analytics/domains/${domainId}/drilldown?days=${days}`),
-        fetchJson<DomainSourceAnalytics[]>(
-          `/api/v1/analytics/domains/${domainId}/sources?days=${days}`,
-        ),
-        fetchJson<EnforcementGuidance>(
-          `/api/v1/analytics/domains/${domainId}/enforcement?days=${days}`,
-        ),
-      ])
-      if (seq !== requestSeq.current) return
-      setDrilldown(drilldownData)
-      setSources(sourceData)
-      setGuidance(guidanceData)
-      setNotFound(false)
-    } catch (loadError) {
-      if (seq !== requestSeq.current) return
-      if (loadError instanceof ApiError && loadError.status === 404) {
-        setNotFound(true)
-      } else {
-        setError(loadError instanceof Error ? loadError.message : 'Failed to load domain analytics')
-      }
-    } finally {
-      if (seq === requestSeq.current) setBusy(false)
-    }
-  }, [domainId, days])
-
-  useEffect(() => {
-    void loadData()
-  }, [loadData])
 
   // When a source is selected (e.g. by clicking a blocking IP in the
   // enforcement card), bring its row into view — the sources table can be far

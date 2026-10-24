@@ -10,6 +10,7 @@ import { fetchJson } from '@/lib/api'
 import type { ReportBackfillPreview, ReportBackfillState, ReportBackfillStatus } from '@/lib/entities'
 import { formatRelativeOrDate, formatShortDate } from '@/lib/format'
 import { describeBackfillCounts, describeReportsWithoutFields, plural } from '@/lib/report-backfill'
+import { loadErrorMessage, useLoader } from '@/lib/use-loader'
 
 const STATUS_META: Record<ReportBackfillStatus, { label: string; badge: 'neutral' | 'warning' | 'success' | 'danger' }> = {
   idle: { label: 'Not run', badge: 'neutral' },
@@ -29,32 +30,27 @@ const POLL_MS = 5000
  * first thing an operator needs to know about it.
  */
 export function ReportBackfillCard({ disabled = false }: { disabled?: boolean }) {
-  const [preview, setPreview] = useState<ReportBackfillPreview | null>(null)
-  const [state, setState] = useState<ReportBackfillState | null>(null)
-  const [busy, setBusy] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [runError, setRunError] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    setBusy(true)
-    setError(null)
-    try {
-      const [previewData, stateData] = await Promise.all([
+  const loader = useLoader(
+    useCallback(async () => {
+      const [preview, state] = await Promise.all([
         fetchJson<ReportBackfillPreview>('/api/v1/admin/report-backfill/preview'),
         fetchJson<ReportBackfillState>('/api/v1/admin/report-backfill/status'),
       ])
-      setPreview(previewData)
-      setState(stateData)
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load the report backfill')
-    } finally {
-      setBusy(false)
-    }
-  }, [])
+      return { preview, state }
+    }, []),
+  )
+  const preview = loader.data?.preview ?? null
+  const state = loader.data?.state ?? null
+  const busy = loader.loading
+  const error = loadErrorMessage(loader.error, 'Failed to load the report backfill')
+  const { reload: load, setData } = loader
+  const [runError, setRunError] = useState<string | null>(null)
 
-  useEffect(() => {
-    void load()
-  }, [load])
+  /** The status row on its own, as the poll and a queued run both answer with it. */
+  const setState = useCallback(
+    (next: ReportBackfillState) => setData((current) => current && { ...current, state: next }),
+    [setData],
+  )
 
   // The worker does the work on its own loop, so while a run is pending the row is
   // re-read on a timer; the preview is not, since nothing it counts changes until apply.
@@ -67,7 +63,7 @@ export function ReportBackfillCard({ disabled = false }: { disabled?: boolean })
         .catch(() => undefined)
     }, POLL_MS)
     return () => clearInterval(timer)
-  }, [pending])
+  }, [pending, setState])
 
   const run = async () => {
     setRunError(null)
