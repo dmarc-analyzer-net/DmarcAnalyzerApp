@@ -62,6 +62,13 @@ export function useLoader<T>(load: (() => Promise<T>) | null): Loader<T> {
 
   /** Callers awaiting a reload, each released once its version (or a newer one) settles. */
   const waiters = useRef<Array<{ version: number; resolve: (data: T | undefined) => void }>>([])
+  /**
+   * The last version `reload` handed out. A ref rather than `version + 1`, because a
+   * handler that awaited a mutation calls the reload from the render it started in: its
+   * `version` can be one that has already loaded, and asking for it again would fetch
+   * nothing and leave the caller waiting forever.
+   */
+  const requested = useRef(0)
 
   useEffect(() => {
     if (load === null) return
@@ -93,12 +100,12 @@ export function useLoader<T>(load: (() => Promise<T>) | null): Loader<T> {
 
   const reload = useCallback((): Promise<T | undefined> => {
     if (load === null) return Promise.resolve(undefined)
-    const next = version + 1
+    const next = ++requested.current
     setVersion(next)
     return new Promise((resolve) => {
       waiters.current.push({ version: next, resolve })
     })
-  }, [load, version])
+  }, [load])
 
   const setData = useCallback((update: (current: T | undefined) => T | undefined) => {
     setSettled((previous) => ({ ...previous, data: update(previous.data) }))

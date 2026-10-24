@@ -99,6 +99,29 @@ describe('useLoader', () => {
     expect(result.current).toMatchObject({ loading: false, data: 'newer' })
   })
 
+  it('still reloads when called through a reload from an earlier render', async () => {
+    // Two actions started from the same render both hold that render's reload. The second
+    // one runs after the first one's reload has already settled, and must still fetch.
+    let calls = 0
+    const load = () => Promise.resolve(++calls)
+    const { result } = renderHook(() => useLoader(load))
+    await waitFor(() => expect(result.current.data).toBe(1))
+    const heldByBothActions = result.current.reload
+
+    let first: Promise<number | undefined> | undefined
+    act(() => {
+      first = heldByBothActions()
+    })
+    await expect(first).resolves.toBe(2)
+
+    let second: Promise<number | undefined> | undefined
+    act(() => {
+      second = heldByBothActions()
+    })
+    await expect(second).resolves.toBe(3)
+    await waitFor(() => expect(result.current).toMatchObject({ loading: false, data: 3 }))
+  })
+
   it('lets an action replace the data without a request', async () => {
     let calls = 0
     const load = () => Promise.resolve(++calls)

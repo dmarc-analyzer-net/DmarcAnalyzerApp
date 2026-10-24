@@ -35,11 +35,6 @@ type MailboxOpsFilter = 'all' | 'failed' | 'parse-failures' | 'stale-success'
 
 type Protocol = 'imap' | 'pop3' | 's3' | 'api'
 
-/**
- * What each protocol listens on by default, so choosing one does not leave the previous
- * protocol's port behind — 993 on a POP3 mailbox connects to nothing and fails at sync time,
- * which is a long way from where the mistake was made. Zero for the two that have no port.
- */
 const NO_SOURCES: {
   clients: Client[]
   reportSources: ReportSource[]
@@ -48,6 +43,11 @@ const NO_SOURCES: {
   loadedAtMs: number
 } = { clients: [], reportSources: [], mailboxHealth: [], syncRuns: [], loadedAtMs: 0 }
 
+/**
+ * What each protocol listens on by default, so choosing one does not leave the previous
+ * protocol's port behind — 993 on a POP3 mailbox connects to nothing and fails at sync time,
+ * which is a long way from where the mistake was made. Zero for the two that have no port.
+ */
 const defaultPort: Record<Protocol, number> = { imap: 993, pop3: 995, s3: 0, api: 0 }
 
 const initialMailboxForm = {
