@@ -39,18 +39,10 @@ public sealed partial class DigestRenderer(IOptions<BrandingOptions> branding, I
 
     private enum Tone { Ok, Warn, Danger, Neutral }
 
-    private readonly string _brand = string.IsNullOrWhiteSpace(branding.Value.Name) ? "DMARC Analyzer" : branding.Value.Name.Trim();
-    private readonly string _accent = HexColor().IsMatch(branding.Value.AccentColor ?? string.Empty)
-        ? branding.Value.AccentColor!
-        : BrandingOptions.DefaultAccentColor;
-    private readonly string? _logo = Uri.TryCreate(branding.Value.LogoUrl, UriKind.Absolute, out var logo) &&
-                                     (logo.Scheme == Uri.UriSchemeHttps || logo.Scheme == Uri.UriSchemeHttp)
-        ? logo.AbsoluteUri
-        : null;
+    private readonly string _brand = branding.Value.ResolvedName;
+    private readonly string _accent = branding.Value.ResolvedAccentColor;
+    private readonly string? _logo = branding.Value.ResolvedLogoUrl;
     private readonly string? _baseUrl = string.IsNullOrWhiteSpace(email.Value.BaseUrl) ? null : email.Value.BaseUrl.TrimEnd('/');
-
-    [GeneratedRegex("^#[0-9a-fA-F]{6}$")]
-    private static partial Regex HexColor();
 
     // ---- Single client -------------------------------------------------------------
 

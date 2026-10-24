@@ -364,7 +364,7 @@ function AuditRow({
                     {event.targetType === 'domain' && event.targetId ? (
                       <Link
                         to={`/domains/${event.targetId}`}
-                        className="text-body underline decoration-dotted underline-offset-2 hover:text-brand"
+                        className="text-body underline decoration-dotted underline-offset-2 hover:text-link"
                       >
                         {event.targetType} · {event.targetId}
                       </Link>

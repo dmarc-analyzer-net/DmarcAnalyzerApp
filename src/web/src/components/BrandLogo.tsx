@@ -1,5 +1,6 @@
 import { useId } from 'react'
 
+import { useBranding } from '@/lib/branding'
 import { cn } from '@/lib/utils'
 
 type BrandLogoProps = {
@@ -13,6 +14,49 @@ type BrandLogoProps = {
 }
 
 /**
+ * The instance's brand at the top of the console. An agency that set
+ * `Branding__LogoUrl` gets its logo alone, named by `Branding__Name`; one that set
+ * only a name gets the name as a wordmark, without the product's shield beside it.
+ * Until the brand is known the slot holds its height and shows nothing.
+ */
+export function BrandLogo(props: BrandLogoProps) {
+  const branding = useBranding()
+  const { height = 30, className } = props
+
+  if (!branding) {
+    return <span aria-hidden className={cn('inline-block', className)} style={{ height }} />
+  }
+
+  if (!branding.customized) {
+    return <ProductLogo {...props} />
+  }
+
+  if (branding.logoUrl) {
+    return (
+      <img
+        src={branding.logoUrl}
+        alt={branding.name}
+        className={cn('block w-auto max-w-[200px] object-contain object-left', className)}
+        style={{ height }}
+      />
+    )
+  }
+
+  return (
+    <span
+      className={cn(
+        'block min-w-0 truncate font-display font-semibold leading-none tracking-tight',
+        props.dark ? 'text-[#f0fdfa]' : 'text-body',
+        className,
+      )}
+      style={{ fontSize: Math.round(height * 0.6), lineHeight: `${height}px` }}
+    >
+      {branding.name}
+    </span>
+  )
+}
+
+/**
  * Brand lockup from the DMARC Analyzer design system: a gradient teal shield
  * mark beside a Space Grotesk wordmark. The distributable copies of the same
  * artwork live in `public/logo.svg` and `public/favicon.svg`.
@@ -20,7 +64,7 @@ type BrandLogoProps = {
  * The gradient stops are brand artwork values rather than design tokens, so they
  * stay literal here — that is what keeps this identical to those two files.
  */
-export function BrandLogo({
+function ProductLogo({
   variant = 'full',
   height = 30,
   dark = false,
@@ -84,5 +128,24 @@ export function BrandLogo({
         DMARC Analyzer
       </span>
     </span>
+  )
+}
+
+/**
+ * "Powered by DMARC Analyzer", for an instance that wears an agency's brand and has
+ * not set `Branding__HidePoweredBy`. Renders nothing otherwise, including on an
+ * unbranded instance, whose logo already says it.
+ */
+export function PoweredBy({ className }: { className?: string }) {
+  const branding = useBranding()
+  if (!branding?.showPoweredBy) return null
+
+  return (
+    <p className={cn('text-xs text-secondary', className)}>
+      Powered by{' '}
+      <a className="underline hover:text-link" href="https://dmarc-analyzer.net" target="_blank" rel="noreferrer">
+        DMARC Analyzer
+      </a>
+    </p>
   )
 }

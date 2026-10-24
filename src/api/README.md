@@ -50,7 +50,7 @@ that exist and had gone stale. The sources are:
   hand. It covers the CRUD and ingestion subset, not everything.
 
 Two things worth knowing before calling anything: every `/api/v1/` path except
-login, logout, register, setup, `auth/providers` and the OIDC routes requires a
+login, logout, register, setup, `auth/providers`, `branding` and the OIDC routes requires a
 `dmarc_session` cookie; and reads are scoped to the caller's granted clients, with
 a cross-tenant id returning 404 rather than 403, deliberately.
 

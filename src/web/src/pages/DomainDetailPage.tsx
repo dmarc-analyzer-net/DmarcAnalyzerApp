@@ -1985,7 +1985,7 @@ export function SourceIpCell({
         event.stopPropagation()
         onToggle()
       }}
-      className="inline-flex items-start gap-1.5 rounded-xs text-left font-mono text-xs font-medium text-body transition-colors hover:text-brand focus-visible:shadow-(--focus-ring) focus-visible:outline-hidden"
+      className="inline-flex items-start gap-1.5 rounded-xs text-left font-mono text-xs font-medium text-body transition-colors hover:text-link focus-visible:shadow-(--focus-ring) focus-visible:outline-hidden"
     >
       <Icon
         name="chevron-right"
@@ -2163,7 +2163,7 @@ export function DomainDetailPage() {
       <div className="mb-5">
         <Link
           to={backHref}
-          className="inline-flex items-center gap-1.5 text-sm text-secondary transition-colors hover:text-brand"
+          className="inline-flex items-center gap-1.5 text-sm text-secondary transition-colors hover:text-link"
         >
           <Icon name="chevron-left" size={14} />
           Domains
@@ -2290,7 +2290,7 @@ export function DomainDetailPage() {
                             <button
                               type="button"
                               onClick={() => toggleSource(source.sourceIp)}
-                              className="min-w-0 break-all text-left font-mono text-xs text-body underline decoration-dotted underline-offset-2 hover:text-brand"
+                              className="min-w-0 break-all text-left font-mono text-xs text-body underline decoration-dotted underline-offset-2 hover:text-link"
                               title="Show this source in the table below"
                             >
                               {source.sourceIp}

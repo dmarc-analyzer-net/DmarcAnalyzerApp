@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 
-import { BrandLogo } from '@/components/BrandLogo'
+import { BrandLogo, PoweredBy } from '@/components/BrandLogo'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -167,7 +167,7 @@ export function LoginPage() {
   // still-live session. Give the explicit sign-in step a click instead.
   if (justLoggedOut && !localLoginEnabled && oidcProvider?.enabled) {
     return (
-      <div className="flex min-h-screen items-center justify-center px-4 py-6">
+      <div className="flex min-h-screen flex-col items-center justify-center px-4 py-6">
         <Card className="w-full max-w-md">
           <CardHeader className="flex-col items-stretch">
             <BrandLogo height={40} className="mb-5" />
@@ -182,12 +182,13 @@ export function LoginPage() {
             </Button>
           </CardContent>
         </Card>
+        <PoweredBy className="mt-4" />
       </div>
     )
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-6">
+    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-6">
       <Card className="w-full max-w-md">
         <CardHeader className="flex-col items-stretch">
           <BrandLogo height={40} className="mb-5" />
@@ -275,6 +276,7 @@ export function LoginPage() {
           )}
         </CardContent>
       </Card>
+      <PoweredBy className="mt-4" />
     </div>
   )
 }
