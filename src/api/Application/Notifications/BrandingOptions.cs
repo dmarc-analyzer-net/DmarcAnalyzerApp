@@ -28,8 +28,10 @@ public sealed partial class BrandingOptions
     /// </summary>
     public bool HidePoweredBy { get; set; }
 
+    /// <summary>The product's own name, used when <see cref="Name"/> is blank.</summary>
     public const string DefaultName = "DMARC Analyzer";
 
+    /// <summary>The product's own accent (teal-700), used when <see cref="AccentColor"/> is not a six-digit hex value.</summary>
     public const string DefaultAccentColor = "#0c7568";
 
     /// <summary>The name to show: the configured one, trimmed, or the product's when blank.</summary>

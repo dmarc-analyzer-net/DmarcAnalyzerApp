@@ -33,9 +33,12 @@ export function useBranding(): Branding | null {
 
 // ---- Validation and cache ------------------------------------------------------
 
+/** The only accent form accepted: six hex digits, as the server's own check. */
 const HEX = /^#[0-9a-f]{6}$/i
+/** localStorage key for the last brand seen. */
 const CACHE_KEY = 'dmarc-analyzer.branding'
 
+/** True for an absolute http(s) URL — the only kind allowed into an `<img src>`. */
 function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value)
@@ -66,6 +69,11 @@ export function parseBranding(value: unknown): Branding | null {
   }
 }
 
+/**
+ * The brand from the last visit, applied before the first render so a returning
+ * visitor never sees the product's brand flash. Null when there is none, or when
+ * storage is unavailable or holds something that no longer validates.
+ */
 export function readCachedBranding(): Branding | null {
   try {
     const raw = localStorage.getItem(CACHE_KEY)
@@ -75,6 +83,7 @@ export function readCachedBranding(): Branding | null {
   }
 }
 
+/** Remembers the brand for the next visit's first paint. Never throws. */
 export function writeCachedBranding(branding: Branding): void {
   try {
     localStorage.setItem(CACHE_KEY, JSON.stringify(branding))
@@ -94,11 +103,13 @@ const INK = '#0b1d18'
 /** --surface-page, the darkest surface brand-coloured text sits on. */
 const PAGE = '#f5f8f7'
 
+/** `#rrggbb` to its three 0–255 channels. Expects a value that already passed {@link HEX}. */
 function toRgb(hex: string): Rgb {
   const n = Number.parseInt(hex.slice(1), 16)
   return [(n >> 16) & 255, (n >> 8) & 255, n & 255]
 }
 
+/** Three 0–255 channels, rounded, back to lowercase `#rrggbb`. */
 function toHex(rgb: Rgb): string {
   return `#${rgb.map((c) => Math.round(c).toString(16).padStart(2, '0')).join('')}`
 }
@@ -108,6 +119,7 @@ function mix(a: Rgb, b: Rgb, weight: number): Rgb {
   return [0, 1, 2].map((i) => a[i] + (b[i] - a[i]) * weight) as Rgb
 }
 
+/** WCAG 2 relative luminance, 0 for black to 1 for white — the input to {@link contrast}. */
 function luminance([r, g, b]: Rgb): number {
   const channel = (c: number) => {
     const s = c / 255
