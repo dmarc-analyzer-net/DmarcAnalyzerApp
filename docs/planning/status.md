@@ -11,7 +11,8 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   host serving only the public routes and health probes). Docker Compose ships as a single combined container plus PostgreSQL,
   with overlays for an external database and for splitting console from worker.
   A Helm chart (`deploy/helm/dmarc-analyzer`) exposes the same two axes, applies
-  migrations via a pre-install Job, and is published to
+  migrations via a pre-install Job, sets memory and CPU requests (no limits) on
+  every container, and is published to
   `oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer` on a release tag.
   Exactly one ingestion worker may run per database, enforced by a Postgres
   advisory lock. A Render Blueprint (`render.yaml`, repo root) is a third deploy

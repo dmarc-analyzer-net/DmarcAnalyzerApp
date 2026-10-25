@@ -179,6 +179,8 @@ initContainers:
   imagePullPolicy: {{ .Values.image.pullPolicy }}
   securityContext:
     {{- toYaml .Values.securityContext | nindent 4 }}
+  resources:
+    {{- toYaml .Values.waitForDatabase.resources | nindent 4 }}
   command:
     - /bin/bash
     - -c
