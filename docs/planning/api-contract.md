@@ -32,6 +32,7 @@ staff (`agency_admin` or `agency_analyst`).
 | POST | `/auth/logout` | public |
 | GET | `/auth/setup` | public — `{ requiresBootstrap }`; queries the DB, so a 200 also proves migrations ran (used as the container health probe) |
 | GET | `/auth/providers` | public — which login front doors are enabled |
+| GET | `/branding` | public — `{ name, logoUrl, accentColor, customized, showPoweredBy }`, the validated `Branding:*` brand the console renders |
 | GET | `/auth/oidc/login` | public (external-temp scheme) |
 | GET | `/auth/oidc/complete` | public (external-temp scheme) |
 | GET | `/auth/me` | any |

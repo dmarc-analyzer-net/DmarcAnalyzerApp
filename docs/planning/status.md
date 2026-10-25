@@ -426,6 +426,24 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
     or a recipient's mails without sending, `POST /api/v1/admin/digest/send`
     sends anything due
 
+- Console branding:
+  - the same instance-wide `Branding:*` brand as the digest, served by the public
+    `GET /api/v1/branding` so the sign-in page wears it before anyone logs in.
+    A logo replaces the product's lockup; a name alone is shown as a wordmark
+    without the product's shield; the name suffixes every tab title
+  - the accent drives primary buttons, links, focus rings, the active nav item
+    and brand badges; data colours (chart bars, status badges) stay semantic.
+    `deriveBrandPalette` keeps WCAG AA for any accent: text on a button turns dark
+    when white would fail, brand-coloured text is darkened until it clears 4.5:1
+    on every light surface, and the focus ring is solid at 3:1 or better — the
+    default ring too, which was a 28% tint at 1.4:1
+  - the last brand seen is cached in `localStorage` and applied before the first
+    render; a first visit leaves the logo slot empty until the fetch lands rather
+    than flashing the product's brand
+  - "Powered by DMARC Analyzer" on the sign-in page and at the foot of the
+    navigation once branded, unless `Branding:HidePoweredBy`. An unbranded
+    instance is unchanged
+
 - Console pages for notifications:
   - **Alerts** — history with severity, type, status, per-domain links, whether
     each was emailed, an admin "Evaluate now" action, and triage

@@ -158,7 +158,7 @@ public sealed class ConfigurationPreflightTests
                 && !p.PropertyType.IsArray);
         if (property is null)
         {
-            // A section of nothing but strings (Branding) takes any value, so there is
+            // A section of nothing but strings takes any value, so there is
             // no bad input to feed it. It still has to bind without complaint.
             ConfigurationPreflight.Validate(Configuration(($"{section}:Anything", "value")));
             return;

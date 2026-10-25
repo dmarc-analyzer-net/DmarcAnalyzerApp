@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, Outlet } from 'react-router-dom'
 
-import { BrandLogo } from '@/components/BrandLogo'
+import { BrandLogo, PoweredBy } from '@/components/BrandLogo'
 import { Icon, type IconName } from '@/components/ui/icon'
 import type { AuthUser } from '@/lib/auth-context'
 import { useAuth } from '@/lib/auth-context'
@@ -44,7 +44,7 @@ function NavItemLink({ item, onNavigate }: { item: NavItem; onNavigate: () => vo
           // sidebar goes back to the tighter py-2 rhythm.
           'flex items-center gap-2.5 rounded-md px-3 py-2.5 font-body text-base transition-colors duration-120 ease-out focus-visible:shadow-(--focus-ring) focus-visible:outline-hidden lg:py-2',
           isActive
-            ? 'bg-brand-subtle font-semibold text-teal-800'
+            ? 'bg-brand-subtle font-semibold text-brand-strong'
             : 'font-medium text-gray-600 hover:bg-gray-100',
         )
       }
@@ -172,6 +172,8 @@ export function ConsoleLayout() {
             <Icon name="log-out" size={16} />
             <span className="flex-1 text-left">Sign out</span>
           </button>
+
+          <PoweredBy className="mt-3" />
 
           {/* Which build this is. Nothing renders until the fetch lands and
               nothing renders if it fails — there is no placeholder, because a
