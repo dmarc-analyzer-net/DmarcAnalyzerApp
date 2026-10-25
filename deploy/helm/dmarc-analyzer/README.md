@@ -124,8 +124,11 @@ Every container ships with a memory and CPU **request** and no **limit**:
 
 The `wait-for-database` init container, which runs before the app, the worker and
 the migrate Job whenever there is a database host to wait for, carries one too.
-It does not change how the pod is scheduled, which is sized by its largest init
-container or its main containers, whichever is bigger. It is there because a
+At the defaults it does not change how the pod is scheduled. Kubernetes sizes a
+pod per resource, taking the larger of its biggest init container request and the
+sum of its main containers' requests, and the main containers ask for more. That
+stops being true if you remove the main containers' requests or set them below
+64Mi/50m; the init request then decides that resource. It is there because a
 namespace with a ResourceQuota on requests rejects any container without one.
 
 The requests are there for scheduling and eviction. With no request, the
