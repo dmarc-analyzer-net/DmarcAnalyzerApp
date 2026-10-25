@@ -120,6 +120,13 @@ Every container ships with a memory and CPU **request** and no **limit**:
 | `worker.resources` (split mode) | 384Mi | 100m |
 | `postgres.resources` (bundled) | 256Mi | 100m |
 | `migrations.resources` (the Job) | 128Mi | 50m |
+| `waitForDatabase.resources` (init container) | 64Mi | 50m |
+
+The `wait-for-database` init container, which runs before the app, the worker and
+the migrate Job whenever there is a database host to wait for, carries one too.
+It does not change how the pod is scheduled, which is sized by its largest init
+container or its main containers, whichever is bigger. It is there because a
+namespace with a ResourceQuota on requests rejects any container without one.
 
 The requests are there for scheduling and eviction. With no request, the
 scheduler counts the pod as using nothing and will put it on a node that is

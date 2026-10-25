@@ -133,6 +133,16 @@ migrations:
       memory: 128Mi
       cpu: 50m
 
+# The init container that holds the app, the worker and the migrate Job until the
+# database accepts connections. One TCP check in a loop; its request is here so
+# that every container carries one, which a namespace with a requests
+# ResourceQuota insists on. Null `requests` to remove it, as for the others.
+waitForDatabase:
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+
 service:
   type: ClusterIP
   port: 80

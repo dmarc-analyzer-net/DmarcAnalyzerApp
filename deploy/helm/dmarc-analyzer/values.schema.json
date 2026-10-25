@@ -255,6 +255,14 @@
     },
 
     "podSecurityContext": { "type": "object" },
-    "securityContext": { "type": "object" }
+    "securityContext": { "type": "object" },
+
+    "waitForDatabase": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "resources": { "type": "object" }
+      }
+    }
   }
 }
