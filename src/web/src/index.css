@@ -127,11 +127,12 @@
   --brand-hover: #0b5d54;
   --brand-active: #0a4a44;
   --brand-subtle: #effaf7;
-  --brand-ring: rgba(14, 148, 129, 0.28);
+  /* Solid, not translucent: a focus indicator has to clear 3:1 against what is
+     around it (WCAG 1.4.11), and teal-600 does on every light surface. The old
+     28% tint read 1.4:1 on a white card. */
+  --brand-ring: #0e9481;
   /* Brand-coloured text on --brand-subtle or a card (the active nav item, badges). */
   --brand-strong: #0b5d54;
-  /* Brand-coloured data marks; teal-600, which only has to clear 3:1. */
-  --brand-chart: #0e9481;
   /* Every brand variable above, plus --text-on-brand and --link*, is overridden
      on :root at runtime when Branding__AccentColor is set — see
      deriveBrandPalette in src/lib/branding.ts, which keeps the same contrast

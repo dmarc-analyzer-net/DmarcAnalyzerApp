@@ -2,6 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import { applyBranding, contrast, DEFAULT_BRANDING, deriveBrandPalette, parseBranding } from '@/lib/branding'
 
+// Card, page, sunken rows and the four status tints — every light surface a
+// brand-coloured link or focus ring can sit on.
+const SURFACES = ['#ffffff', '#f5f8f7', '#eef3f1', '#d7f4ec', '#fdf0d5', '#fde5ea']
+
 describe('deriveBrandPalette', () => {
   // The default, dark and mid tones, three that fail white text, and two greys
   // where neither white nor dark text clears AA or the pressed state has no room.
@@ -13,13 +17,21 @@ describe('deriveBrandPalette', () => {
     for (const fill of [p['--brand'], p['--brand-hover'], p['--brand-active']]) {
       expect(contrast(p['--text-on-brand'], fill)).toBeGreaterThanOrEqual(4.5)
     }
-    expect(contrast(p['--link'], '#f5f8f7')).toBeGreaterThanOrEqual(4.5)
     expect(contrast(p['--brand-strong'], p['--brand-subtle'])).toBeGreaterThanOrEqual(4.5)
-    expect(contrast(p['--brand-chart'], '#ffffff')).toBeGreaterThanOrEqual(3)
+    for (const surface of SURFACES) {
+      expect(contrast(p['--link'], surface)).toBeGreaterThanOrEqual(4.5)
+      expect(contrast(p['--brand-ring'], surface)).toBeGreaterThanOrEqual(3)
+    }
   })
 
-  it('draws the focus ring from a colour that clears 3:1, so a white accent still shows one', () => {
-    expect(deriveBrandPalette('#ffffff')['--brand-ring']).not.toBe('rgba(255, 255, 255, 0.28)')
+  it("keeps index.css's default ring, teal-600, at 3:1 on every surface", () => {
+    for (const surface of SURFACES) {
+      expect(contrast('#0e9481', surface)).toBeGreaterThanOrEqual(3)
+    }
+  })
+
+  it('draws a solid focus ring, so a white accent still shows one', () => {
+    expect(deriveBrandPalette('#ffffff')['--brand-ring']).toMatch(/^#[0-9a-f]{6}$/)
   })
 
   it('darkens a mid grey until white text clears AA, rather than failing with either', () => {

@@ -100,8 +100,11 @@ const WHITE: Rgb = [255, 255, 255]
 const BLACK: Rgb = [0, 0, 0]
 /** --surface-ink, the dark text used on a light accent. */
 const INK = '#0b1d18'
-/** --surface-page, the darkest surface brand-coloured text sits on. */
-const PAGE = '#f5f8f7'
+/**
+ * Every light surface a brand-coloured link or focus ring can sit on: card, page,
+ * sunken rows, and the four status tints (a link inside a warning callout).
+ */
+const SURFACES = ['#ffffff', '#f5f8f7', '#eef3f1', '#d7f4ec', '#fdf0d5', '#fde5ea']
 
 /** `#rrggbb` to its three 0–255 channels. Expects a value that already passed {@link HEX}. */
 function toRgb(hex: string): Rgb {
@@ -134,11 +137,15 @@ export function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05)
 }
 
-/** Darkens `base` towards black, from `start`, until it reaches `ratio` against `against`. */
-function darkenUntil(base: Rgb, against: string, ratio: number, start = 0): string {
+/**
+ * Darkens `base` towards black, from `start`, until it reaches `ratio` against
+ * `against` — or against every one of them, given a list.
+ */
+function darkenUntil(base: Rgb, against: string | string[], ratio: number, start = 0): string {
+  const backgrounds = typeof against === 'string' ? [against] : against
   for (let w = start; w < 1; w += 0.05) {
     const candidate = toHex(mix(base, BLACK, w))
-    if (contrast(candidate, against) >= ratio) return candidate
+    if (backgrounds.every((bg) => contrast(candidate, bg) >= ratio)) return candidate
   }
   return toHex(BLACK)
 }
@@ -151,7 +158,6 @@ export type BrandPalette = {
   '--brand-subtle': string
   '--brand-ring': string
   '--brand-strong': string
-  '--brand-chart': string
   '--text-on-brand': string
   '--link': string
   '--link-hover': string
@@ -167,9 +173,10 @@ export type BrandPalette = {
  * at 4.5:1 against that same text.
  *
  * Everything that is text on a light surface (links, the active nav item, badges)
- * is darkened from the accent until it clears 4.5:1 on the page background, the
- * darkest light surface; chart bars and the focus ring until they clear the 3:1
- * graphics bar, so a white accent still draws a visible ring.
+ * is darkened from the accent until it clears 4.5:1 on every surface it can sit
+ * on. The focus ring is drawn solid and darkened until it clears the 3:1 that
+ * WCAG asks of a focus indicator, so even a white accent shows one. Data colours
+ * (chart bars, status badges) are not brand colours and are not derived here.
  */
 export function deriveBrandPalette(accent: string): BrandPalette {
   const accentRgb = toRgb(accent)
@@ -181,17 +188,15 @@ export function deriveBrandPalette(accent: string): BrandPalette {
         : [darkenUntil(accentRgb, '#ffffff', 4.5), '#ffffff']
   const base = toRgb(brand)
   const subtle = toHex(mix(accentRgb, WHITE, 0.93))
-  const link = darkenUntil(accentRgb, PAGE, 4.5)
-  const graphic = darkenUntil(accentRgb, '#ffffff', 3)
+  const link = darkenUntil(accentRgb, SURFACES, 4.5)
 
   return {
     '--brand': brand,
     '--brand-hover': pressShade(base, onBrand, 0.2),
     '--brand-active': pressShade(base, onBrand, 0.37),
     '--brand-subtle': subtle,
-    '--brand-ring': `rgba(${toRgb(graphic).join(', ')}, 0.28)`,
+    '--brand-ring': darkenUntil(accentRgb, SURFACES, 3),
     '--brand-strong': darkenUntil(accentRgb, subtle, 4.5, 0.2),
-    '--brand-chart': graphic,
     '--text-on-brand': onBrand,
     '--link': link,
     '--link-hover': toHex(mix(toRgb(link), BLACK, 0.2)),
