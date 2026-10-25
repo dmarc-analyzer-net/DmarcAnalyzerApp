@@ -110,6 +110,41 @@ no-op.
 about 5.3M rows in roughly 94 seconds, so the default has room, but a very large
 database may want more.
 
+## Resources
+
+Every container ships with a memory and CPU **request** and no **limit**:
+
+| Values key | Memory | CPU |
+|---|---|---|
+| `app.resources` | 384Mi | 100m |
+| `worker.resources` (split mode) | 384Mi | 100m |
+| `postgres.resources` (bundled) | 256Mi | 100m |
+| `migrations.resources` (the Job) | 128Mi | 50m |
+
+The requests are there for scheduling and eviction. With no request, the
+scheduler counts the pod as using nothing and will put it on a node that is
+nearly full, and under memory pressure the kubelet evicts pods that use more than
+they requested first, which with no request means all of their usage. One such
+node evicted the app minutes after a roll and turned away every replacement until
+the pressure passed. 384Mi covers the combined pod's steady state on a
+single-mailbox instance (about 290Mi). Raise it for many mailboxes or a large
+backfill.
+
+There is no memory limit because the failure it would cause is worse than the one
+it prevents. Ingestion memory grows with the size of a sync pass, and a limit
+turns a large backfill into an OOM kill partway through. Add limits in your own
+values if your cluster requires them.
+
+To remove a request, null it rather than emptying the map. Helm merges your
+values into the chart's, so `resources: {}` merges into the default and changes
+nothing:
+
+```yaml
+app:
+  resources:
+    requests: null   # renders resources: {}
+```
+
 ## Values validation
 
 `values.schema.json` is checked by Helm before install or upgrade, and Artifact

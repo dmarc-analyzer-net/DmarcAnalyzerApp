@@ -32,7 +32,16 @@ app:
   # refuses the combination rather than letting it happen quietly. To scale the
   # console, use mode: split.
   replicas: 1
-  resources: {}
+  # Requests only, no limits — see "Resources" in the chart README. A pod with no
+  # memory request is the first the kubelet evicts under memory pressure, and the
+  # scheduler places it on a node that has no room for it. 384Mi covers the
+  # combined mode's steady state (~290Mi measured on a single-mailbox instance);
+  # raise it for many mailboxes or a large backfill. To drop the requests, set
+  # `requests: null` — `resources: {}` does not, because Helm merges maps.
+  resources:
+    requests:
+      memory: 384Mi
+      cpu: 100m
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -45,7 +54,12 @@ worker:
   # enforces this itself with a Postgres advisory lock, so extra replicas would
   # crash-loop rather than do useful work.
   replicas: 1
-  resources: {}
+  # Split mode only. Ingestion is the heavier half, so it gets the same floor as
+  # the combined pod.
+  resources:
+    requests:
+      memory: 384Mi
+      cpu: 100m
   nodeSelector: {}
   tolerations: []
   affinity: {}
@@ -69,7 +83,11 @@ postgres:
     size: 10Gi
     # Empty uses the cluster's default StorageClass.
     storageClass: ""
-  resources: {}
+  # An evicted database is the worst eviction of all, so it gets a floor too.
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
 
 # Used when postgres.enabled is false.
 externalDatabase:
@@ -109,7 +127,11 @@ migrations:
   # Seconds the Job waits for the database before giving up. The largest shipped
   # migration rewrites ~5.3M rows in about 94s; the app itself allows 10 minutes.
   activeDeadlineSeconds: 900
-  resources: {}
+  # The Job only issues SQL; the database does the heavy lifting.
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 50m
 
 service:
   type: ClusterIP
