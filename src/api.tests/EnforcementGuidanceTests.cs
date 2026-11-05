@@ -309,21 +309,61 @@ public sealed class EnforcementGuidanceTests
         Assert.Null(g!.RecordChange);
     }
 
-    [Fact]
-    public async Task WhenBlockedByFailingSources_NoRecordIsOffered()
+    /// <summary>
+    /// Both records carry a retired pct=. Dropping one is worth doing, but it is not a
+    /// step: a record under a recommendation that says "keep it in place and change
+    /// nothing", or "fix your sources first", contradicts the sentence above it.
+    /// </summary>
+    [Theory]
+    [InlineData("v=DMARC1; p=none; rua=mailto:dmarc@acme.example")]
+    [InlineData("v=DMARC1; p=none; pct=100; rua=mailto:dmarc@acme.example")]
+    public async Task WhenBlockedByFailingSources_NoRecordIsOffered(string live)
     {
         await using var db = NewDb();
         var (_, domainId) = await SeedAsync(db, "none",
             ("203.0.113.10", 800, true),
             ("198.51.100.24", 200, false));
 
-        var dns = new TestDnsTxtResolver().Publish(
-            "_dmarc.acme.example", "v=DMARC1; p=none; rua=mailto:dmarc@acme.example");
+        var dns = new TestDnsTxtResolver().Publish("_dmarc.acme.example", live);
 
         var g = await Service(db, dns).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
 
         Assert.NotNull(g);
         Assert.False(g!.ReadyToAdvance);
+        Assert.Null(g.RecordChange);
+    }
+
+    [Fact]
+    public async Task WithNoDataInTheWindow_APctToDropDoesNotConjureARecord()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedStaleDomainAsync(db, "reject");
+
+        var dns = new TestDnsTxtResolver().Publish(
+            "_dmarc.stale.example", "v=DMARC1; p=reject; pct=100; rua=mailto:dmarc@stale.example");
+
+        var g = await Service(db, dns).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+
+        Assert.NotNull(g);
+        Assert.Equal(0, g!.Messages);
+        Assert.Contains("before changing anything", g.Rationale);
+        Assert.Null(g.RecordChange);
+    }
+
+    /// <summary>At p=reject and aligned there is no step, so there is nothing to publish.</summary>
+    [Fact]
+    public async Task AtReject_APctToDropDoesNotConjureARecord()
+    {
+        await using var db = NewDb();
+        var (_, domainId) = await SeedAsync(db, "reject", ("203.0.113.10", 500, true));
+
+        var dns = new TestDnsTxtResolver().Publish(
+            "_dmarc.acme.example", "v=DMARC1; p=reject; pct=100; rua=mailto:dmarc@acme.example");
+
+        var g = await Service(db, dns).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+
+        Assert.NotNull(g);
+        Assert.Equal("Maintain enforcement", g!.RecommendedAction);
         Assert.Null(g.RecordChange);
     }
 

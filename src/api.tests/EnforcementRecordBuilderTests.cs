@@ -137,6 +137,20 @@ public sealed class EnforcementRecordBuilderTests
     }
 
     /// <summary>
+    /// A retired pct= is worth removing but is not a *step*. Offering a record on the
+    /// strength of it alone puts "publish this" directly under a recommendation that
+    /// says to keep the record in place and change nothing. Record inspection is where
+    /// a stale pct= is reported.
+    /// </summary>
+    [Theory]
+    [InlineData("v=DMARC1; p=none; pct=100; rua=mailto:dmarc@acme.example", "none")]
+    [InlineData("v=DMARC1; p=reject; pct=25; rua=mailto:dmarc@acme.example", "reject")]
+    public void APctToDropIsNotOnItsOwnAStep(string live, string policy)
+    {
+        Assert.Null(EnforcementRecordBuilder.Build("acme.example", live, policy, testing: false));
+    }
+
+    /// <summary>
     /// "If the live record could not be read, say so and show nothing" — a guessed
     /// record is the one failure mode worse than no suggestion at all.
     /// </summary>

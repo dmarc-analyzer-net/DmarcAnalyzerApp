@@ -26,8 +26,10 @@ namespace DmarcAnalyzer.Api.Application.Analytics;
 public static class EnforcementRecordBuilder
 {
     /// <summary>
-    /// The record to publish, or null when there is nothing to hand over: no live
-    /// record to edit, one this code cannot round-trip, or a step that changes nothing.
+    /// The record to publish, or null when there is nothing to hand over: no live record
+    /// to edit, one this code cannot round-trip, or a step that moves neither <c>p</c>
+    /// nor <c>t</c> — a retired <c>pct=</c> is dropped from a record a real step produces,
+    /// but is not on its own a reason to produce one.
     /// </summary>
     /// <param name="domainName">The domain itself; the host is derived as <c>_dmarc.{domain}</c>.</param>
     /// <param name="liveRecord">
@@ -100,6 +102,16 @@ public static class EnforcementRecordBuilder
             changed.Add("t");
         }
 
+        // Nothing to publish unless the step itself moves a tag. A retired pct= is worth
+        // removing, but it is not a *step*, and offering a record on the strength of it
+        // alone contradicts the recommendation printed directly above: "keep it in place
+        // and change nothing", with a record to publish underneath. Record inspection is
+        // where a stale pct= is reported.
+        if (changed.Count == 0)
+        {
+            return null;
+        }
+
         var pctIndex = tags.FindIndex(t => t.Name.Equals("pct", StringComparison.OrdinalIgnoreCase));
         if (pctIndex >= 0)
         {
@@ -109,11 +121,6 @@ public static class EnforcementRecordBuilder
             notes.Add(
                 $"pct={published} is dropped — RFC 9989 retired the tag, and a receiver that still " +
                 "honours it would apply the policy to only part of your mail.");
-        }
-
-        if (changed.Count == 0)
-        {
-            return null;
         }
 
         if (testing)

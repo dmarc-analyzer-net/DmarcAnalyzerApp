@@ -253,9 +253,10 @@ export function ValueList({
  * The record to publish for the recommended step, ready to paste into a zone.
  *
  * Shown only when the server built one — which it does from the domain's own live
- * record and nothing else. A failed lookup, a policy inherited from the
- * organisational domain, or a step that changes no tag all arrive here as null, and
- * null renders nothing but a line saying so. A guessed record is the one output
+ * record and nothing else. A failed lookup, a record it cannot rewrite safely, a
+ * policy inherited from the organisational domain, or a step that moves no policy
+ * tag all arrive here as null. The first three say so; the last renders nothing,
+ * because there is no step to explain away. A guessed record is the one output
  * worse than no suggestion: it is pasted, it is wrong, and nothing bounces.
  */
 export function EnforcementStepRecord({
@@ -268,8 +269,9 @@ export function EnforcementStepRecord({
   if (!change) {
     return unavailable ? (
       <p className="mt-2.5 border-t border-[color-mix(in_srgb,currentColor_12%,transparent)] pt-2 text-xs leading-relaxed text-secondary">
-        No DMARC record of this domain&apos;s own could be read from DNS, so there is nothing to
-        copy here. See record inspection below for what is published.
+        No record to copy for this step: the DNS lookup failed, this domain publishes no DMARC
+        record of its own that can be edited safely, or its policy is inherited from a parent
+        domain. See record inspection below for what is published.
       </p>
     ) : null
   }

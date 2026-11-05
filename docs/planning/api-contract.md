@@ -512,11 +512,18 @@ reads the record that *applies* — an inherited policy carries its ancestor's
 `notes[]`. It is built by editing the live record, not by composing a new one:
 `rua`, `ruf`, `sp`, `adkim`, `aspf`, `fo` and any unrecognized tag keep their
 published value and position, and only the separators are normalized to `"; "`.
-A published `pct=` is dropped, with a note. It is **null** whenever there is
-nothing honest to hand over — the step changes no tag, the lookup failed, the
-record is malformed, or the policy is inherited (the record to edit belongs to
-the organisational domain and covers its siblings too). A guessed record would
-be pasted into a zone and fail silently, so none is offered.
+A published `pct=` is dropped, with a note — but only from a record a real step
+produces: a `pct` to drop is **not** on its own a reason to offer one, since
+"publish this" directly under "keep it in place and change nothing" contradicts
+itself. Record inspection is where a stale `pct=` is reported.
+
+`recordChange` is **null** whenever there is nothing honest to hand over — the
+step moves neither `p` nor `t`, the lookup failed, the record is malformed, or
+the policy is inherited (the record to edit belongs to the organisational domain
+and covers its siblings too). A guessed record would be pasted into a zone and
+fail silently, so none is offered. The client has no reason field: where a step
+is due but no record came back, the console names the possible causes rather
+than asserting one it cannot tell apart.
 
 ### GET `/analytics/domains/{domainId}/records`
 

@@ -59,9 +59,11 @@ describe('EnforcementStepRecord', () => {
   it('says why there is nothing to copy when a step is due but no record was built', () => {
     render(<EnforcementStepRecord change={null} unavailable />)
 
-    expect(
-      screen.getByText(/No DMARC record of this domain's own could be read from DNS/),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/No record to copy for this step/)).toBeInTheDocument()
+    // Three causes reach here and the client has no reason field, so the line names
+    // all of them rather than asserting one it cannot know.
+    expect(screen.getByText(/DNS lookup failed/)).toBeInTheDocument()
+    expect(screen.getByText(/inherited from a parent domain/)).toBeInTheDocument()
     expect(screen.queryByRole('button')).not.toBeInTheDocument()
   })
 
