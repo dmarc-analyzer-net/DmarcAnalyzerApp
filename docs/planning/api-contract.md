@@ -488,9 +488,35 @@ and an `enforcementStatus`
 
 ### GET `/analytics/domains/{domainId}/enforcement?days=30`
 
-Guided path to enforcement: `currentPolicy`, `currentPct`, message/compliance
-totals, `recommendedPolicy`, `recommendedAction`, `rationale`, `readyToAdvance`,
-`blockingSourceCount`, and `blockingSources[]` (top 20 by failed volume).
+Guided path to enforcement: `currentPolicy`, `currentPct`, `currentTesting`,
+message/compliance totals, `recommendedPolicy`, `recommendedTesting`,
+`recommendedAction`, `rationale`, `readyToAdvance`, `blockingSourceCount`, and
+`blockingSources[]` (top 20 by failed volume), plus `evidence` and
+`recordChange`.
+
+The ladder is RFC 9989's: `p=none`, then `p=quarantine` with `t=y`, then an
+enforced `p=quarantine`, then `p=reject`. **No step ever advises `pct=`** —
+RFC 9989 Appendix A.6 retired the tag. `t=y` is both an input and an output:
+under it a receiver applies one level below the stated policy (§4.7), so a
+domain at `p=quarantine; t=y` is not enforcing quarantine, and dropping `t=y`
+is a step of its own rather than a detail of the next one. `currentTesting`
+reads the record that *applies* — an inherited policy carries its ancestor's
+`t`.
+
+`evidence` says what the verdict rests on: `messages`, `sources`, `reports`,
+`daysWithData` (distinct UTC days carrying records, not the elapsed span) and
+`firstSeenUtc`/`lastSeenUtc` (null when the window holds no data).
+
+`recordChange` is the exact record to publish — `host` (`_dmarc.{domain}`),
+`current` (the live record verbatim), `recommended`, `changedTags[]` and
+`notes[]`. It is built by editing the live record, not by composing a new one:
+`rua`, `ruf`, `sp`, `adkim`, `aspf`, `fo` and any unrecognized tag keep their
+published value and position, and only the separators are normalized to `"; "`.
+A published `pct=` is dropped, with a note. It is **null** whenever there is
+nothing honest to hand over — the step changes no tag, the lookup failed, the
+record is malformed, or the policy is inherited (the record to edit belongs to
+the organisational domain and covers its siblings too). A guessed record would
+be pasted into a zone and fail silently, so none is offered.
 
 ### GET `/analytics/domains/{domainId}/records`
 

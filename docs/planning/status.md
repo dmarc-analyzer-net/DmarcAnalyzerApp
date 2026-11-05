@@ -313,8 +313,11 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - plaintext passthrough with startup warning when no key is configured
 
 - Guided path to enforcement:
-  - `GET /api/v1/analytics/domains/{id}/enforcement` — server-computed recommendation for the next safe policy step (none → quarantine → reject), rationale, `readyToAdvance`, and the blocking sources still sending unaligned mail
-  - Domain Detail "Path to enforcement" panel upgraded with the server guidance banner + blocking-source quick links (expand via `?source=`)
+  - `GET /api/v1/analytics/domains/{id}/enforcement` — server-computed recommendation for the next safe policy step, rationale, `readyToAdvance`, and the blocking sources still sending unaligned mail
+  - the ladder is RFC 9989's: `p=none` → `p=quarantine; t=y` → enforced `p=quarantine` → `p=reject`. `pct=` is never advised (RFC 9989 Appendix A.6 retired it), and `t=y` is read as well as written — under it a receiver applies one level below the stated policy (§4.7), so a domain at `p=quarantine; t=y` is not enforcing quarantine and dropping the tag is a step of its own
+  - `recordChange` — the exact record to publish, built by editing the live record so `rua`, `ruf`, `sp`, `adkim`, `aspf`, `fo` and anything unrecognized survive; null (and the console says why) when the lookup failed, the record is malformed or inherited, or the step changes no tag
+  - `evidence` — messages, sources, reports, days with data and the date span behind the verdict, so a call on four messages does not read like one on a month of traffic
+  - Domain Detail "Path to enforcement" panel upgraded with the server guidance banner, the evidence line, the record to publish with a copy button, and blocking-source quick links (expand via `?source=`)
 
 - Threat feed (spoofing investigation):
   - `GET /api/v1/analytics/threats` — tenant-scoped list of (source IP, domain) pairs with fully unauthenticated volume (DKIM and SPF both failed), worst first, with first/last-seen

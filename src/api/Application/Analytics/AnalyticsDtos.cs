@@ -276,13 +276,63 @@ public sealed record EnforcementBlockingSourceDto(
     DateTime FirstSeenUtc,
     DateTime LastSeenUtc);
 
+/// <summary>
+/// How much report data the recommendation rests on. A verdict drawn from four
+/// messages over two days reads exactly like one drawn from a month of traffic
+/// unless the console says which it is, and the two warrant different confidence.
+/// </summary>
+/// <param name="DaysWithData">
+/// Distinct UTC days covered by records in the window — days that actually carry
+/// data, not the elapsed span, so a gap does not inflate the number.
+/// </param>
+public sealed record EnforcementEvidenceDto(
+    long Messages,
+    int Sources,
+    int Reports,
+    int DaysWithData,
+    DateTime? FirstSeenUtc,
+    DateTime? LastSeenUtc);
+
+/// <summary>
+/// The exact record to publish for the recommended step, built from the live one.
+/// Null on the guidance when there is nothing to publish — no change is due, or
+/// the domain publishes no record of its own to start from.
+/// </summary>
+/// <param name="Host">The owner name to publish at, <c>_dmarc.{domain}</c>.</param>
+/// <param name="Current">The live record, verbatim as DNS returned it.</param>
+/// <param name="Recommended">
+/// The same record with only the policy tags changed. Every other tag — <c>rua</c>,
+/// <c>ruf</c>, <c>sp</c>, <c>adkim</c>, <c>aspf</c>, <c>fo</c> and anything unrecognized —
+/// keeps its published value and position; only the separators are normalized to
+/// <c>"; "</c>. A generated record that quietly dropped <c>rua</c> would stop the reports.
+/// </param>
+/// <param name="ChangedTags">The tag names that differ, in the order they were applied.</param>
+/// <param name="Notes">Consequences of the change worth reading before pasting it.</param>
+public sealed record EnforcementRecordChangeDto(
+    string Host,
+    string Current,
+    string Recommended,
+    IReadOnlyList<string> ChangedTags,
+    IReadOnlyList<string> Notes);
+
 /// <summary>Guided path-to-enforcement recommendation for a single domain.</summary>
+/// <param name="CurrentPct">
+/// The live <c>pct=</c>, null when not published — which is the conformant case. RFC 9989
+/// retired the tag; it is reported here only so a record that still carries one is visible.
+/// </param>
+/// <param name="CurrentTesting">
+/// Whether the record that applies here publishes <c>t=y</c> (RFC 9989 §4.7). Under it a
+/// receiver applies one level below the stated policy, so <c>p=reject; t=y</c> enforces like
+/// quarantine — which is why leaving testing mode is its own step on the path.
+/// </param>
+/// <param name="RecommendedTesting">Whether the recommended record carries <c>t=y</c>.</param>
 public sealed record EnforcementGuidanceDto(
     Guid DomainId,
     string Name,
     AnalyticsWindowDto Window,
     string? CurrentPolicy,
     int? CurrentPct,
+    bool CurrentTesting,
     string EnforcementStatus,
     long Messages,
     long CompliantMessages,
@@ -290,9 +340,12 @@ public sealed record EnforcementGuidanceDto(
     long FailedMessages,
     int BlockingSourceCount,
     string RecommendedPolicy,
+    bool RecommendedTesting,
     string RecommendedAction,
     string Rationale,
     bool ReadyToAdvance,
+    EnforcementEvidenceDto Evidence,
+    EnforcementRecordChangeDto? RecordChange,
     IReadOnlyList<EnforcementBlockingSourceDto> BlockingSources);
 
 /// <summary>One unauthenticated/failing sending source for a domain — a spoofing candidate.</summary>
