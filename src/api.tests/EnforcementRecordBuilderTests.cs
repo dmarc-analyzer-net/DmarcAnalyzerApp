@@ -119,15 +119,173 @@ public sealed class EnforcementRecordBuilderTests
     }
 
     [Fact]
-    public void NonStandardSpacingAndCasing_AreNormalizedWithoutLosingTags()
+    public void NonStandardSpacing_IsNormalizedWithoutLosingTags()
     {
         var change = EnforcementRecordBuilder.Build(
-            "acme.example", "v=DMARC1;P=none;RUA=mailto:dmarc@acme.example;", "quarantine", testing: false);
+            "acme.example", "v=DMARC1;p=none;rua=mailto:dmarc@acme.example;", "quarantine", testing: false);
 
         Assert.NotNull(change);
-        // The tag names stay as published — rewriting their case would be a second,
-        // unexplained change in a record the operator is about to diff by eye.
-        Assert.Equal("v=DMARC1; P=quarantine; RUA=mailto:dmarc@acme.example", change!.Recommended);
+        Assert.Equal("v=DMARC1; p=quarantine; rua=mailto:dmarc@acme.example", change!.Recommended);
+    }
+
+    /// <summary>
+    /// RFC 6376 §3.2 — the tag-value syntax RFC 9989 §4.7 adopts — has tag names
+    /// interpreted case-sensitively, so <c>RUA=</c> is not <c>rua=</c> and this domain
+    /// is getting no aggregate reports at all. Rewriting the policy in place would hand
+    /// back a record that looks repaired and still sends nothing. The earlier behaviour
+    /// did exactly that; record inspection is where the real problem belongs.
+    /// </summary>
+    [Theory]
+    [InlineData("v=DMARC1; P=none; rua=mailto:dmarc@acme.example")]
+    [InlineData("v=DMARC1; p=none; RUA=mailto:dmarc@acme.example")]
+    [InlineData("v=DMARC1; p=none; rua=mailto:dmarc@acme.example; SP=none")]
+    [InlineData("v=DMARC1; p=quarantine; T=y; rua=mailto:dmarc@acme.example")]
+    public void AKnownTagPublishedInTheWrongCase_ProducesNoRecord(string live)
+    {
+        Assert.Null(EnforcementRecordBuilder.Build("acme.example", live, "quarantine", testing: true));
+    }
+
+    /// <summary>
+    /// "Tags with duplicate names MUST NOT occur within a single tag-list; if a tag name
+    /// does occur more than once, the entire tag-list is invalid" (RFC 6376 §3.2).
+    /// Editing the first occurrence would leave the second behind to contradict it.
+    /// </summary>
+    [Theory]
+    [InlineData("v=DMARC1; p=none; p=reject; rua=mailto:dmarc@acme.example")]
+    [InlineData("v=DMARC1; p=none; rua=mailto:a@acme.example; rua=mailto:b@acme.example")]
+    public void ARepeatedTagName_ProducesNoRecord(string live)
+    {
+        Assert.Null(EnforcementRecordBuilder.Build("acme.example", live, "reject", testing: false));
+    }
+
+    /// <summary>
+    /// "The tag value is case sensitive, and the only possible value is 'DMARC1'... then
+    /// the entire record MUST be ignored" (RFC 9989 §4.7). Our own lookup accepts the
+    /// variant case, so this record does reach the builder.
+    /// </summary>
+    [Theory]
+    [InlineData("v=dmarc1; p=none; rua=mailto:dmarc@acme.example")]
+    [InlineData("v=DMARC2; p=none; rua=mailto:dmarc@acme.example")]
+    public void ARecordReceiversWouldIgnore_ProducesNoRecord(string live)
+    {
+        Assert.Null(EnforcementRecordBuilder.Build("acme.example", live, "quarantine", testing: true));
+    }
+
+    /// <summary>
+    /// A policy value in the wrong case is a syntax error a receiver discards in favour
+    /// of the default (RFC 9989 §4.8), so <c>p=Reject</c> is not enforcing anything.
+    /// Correcting the case is a real change and is reported as one.
+    /// </summary>
+    [Fact]
+    public void APolicyValueInTheWrongCase_IsCorrected()
+    {
+        var change = EnforcementRecordBuilder.Build(
+            "acme.example", "v=DMARC1; p=Reject; rua=mailto:dmarc@acme.example", "reject", testing: false);
+
+        Assert.NotNull(change);
+        Assert.Equal("v=DMARC1; p=reject; rua=mailto:dmarc@acme.example", change!.Recommended);
+        Assert.Equal(["p"], change.ChangedTags);
+    }
+
+    /// <summary>
+    /// Unknown tags are a different matter from mis-cased known ones: RFC 9989 §4.8 has
+    /// receivers ignore them, so they cost nothing and are carried through untouched,
+    /// in place. That includes the tags RFC 9989 marks historic (ri, rf) and the ones it
+    /// added (np, psd) — none of which this step has any business moving.
+    /// </summary>
+    [Fact]
+    public void TagsThisCodeDoesNotActOn_SurviveInPlace()
+    {
+        var change = EnforcementRecordBuilder.Build(
+            "acme.example",
+            "v=DMARC1; p=none; np=reject; psd=n; ri=86400; rf=afrf; x-vendor=acme-7",
+            "quarantine",
+            testing: true);
+
+        Assert.NotNull(change);
+        Assert.Equal(
+            "v=DMARC1; p=quarantine; t=y; np=reject; psd=n; ri=86400; rf=afrf; x-vendor=acme-7",
+            change!.Recommended);
+    }
+
+    /// <summary>
+    /// A value may contain the characters that structure the record around it — an equals
+    /// sign inside a reporting URI, a comma between two of them, the <c>!10m</c> size
+    /// limit RFC 9989 §4.6 defines. Splitting on the first equals and nothing else is
+    /// what keeps them intact.
+    /// </summary>
+    [Fact]
+    public void AReportingUriWithItsOwnPunctuation_IsNotMangled()
+    {
+        const string live =
+            "v=DMARC1; p=none; rua=mailto:dmarc@acme.example!10m,mailto:agency+acme@reports.example?subject=dmarc=rua; fo=0:1:d:s";
+
+        var change = EnforcementRecordBuilder.Build("acme.example", live, "quarantine", testing: false);
+
+        Assert.NotNull(change);
+        Assert.Equal(
+            "v=DMARC1; p=quarantine; rua=mailto:dmarc@acme.example!10m,mailto:agency+acme@reports.example?subject=dmarc=rua; fo=0:1:d:s",
+            change!.Recommended);
+    }
+
+    /// <summary>A bare version record is legal, and the step is the policy it lacks.</summary>
+    [Fact]
+    public void ARecordWithNothingButTheVersion_GainsThePolicy()
+    {
+        var change = EnforcementRecordBuilder.Build("acme.example", "v=DMARC1", "none", testing: false);
+
+        Assert.NotNull(change);
+        Assert.Equal("v=DMARC1; p=none", change!.Recommended);
+    }
+
+    /// <summary>
+    /// A record already in testing mode, moving up a rung: t=y is already there and stays
+    /// there, so the step is the policy alone and the testing tag is not reported as
+    /// changed when it did not change.
+    /// </summary>
+    [Fact]
+    public void ARecordAlreadyInTestingMode_KeepsTheTestingTagWhereItIs()
+    {
+        var change = EnforcementRecordBuilder.Build(
+            "acme.example",
+            "v=DMARC1; p=none; t=y; rua=mailto:dmarc@acme.example",
+            "quarantine",
+            testing: true);
+
+        Assert.NotNull(change);
+        Assert.Equal("v=DMARC1; p=quarantine; t=y; rua=mailto:dmarc@acme.example", change!.Recommended);
+        Assert.Equal(["p"], change.ChangedTags);
+    }
+
+    /// <summary>The step a domain is already standing on is not a step.</summary>
+    [Fact]
+    public void ARecordAlreadyAtTheRecommendedTestingStep_ProducesNoRecord()
+    {
+        Assert.Null(EnforcementRecordBuilder.Build(
+            "acme.example", "v=DMARC1; p=quarantine; t=y; rua=mailto:dmarc@acme.example", "quarantine", testing: true));
+    }
+
+    /// <summary>
+    /// The whole preserved set at once, asserted as one string rather than tag by tag:
+    /// every value identical to the published one and in the published order, with only
+    /// p= and t= moved. A Contains assertion per tag would pass on a record whose tags
+    /// had been reshuffled, and a reshuffled record is a diff an operator cannot eyeball.
+    /// </summary>
+    [Fact]
+    public void TheFullPublishedTagSet_SurvivesInOrderWithItsValuesUntouched()
+    {
+        const string live =
+            "v=DMARC1; p=none; sp=none; adkim=s; aspf=s; fo=1; " +
+            "rua=mailto:dmarc@acme.example,mailto:agency@reports.example; ruf=mailto:forensics@acme.example";
+
+        var change = EnforcementRecordBuilder.Build("acme.example", live, "quarantine", testing: true);
+
+        Assert.NotNull(change);
+        Assert.Equal(
+            "v=DMARC1; p=quarantine; t=y; sp=none; adkim=s; aspf=s; fo=1; " +
+            "rua=mailto:dmarc@acme.example,mailto:agency@reports.example; ruf=mailto:forensics@acme.example",
+            change!.Recommended);
+        Assert.Equal(["p", "t"], change.ChangedTags);
     }
 
     [Fact]

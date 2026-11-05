@@ -518,12 +518,23 @@ produces: a `pct` to drop is **not** on its own a reason to offer one, since
 itself. Record inspection is where a stale `pct=` is reported.
 
 `recordChange` is **null** whenever there is nothing honest to hand over — the
-step moves neither `p` nor `t`, the lookup failed, the record is malformed, or
-the policy is inherited (the record to edit belongs to the organisational domain
-and covers its siblings too). A guessed record would be pasted into a zone and
-fail silently, so none is offered. The client has no reason field: where a step
-is due but no record came back, the console names the possible causes rather
-than asserting one it cannot tell apart.
+step moves neither `p` nor `t`, the lookup failed, the policy is inherited (the
+record to edit belongs to the organisational domain and covers its siblings
+too), or the live record is one that cannot be rewritten safely. That last case
+is narrower than "malformed" and follows the tag-value syntax RFC 9989 §4.7
+takes from RFC 6376 §3.2: a segment that is not `name=value`; a `v=` that is not
+exactly `DMARC1` first in the list, which receivers ignore outright
+(RFC 9989 §4.7); a **known tag published in the wrong case**, since tag names
+are case-sensitive and a record carrying `RUA=` is a record receiving no
+reports; or a **repeated tag name**, which invalidates the entire tag-list. In
+each, editing the policy would hand back a record that looks repaired and is
+not. Unknown tags are a different matter and pass through untouched — receivers
+ignore them (RFC 9989 §4.8), so they cost nothing.
+
+A guessed record would be pasted into a zone and fail silently, so none is
+offered. The client has no reason field: where a step is due but no record came
+back, the console names the possible causes rather than asserting one it cannot
+tell apart.
 
 ### GET `/analytics/domains/{domainId}/records`
 

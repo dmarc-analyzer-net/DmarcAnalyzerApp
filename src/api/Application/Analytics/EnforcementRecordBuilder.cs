@@ -49,15 +49,20 @@ public static class EnforcementRecordBuilder
         var current = liveRecord.Trim();
         if (!TrySplitTags(current, out var tags))
         {
-            // A record with a segment that is not name=value is malformed, and rewriting
-            // it means deciding what that segment meant. Showing nothing is the honest
-            // answer; the record-inspection card already reports the record as it stands.
+            // A record this code cannot round-trip — a segment that is not name=value, a
+            // tag name published in a spelling receivers do not recognize, or a duplicate
+            // tag name that invalidates the whole list. Rewriting any of them means
+            // deciding what the operator meant. Showing nothing is the honest answer; the
+            // record-inspection card already reports the record as it stands.
             return null;
         }
 
-        // v=DMARC1 has to come first for the record to be a DMARC record at all
-        // (RFC 9989 §4.4), so a record not starting with it is not ours to edit.
-        if (tags.Count == 0 || !tags[0].Name.Equals("v", StringComparison.OrdinalIgnoreCase))
+        // "This tag MUST be the first tag in the list. The tag value is case sensitive,
+        // and the only possible value is 'DMARC1'. If the tag is not the first in the
+        // list, the tag is absent, or the value is not 'DMARC1', then the entire record
+        // MUST be ignored." (RFC 9989 §4.7). A record receivers ignore is not one to
+        // hand back with a policy bolted on — the policy would be ignored with it.
+        if (tags[0] is not { Name: "v", Value: "DMARC1" })
         {
             return null;
         }
@@ -65,7 +70,7 @@ public static class EnforcementRecordBuilder
         var changed = new List<string>();
         var notes = new List<string>();
 
-        var pIndex = tags.FindIndex(t => t.Name.Equals("p", StringComparison.OrdinalIgnoreCase));
+        var pIndex = tags.FindIndex(t => t.Name == "p");
         if (pIndex < 0)
         {
             // RFC 9989 downgraded p= from required to RECOMMENDED, so a record without one
@@ -75,13 +80,18 @@ public static class EnforcementRecordBuilder
             changed.Add("p");
             pIndex = 1;
         }
-        else if (!tags[pIndex].Value.Equals(policy, StringComparison.OrdinalIgnoreCase))
+        else if (tags[pIndex].Value != policy)
         {
+            // Values are compared as published, because receivers do: "Values MUST be
+            // processed as case sensitive unless the specific tag description of
+            // semantics specifies case insensitivity" (RFC 6376 §3.2, the tag-value
+            // syntax RFC 9989 §4.7 adopts), and no DMARC tag description does. So
+            // p=Reject is not p=reject to a receiver, and correcting it is a real step.
             tags[pIndex] = (tags[pIndex].Name, policy);
             changed.Add("p");
         }
 
-        var tIndex = tags.FindIndex(t => t.Name.Equals("t", StringComparison.OrdinalIgnoreCase));
+        var tIndex = tags.FindIndex(t => t.Name == "t");
         if (testing)
         {
             if (tIndex < 0)
@@ -89,13 +99,13 @@ public static class EnforcementRecordBuilder
                 tags.Insert(pIndex + 1, ("t", "y"));
                 changed.Add("t");
             }
-            else if (!tags[tIndex].Value.Equals("y", StringComparison.OrdinalIgnoreCase))
+            else if (tags[tIndex].Value != "y")
             {
                 tags[tIndex] = (tags[tIndex].Name, "y");
                 changed.Add("t");
             }
         }
-        else if (tIndex >= 0 && tags[tIndex].Value.Equals("y", StringComparison.OrdinalIgnoreCase))
+        else if (tIndex >= 0 && tags[tIndex].Value == "y")
         {
             // n is the default, so removing the tag says the same thing with less to read.
             tags.RemoveAt(tIndex);
@@ -112,7 +122,7 @@ public static class EnforcementRecordBuilder
             return null;
         }
 
-        var pctIndex = tags.FindIndex(t => t.Name.Equals("pct", StringComparison.OrdinalIgnoreCase));
+        var pctIndex = tags.FindIndex(t => t.Name == "pct");
         if (pctIndex >= 0)
         {
             var published = tags[pctIndex].Value;
@@ -131,7 +141,7 @@ public static class EnforcementRecordBuilder
                 "hold before you remove it.");
         }
 
-        var spIndex = tags.FindIndex(t => t.Name.Equals("sp", StringComparison.OrdinalIgnoreCase));
+        var spIndex = tags.FindIndex(t => t.Name == "sp");
         if (spIndex >= 0
             && Strength(tags[spIndex].Value) is { } spStrength
             && Strength(policy) is { } pStrength
@@ -155,9 +165,28 @@ public static class EnforcementRecordBuilder
     }
 
     /// <summary>
+    /// The tag names RFC 9989 §9.3 registers, in the spelling it registers them in.
+    /// Only the spelling counts: a receiver looking for <c>rua</c> does not find
+    /// <c>RUA</c>, so the two are different tags and only one of them is read.
+    /// </summary>
+    private static readonly string[] RegisteredTags =
+        ["adkim", "aspf", "fo", "np", "p", "pct", "psd", "rf", "ri", "rua", "ruf", "sp", "t", "v"];
+
+    /// <summary>
     /// Splits a record into its tags, keeping each name and value exactly as published —
-    /// unlike the parser's dictionary, which lowercases nothing but also loses order and
-    /// collapses duplicates. Order and spelling both survive into the output.
+    /// unlike the parser's dictionary, which loses order and collapses duplicates. Order
+    /// and spelling both survive into the output.
+    ///
+    /// <para>
+    /// Fails, rather than guessing, on the three shapes this code cannot safely rewrite.
+    /// All three come from RFC 6376 §3.2, the "tag-value" syntax RFC 9989 §4.7 adopts
+    /// wholesale: a segment that is not <c>name=value</c>; a tag name that is a known
+    /// DMARC tag in the wrong case ("Tags MUST be interpreted in a case-sensitive
+    /// manner") — a record carrying <c>RUA=</c> is a record getting no reports, and
+    /// handing back a repaired-looking copy of it would bury that; and a repeated tag
+    /// name ("if a tag name does occur more than once, the entire tag-list is invalid"),
+    /// where editing the first occurrence leaves the second to contradict it.
+    /// </para>
     /// </summary>
     private static bool TrySplitTags(string record, out List<(string Name, string Value)> tags)
     {
@@ -171,14 +200,35 @@ public static class EnforcementRecordBuilder
                 return false;
             }
 
-            tags.Add((part[..eq].Trim(), part[(eq + 1)..].Trim()));
+            var name = part[..eq].Trim();
+            if (tags.Any(t => t.Name == name))
+            {
+                return false;
+            }
+
+            // Unknown tags are fine and are carried through untouched — RFC 9989 §4.8
+            // has receivers ignore them, so they cost nothing and may mean something to
+            // the operator. A *mis-cased* known tag is the one to refuse: it reads like
+            // a tag that works and is not one.
+            if (!RegisteredTags.Contains(name, StringComparer.Ordinal)
+                && RegisteredTags.Contains(name, StringComparer.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            tags.Add((name, part[(eq + 1)..].Trim()));
         }
 
         return tags.Count > 0;
     }
 
-    /// <summary>none &lt; quarantine &lt; reject; null for anything unrecognized.</summary>
-    private static int? Strength(string? policy) => policy?.Trim().ToLowerInvariant() switch
+    /// <summary>
+    /// none &lt; quarantine &lt; reject; null for anything unrecognized, which includes a
+    /// value in the wrong case — <c>sp=None</c> is a syntax error a receiver discards in
+    /// favour of the default (RFC 9989 §4.8), leaving subdomains on <c>p=</c>, so there
+    /// is no subdomain gap to warn about.
+    /// </summary>
+    private static int? Strength(string? policy) => policy?.Trim() switch
     {
         "none" => 0,
         "quarantine" => 1,
