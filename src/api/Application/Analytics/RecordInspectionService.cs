@@ -308,6 +308,16 @@ public sealed class RecordInspectionService(
         {
             issues.Add("No rua= tag — you are not receiving aggregate reports.");
         }
+        else if (rua.Length == 0)
+        {
+            // A published but empty rua= is the worst of both: it reads as a configured
+            // reporting address, it silences the warning above, and it carries none of
+            // the "syntactically valid reporting URI" RFC 9989 §4.10.1 requires before a
+            // receiver sends anything. Reports simply never start.
+            issues.Add(
+                "rua= is published with no address — receivers have nowhere to send aggregate reports, " +
+                "so none arrive. Give it a mailto: or https: URI, or remove the tag.");
+        }
 
         int? pct = null;
         if (tags.TryGetValue("pct", out var pctRaw))
@@ -448,11 +458,22 @@ public sealed class RecordInspectionService(
             // record MUST be ignored" (RFC 9989 §4.7). Our own lookup matches the
             // version prefix loosely so that such a record is found and explained
             // rather than reported as no record at all.
-            if (seen.Count == 0 && string.Equals(name, "v", StringComparison.OrdinalIgnoreCase) && value != "DMARC1")
+            //
+            // Case counts on both halves of this tag, and for the same reason: a receiver
+            // looking for a first tag spelled "v" with the value "DMARC1" finds neither
+            // V=DMARC1 nor v=dmarc1, so in both cases the version tag is absent and the
+            // whole record goes with it. That consequence is specific enough to say here,
+            // and to say instead of the generic mis-cased-tag line below — "receivers
+            // ignore this tag entirely" badly understates losing the record.
+            if (seen.Count == 0
+                && string.Equals(name, "v", StringComparison.OrdinalIgnoreCase)
+                && (name != "v" || value != "DMARC1"))
             {
                 issues.Add(
-                    $"v={value} is not v=DMARC1 — receivers ignore the entire record, so no policy " +
+                    $"{name}={value} is not v=DMARC1 — receivers ignore the entire record, so no policy " +
                     "applies and no reports are sent.");
+                seen.Add(name);
+                continue;
             }
 
             if (seen.Contains(name, StringComparer.Ordinal))

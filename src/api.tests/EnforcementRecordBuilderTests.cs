@@ -59,6 +59,26 @@ public sealed class EnforcementRecordBuilderTests
         Assert.Contains(change.Notes, n => n.Contains("sp=none is kept as published"));
     }
 
+    /// <summary>
+    /// The same gap, one step earlier: t= governs "the Domain Owner Assessment Policy
+    /// declared in the p, sp, and/or np tags" (RFC 9989 §4.7), so under t=y subdomains
+    /// and the organisational domain are both applied one level below and neither is
+    /// enforcing anything yet. Telling the operator subdomains are being left behind
+    /// *now* describes a gap they cannot see in any report — the note has to wait for
+    /// the step that makes it true.
+    /// </summary>
+    [Fact]
+    public void InTestingMode_TheSubdomainGapIsDescribedAsTheOneComing()
+    {
+        var change = EnforcementRecordBuilder.Build(
+            "acme.example", "v=DMARC1; p=none; sp=none; rua=mailto:dmarc@acme.example", "quarantine", testing: true);
+
+        Assert.NotNull(change);
+        var note = Assert.Single(change!.Notes, n => n.Contains("sp=none"));
+        Assert.Contains("nothing changes for subdomains yet", note);
+        Assert.Contains("once you remove t=y", note);
+    }
+
     [Fact]
     public void AnSpAtLeastAsStrongAsTheNewPolicy_RaisesNoNote()
     {
@@ -112,10 +132,62 @@ public sealed class EnforcementRecordBuilderTests
     public void ARecordWithNoPolicyTag_GainsOneAfterTheVersion()
     {
         var change = EnforcementRecordBuilder.Build(
-            "acme.example", "v=DMARC1; rua=mailto:dmarc@acme.example", "none", testing: false);
+            "acme.example", "v=DMARC1; rua=mailto:dmarc@acme.example", "quarantine", testing: false);
 
         Assert.NotNull(change);
-        Assert.Equal("v=DMARC1; p=none; rua=mailto:dmarc@acme.example", change!.Recommended);
+        Assert.Equal("v=DMARC1; p=quarantine; rua=mailto:dmarc@acme.example", change!.Recommended);
+        Assert.Equal(["p"], change.ChangedTags);
+    }
+
+    /// <summary>
+    /// The other half of RFC 9989 §4.10.1: with a syntactically valid reporting URI in
+    /// rua=, a receiver already "MUST act as if a record containing 'p=none' was
+    /// retrieved". Writing p=none into such a record publishes what is already being
+    /// applied, so it is not a step — and the recommendation printed above it in the
+    /// console is "keep it in place and change nothing".
+    /// </summary>
+    [Theory]
+    [InlineData("v=DMARC1; rua=mailto:dmarc@acme.example")]
+    [InlineData("v=DMARC1; rua=https://reports.example/dmarc")]
+    [InlineData("v=DMARC1; rua=MAILTO:dmarc@acme.example")]
+    [InlineData("v=DMARC1; adkim=s; rua=mailto:dmarc@acme.example,https://reports.example/dmarc")]
+    public void APLessRecordThatReceiversAlreadyTreatAsNone_ProducesNoRecord(string live)
+    {
+        Assert.Null(EnforcementRecordBuilder.Build("acme.example", live, "none", testing: false));
+    }
+
+    /// <summary>
+    /// Without that reporting URI the same §4.10.1 sentence goes the other way — the
+    /// receiver "applies no DMARC processing to this message" — so publishing p=none
+    /// turns DMARC on for the domain rather than restating it. That is a real step.
+    /// </summary>
+    [Theory]
+    [InlineData("v=DMARC1; adkim=s")]
+    [InlineData("v=DMARC1; rua=")]
+    [InlineData("v=DMARC1; rua=dmarc@acme.example")]
+    public void APLessRecordWithNoWorkingReportingUri_GainsThePolicy(string live)
+    {
+        var change = EnforcementRecordBuilder.Build("acme.example", live, "none", testing: false);
+
+        Assert.NotNull(change);
+        Assert.StartsWith("v=DMARC1; p=none", change!.Recommended);
+        Assert.Equal(["p"], change.ChangedTags);
+    }
+
+    /// <summary>
+    /// A p-less record left where it is, with only the testing tag coming off: t= must
+    /// still land inside the record rather than ahead of the version tag, which MUST be
+    /// first (RFC 9989 §4.7).
+    /// </summary>
+    [Fact]
+    public void APLessRecordKeepingItsPolicy_StillPlacesTheTestingTagAfterTheVersion()
+    {
+        var change = EnforcementRecordBuilder.Build(
+            "acme.example", "v=DMARC1; rua=mailto:dmarc@acme.example", "none", testing: true);
+
+        Assert.NotNull(change);
+        Assert.Equal("v=DMARC1; t=y; rua=mailto:dmarc@acme.example", change!.Recommended);
+        Assert.Equal(["t"], change.ChangedTags);
     }
 
     [Fact]

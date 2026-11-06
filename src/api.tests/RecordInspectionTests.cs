@@ -94,6 +94,42 @@ public sealed class RecordInspectionTests
         Assert.Contains(dto.Issues, i => i.Contains("is not v=DMARC1"));
     }
 
+    /// <summary>
+    /// A mis-cased version tag is the one casing error that costs the whole record: a
+    /// receiver looking for a first tag spelled "v" does not find "V", the version tag
+    /// is therefore absent, and "the entire record MUST be ignored" (RFC 9989 §4.7).
+    /// The generic casing line — receivers ignore this tag — would understate that by
+    /// a wide margin, so it is replaced rather than added to.
+    /// </summary>
+    [Theory]
+    [InlineData("V=DMARC1; p=reject; rua=mailto:dmarc@acme.example")]
+    [InlineData("V=dmarc1; p=reject; rua=mailto:dmarc@acme.example")]
+    public void ParseDmarc_VersionTagInTheWrongCase_SaysTheWholeRecordIsIgnored(string record)
+    {
+        var dto = RecordInspectionService.ParseDmarc([record]);
+
+        Assert.Equal(RecordLookupStatus.Found, dto.Status);
+        Assert.Contains(dto.Issues, i => i.Contains("is not v=DMARC1") && i.Contains("ignore the entire record"));
+        Assert.DoesNotContain(dto.Issues, i => i.Contains("ignore this tag entirely"));
+        // Still read leniently, so the panel shows what is published rather than nothing.
+        Assert.Equal("reject", dto.Policy);
+    }
+
+    /// <summary>
+    /// An empty rua= is worse than no rua= and reads better: it looks configured, it
+    /// silences the missing-rua warning, and it carries none of the "syntactically
+    /// valid reporting URI" RFC 9989 §4.10.1 wants before a receiver sends anything.
+    /// </summary>
+    [Theory]
+    [InlineData("v=DMARC1; p=reject; rua=")]
+    [InlineData("v=DMARC1; p=reject; rua=   ")]
+    public void ParseDmarc_EmptyRua_FlagsIssue(string record)
+    {
+        var dto = RecordInspectionService.ParseDmarc([record]);
+
+        Assert.Contains(dto.Issues, i => i.Contains("rua= is published with no address"));
+    }
+
     [Fact]
     public void ParseDmarc_SegmentThatIsNotNameEqualsValue_FlagsIssue()
     {

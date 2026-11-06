@@ -74,11 +74,20 @@ public static class EnforcementRecordBuilder
         if (pIndex < 0)
         {
             // RFC 9989 downgraded p= from required to RECOMMENDED, so a record without one
-            // is legal. Publishing it explicitly is the step either way, and after the v=
-            // tag is where a reader expects it.
-            tags.Insert(1, ("p", policy));
-            changed.Add("p");
-            pIndex = 1;
+            // is legal — and §4.10.1 says exactly what receivers do with it. With "at least
+            // one syntactically valid reporting URI" in rua=, a receiver "MUST act as if a
+            // record containing 'p=none' was retrieved"; without one it "applies no DMARC
+            // processing to this message". So writing p=none into a record that already has
+            // a working rua= publishes what receivers already apply — no step at all, and
+            // not something to hand over under a recommendation to change nothing. Without
+            // that rua=, the same tag turns DMARC on, which is a step worth taking.
+            if (policy != "none" || !HasReportingUri(tags))
+            {
+                // After the v= tag is where a reader expects it.
+                tags.Insert(1, ("p", policy));
+                changed.Add("p");
+                pIndex = 1;
+            }
         }
         else if (tags[pIndex].Value != policy)
         {
@@ -96,7 +105,9 @@ public static class EnforcementRecordBuilder
         {
             if (tIndex < 0)
             {
-                tags.Insert(pIndex + 1, ("t", "y"));
+                // Beside the policy it qualifies, or straight after v= when the record
+                // leaves p= to the receiver's default.
+                tags.Insert(pIndex >= 0 ? pIndex + 1 : 1, ("t", "y"));
                 changed.Add("t");
             }
             else if (tags[tIndex].Value != "y")
@@ -151,9 +162,19 @@ public static class EnforcementRecordBuilder
             // sp is preserved rather than moved with p, which is what the issue asks for and
             // what "change only what the step changes" means. It does leave subdomains behind,
             // and that is worth saying out loud rather than discovering from a later report.
-            notes.Add(
-                $"sp={sp.Value} is kept as published, so subdomains stay at {sp.Value} while the " +
-                $"organisational domain moves to {policy}. Raise or remove sp= to bring them along.");
+            //
+            // When the step is a testing one the gap is real but not yet in effect: t= governs
+            // "the Domain Owner Assessment Policy declared in the p, sp, and/or np tags"
+            // (RFC 9989 §4.7), so under t=y both are applied one level below and the
+            // organisational domain is not enforcing the new policy either. Saying subdomains
+            // are being left behind *now* would describe a gap the operator cannot observe.
+            notes.Add(testing
+                ? $"sp={sp.Value} is kept as published. Under t=y receivers apply one level below " +
+                  $"p= and sp= alike, so nothing changes for subdomains yet — but once you remove " +
+                  $"t=y, subdomains stay at {sp.Value} while the organisational domain enforces " +
+                  $"{policy}. Raise or remove sp= to bring them along."
+                : $"sp={sp.Value} is kept as published, so subdomains stay at {sp.Value} while the " +
+                  $"organisational domain moves to {policy}. Raise or remove sp= to bring them along.");
         }
 
         return new EnforcementRecordChangeDto(
@@ -220,6 +241,22 @@ public static class EnforcementRecordBuilder
         }
 
         return tags.Count > 0;
+    }
+
+    /// <summary>
+    /// Whether <c>rua=</c> carries "at least one syntactically valid reporting URI"
+    /// (RFC 9989 §4.10.1) — the condition under which a receiver treats a record with
+    /// no <c>p=</c> as <c>p=none</c> rather than skipping DMARC for the message. The
+    /// scheme is matched case-insensitively because URI schemes are (RFC 3986 §3.1).
+    /// </summary>
+    private static bool HasReportingUri(List<(string Name, string Value)> tags)
+    {
+        var rua = tags.Find(t => t.Name == "rua").Value;
+        return rua is not null
+            && rua.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Any(uri => uri.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)
+                    || uri.StartsWith("https://", StringComparison.OrdinalIgnoreCase)
+                    || uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>
