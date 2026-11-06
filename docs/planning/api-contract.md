@@ -517,6 +517,14 @@ produces: a `pct` to drop is **not** on its own a reason to offer one, since
 "publish this" directly under "keep it in place and change nothing" contradicts
 itself. Record inspection is where a stale `pct=` is reported.
 
+An absent `p=` is read the way RFC 9989 §4.10.1 has receivers read it, which is
+two different ways. With "at least one syntactically valid reporting URI" in
+`rua=`, a receiver "MUST act as if a record containing `p=none` was retrieved",
+so writing `p=none` into such a record publishes what is already applied and is
+no more a step than dropping a `pct=`. Without that `rua=`, the receiver
+"applies no DMARC processing" at all, and the same tag switches DMARC on — a
+real step, offered as one.
+
 `recordChange` is **null** whenever there is nothing honest to hand over — the
 step moves neither `p` nor `t`, the lookup failed, the policy is inherited (the
 record to edit belongs to the organisational domain and covers its siblings
