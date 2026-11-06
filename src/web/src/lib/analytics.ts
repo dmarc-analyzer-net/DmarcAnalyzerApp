@@ -293,6 +293,31 @@ export type EnforcementBlockingSource = {
   lastSeenUtc: string
 }
 
+/** How much report data the recommendation rests on. */
+export type EnforcementEvidence = {
+  messages: number
+  sources: number
+  reports: number
+  /** Distinct UTC days carrying records — days with data, not the elapsed span. */
+  daysWithData: number
+  firstSeenUtc: string | null
+  lastSeenUtc: string | null
+}
+
+/**
+ * The exact record to publish for the recommended step: the live record with only
+ * the policy tags changed. Null when there is nothing to publish, or no live record
+ * of the domain's own to start from — in which case nothing is shown rather than a
+ * guess, since a pasted record that drops `rua` stops the reports silently.
+ */
+export type EnforcementRecordChange = {
+  host: string
+  current: string
+  recommended: string
+  changedTags: string[]
+  notes: string[]
+}
+
 /** Server-computed guided next step toward p=reject. */
 export type EnforcementGuidance = {
   domainId: string
@@ -300,6 +325,8 @@ export type EnforcementGuidance = {
   window: AnalyticsWindow
   currentPolicy: DmarcPublishedPolicy | null
   currentPct: number | null
+  /** The record that applies here publishes `t=y` — receivers apply one level below it. */
+  currentTesting: boolean
   enforcementStatus: EnforcementStatus
   messages: number
   compliantMessages: number
@@ -307,9 +334,12 @@ export type EnforcementGuidance = {
   failedMessages: number
   blockingSourceCount: number
   recommendedPolicy: DmarcPublishedPolicy
+  recommendedTesting: boolean
   recommendedAction: string
   rationale: string
   readyToAdvance: boolean
+  evidence: EnforcementEvidence
+  recordChange: EnforcementRecordChange | null
   blockingSources: EnforcementBlockingSource[]
 }
 

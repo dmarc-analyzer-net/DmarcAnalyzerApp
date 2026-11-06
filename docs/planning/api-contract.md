@@ -488,9 +488,61 @@ and an `enforcementStatus`
 
 ### GET `/analytics/domains/{domainId}/enforcement?days=30`
 
-Guided path to enforcement: `currentPolicy`, `currentPct`, message/compliance
-totals, `recommendedPolicy`, `recommendedAction`, `rationale`, `readyToAdvance`,
-`blockingSourceCount`, and `blockingSources[]` (top 20 by failed volume).
+Guided path to enforcement: `currentPolicy`, `currentPct`, `currentTesting`,
+message/compliance totals, `recommendedPolicy`, `recommendedTesting`,
+`recommendedAction`, `rationale`, `readyToAdvance`, `blockingSourceCount`, and
+`blockingSources[]` (top 20 by failed volume), plus `evidence` and
+`recordChange`.
+
+The ladder is RFC 9989's: `p=none`, then `p=quarantine` with `t=y`, then an
+enforced `p=quarantine`, then `p=reject`. **No step ever advises `pct=`** —
+RFC 9989 Appendix A.6 retired the tag. `t=y` is both an input and an output:
+under it a receiver applies one level below the stated policy (§4.7), so a
+domain at `p=quarantine; t=y` is not enforcing quarantine, and dropping `t=y`
+is a step of its own rather than a detail of the next one. `currentTesting`
+reads the record that *applies* — an inherited policy carries its ancestor's
+`t`.
+
+`evidence` says what the verdict rests on: `messages`, `sources`, `reports`,
+`daysWithData` (distinct UTC days carrying records, not the elapsed span) and
+`firstSeenUtc`/`lastSeenUtc` (null when the window holds no data).
+
+`recordChange` is the exact record to publish — `host` (`_dmarc.{domain}`),
+`current` (the live record verbatim), `recommended`, `changedTags[]` and
+`notes[]`. It is built by editing the live record, not by composing a new one:
+`rua`, `ruf`, `sp`, `adkim`, `aspf`, `fo` and any unrecognized tag keep their
+published value and position, and only the separators are normalized to `"; "`.
+A published `pct=` is dropped, with a note — but only from a record a real step
+produces: a `pct` to drop is **not** on its own a reason to offer one, since
+"publish this" directly under "keep it in place and change nothing" contradicts
+itself. Record inspection is where a stale `pct=` is reported.
+
+An absent `p=` is read the way RFC 9989 §4.10.1 has receivers read it, which is
+two different ways. With "at least one syntactically valid reporting URI" in
+`rua=`, a receiver "MUST act as if a record containing `p=none` was retrieved",
+so writing `p=none` into such a record publishes what is already applied and is
+no more a step than dropping a `pct=`. Without that `rua=`, the receiver
+"applies no DMARC processing" at all, and the same tag switches DMARC on — a
+real step, offered as one.
+
+`recordChange` is **null** whenever there is nothing honest to hand over — the
+step moves neither `p` nor `t`, the lookup failed, the policy is inherited (the
+record to edit belongs to the organisational domain and covers its siblings
+too), or the live record is one that cannot be rewritten safely. That last case
+is narrower than "malformed" and follows the tag-value syntax RFC 9989 §4.7
+takes from RFC 6376 §3.2: a segment that is not `name=value`; a `v=` that is not
+exactly `DMARC1` first in the list, which receivers ignore outright
+(RFC 9989 §4.7); a **known tag published in the wrong case**, since tag names
+are case-sensitive and a record carrying `RUA=` is a record receiving no
+reports; or a **repeated tag name**, which invalidates the entire tag-list. In
+each, editing the policy would hand back a record that looks repaired and is
+not. Unknown tags are a different matter and pass through untouched — receivers
+ignore them (RFC 9989 §4.8), so they cost nothing.
+
+A guessed record would be pasted into a zone and fail silently, so none is
+offered. The client has no reason field: where a step is due but no record came
+back, the console names the possible causes rather than asserting one it cannot
+tell apart.
 
 ### GET `/analytics/domains/{domainId}/records`
 

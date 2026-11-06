@@ -31,6 +31,113 @@ public sealed class RecordInspectionTests
             Assert.Single(dto.Issues));
     }
 
+    /// <summary>
+    /// "Tags MUST be interpreted in a case-sensitive manner" (RFC 6376 §3.2, the
+    /// tag-value syntax RFC 9989 §4.7 adopts). RUA= reads like a reporting address in a
+    /// zone file and is not one to any receiver, so the reports never start and nothing
+    /// says why. This parser still reads it, so that the rest of the panel has something
+    /// to show, but it does not let it pass unremarked.
+    /// </summary>
+    [Theory]
+    [InlineData("v=DMARC1; p=none; RUA=mailto:dmarc@acme.example", "RUA= is not rua=")]
+    [InlineData("v=DMARC1; P=none; rua=mailto:dmarc@acme.example", "P= is not p=")]
+    [InlineData("v=DMARC1; p=none; rua=mailto:dmarc@acme.example; SP=reject", "SP= is not sp=")]
+    public void ParseDmarc_KnownTagInTheWrongCase_FlagsIssue(string record, string expected)
+    {
+        var dto = RecordInspectionService.ParseDmarc([record]);
+
+        Assert.Contains(dto.Issues, i => i.StartsWith(expected, StringComparison.Ordinal));
+        Assert.Contains(dto.Issues, i => i.Contains("case-sensitive"));
+    }
+
+    /// <summary>An unregistered tag is a different matter — RFC 9989 §4.8 has receivers
+    /// ignore it, so it is harmless and goes unmentioned.</summary>
+    [Fact]
+    public void ParseDmarc_UnknownTag_IsNotFlagged()
+    {
+        var dto = RecordInspectionService.ParseDmarc(
+            ["v=DMARC1; p=none; rua=mailto:dmarc@acme.example; x-vendor=acme-7"]);
+
+        Assert.Empty(dto.Issues);
+    }
+
+    /// <summary>
+    /// "Tags with duplicate names MUST NOT occur within a single tag-list; if a tag name
+    /// does occur more than once, the entire tag-list is invalid" (RFC 6376 §3.2) — so
+    /// this is not a near-miss, it is a domain with no DMARC at all.
+    /// </summary>
+    [Fact]
+    public void ParseDmarc_RepeatedTagName_FlagsIssue()
+    {
+        var dto = RecordInspectionService.ParseDmarc(
+            ["v=DMARC1; p=none; rua=mailto:a@acme.example; rua=mailto:b@acme.example"]);
+
+        Assert.Contains(dto.Issues, i => i.Contains("rua= appears more than once"));
+        Assert.Contains(dto.Issues, i => i.Contains("no DMARC policy at all"));
+        // First occurrence still wins for display, so the panel is not left blank.
+        Assert.Equal("mailto:a@acme.example", dto.Rua);
+    }
+
+    /// <summary>
+    /// The version value is case sensitive and "the only possible value is 'DMARC1'"
+    /// (RFC 9989 §4.7). The lookup matches it loosely so the record is found and
+    /// explained rather than reported as no record at all.
+    /// </summary>
+    [Theory]
+    [InlineData("v=dmarc1; p=reject; rua=mailto:dmarc@acme.example")]
+    [InlineData("v=DMARC1x; p=reject; rua=mailto:dmarc@acme.example")]
+    public void ParseDmarc_VersionReceiversWouldReject_FlagsIssue(string record)
+    {
+        var dto = RecordInspectionService.ParseDmarc([record]);
+
+        Assert.Equal(RecordLookupStatus.Found, dto.Status);
+        Assert.Contains(dto.Issues, i => i.Contains("is not v=DMARC1"));
+    }
+
+    /// <summary>
+    /// A mis-cased version tag is the one casing error that costs the whole record: a
+    /// receiver looking for a first tag spelled "v" does not find "V", the version tag
+    /// is therefore absent, and "the entire record MUST be ignored" (RFC 9989 §4.7).
+    /// The generic casing line — receivers ignore this tag — would understate that by
+    /// a wide margin, so it is replaced rather than added to.
+    /// </summary>
+    [Theory]
+    [InlineData("V=DMARC1; p=reject; rua=mailto:dmarc@acme.example")]
+    [InlineData("V=dmarc1; p=reject; rua=mailto:dmarc@acme.example")]
+    public void ParseDmarc_VersionTagInTheWrongCase_SaysTheWholeRecordIsIgnored(string record)
+    {
+        var dto = RecordInspectionService.ParseDmarc([record]);
+
+        Assert.Equal(RecordLookupStatus.Found, dto.Status);
+        Assert.Contains(dto.Issues, i => i.Contains("is not v=DMARC1") && i.Contains("ignore the entire record"));
+        Assert.DoesNotContain(dto.Issues, i => i.Contains("ignore this tag entirely"));
+        // Still read leniently, so the panel shows what is published rather than nothing.
+        Assert.Equal("reject", dto.Policy);
+    }
+
+    /// <summary>
+    /// An empty rua= is worse than no rua= and reads better: it looks configured, it
+    /// silences the missing-rua warning, and it carries none of the "syntactically
+    /// valid reporting URI" RFC 9989 §4.10.1 wants before a receiver sends anything.
+    /// </summary>
+    [Theory]
+    [InlineData("v=DMARC1; p=reject; rua=")]
+    [InlineData("v=DMARC1; p=reject; rua=   ")]
+    public void ParseDmarc_EmptyRua_FlagsIssue(string record)
+    {
+        var dto = RecordInspectionService.ParseDmarc([record]);
+
+        Assert.Contains(dto.Issues, i => i.Contains("rua= is published with no address"));
+    }
+
+    [Fact]
+    public void ParseDmarc_SegmentThatIsNotNameEqualsValue_FlagsIssue()
+    {
+        var dto = RecordInspectionService.ParseDmarc(["v=DMARC1; p=none; rua=mailto:dmarc@acme.example; garbage"]);
+
+        Assert.Contains(dto.Issues, i => i.Contains("\"garbage\" is not a name=value tag"));
+    }
+
     [Fact]
     public void ParseDmarc_MissingRecord_ReportsMissing()
     {

@@ -16,9 +16,14 @@ public sealed class EnforcementGuidanceTests
         return new DmarcAnalyzerDbContext(options);
     }
 
+    private static Task<(Guid clientId, Guid domainId)> SeedAsync(
+        DmarcAnalyzerDbContext db, string publishedPolicy, params (string Ip, int Count, bool Aligned)[] sources)
+        => SeedAsync(db, publishedPolicy, "acme.example", sources);
+
     // Seeds one domain with a single report whose records are (ip, count, aligned?).
     private static async Task<(Guid clientId, Guid domainId)> SeedAsync(
-        DmarcAnalyzerDbContext db, string publishedPolicy, params (string Ip, int Count, bool Aligned)[] sources)
+        DmarcAnalyzerDbContext db, string publishedPolicy, string domainName,
+        params (string Ip, int Count, bool Aligned)[] sources)
     {
         var client = new Client
         {
@@ -27,7 +32,7 @@ public sealed class EnforcementGuidanceTests
         };
         var domain = new Domain
         {
-            Id = Guid.NewGuid(), ClientId = client.Id, Name = "acme.example", IsActive = true,
+            Id = Guid.NewGuid(), ClientId = client.Id, Name = domainName, IsActive = true,
             CreatedAtUtc = DateTime.UtcNow, UpdatedAtUtc = DateTime.UtcNow,
         };
         var report = new DmarcReport
@@ -174,7 +179,7 @@ public sealed class EnforcementGuidanceTests
     }
 
     [Fact]
-    public async Task AtNone_WhenAligned_RecommendsQuarantine()
+    public async Task AtNone_WhenAligned_RecommendsQuarantineInTestingMode()
     {
         await using var db = NewDb();
         var (_, domainId) = await SeedAsync(db, "none",
@@ -186,8 +191,245 @@ public sealed class EnforcementGuidanceTests
         Assert.NotNull(g);
         Assert.True(g!.ReadyToAdvance);
         Assert.Equal("quarantine", g.RecommendedPolicy);
+        Assert.True(g.RecommendedTesting);
         // p=none but ≥98% aligned → the existing resolver classifies this as monitoring.
         Assert.Equal(EnforcementStatus.Monitoring, g.EnforcementStatus);
+    }
+
+    /// <summary>
+    /// The whole point of #227: the card hands over a record, and it is the live one
+    /// with the policy tags moved — not a composed record that silently drops rua.
+    /// </summary>
+    [Fact]
+    public async Task WhenReadyToAdvance_TheRecordToPublish_IsTheLiveRecordWithTheStepApplied()
+    {
+        await using var db = NewDb();
+        var (_, domainId) = await SeedAsync(db, "none", ("203.0.113.10", 1000, true));
+
+        var dns = new TestDnsTxtResolver().Publish(
+            "_dmarc.acme.example",
+            "v=DMARC1; p=none; rua=mailto:dmarc@acme.example; adkim=s");
+
+        var g = await Service(db, dns).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+
+        Assert.NotNull(g);
+        var change = g!.RecordChange;
+        Assert.NotNull(change);
+        Assert.Equal("_dmarc.acme.example", change!.Host);
+        Assert.Equal("v=DMARC1; p=none; rua=mailto:dmarc@acme.example; adkim=s", change.Current);
+        Assert.Equal(
+            "v=DMARC1; p=quarantine; t=y; rua=mailto:dmarc@acme.example; adkim=s",
+            change.Recommended);
+        Assert.DoesNotContain("pct", change.Recommended);
+    }
+
+    /// <summary>
+    /// A domain at p=quarantine with t=y is not enforcing quarantine — receivers apply
+    /// one level below (RFC 9989 §4.7). Reading p= alone sent it to p=reject, skipping
+    /// the step where quarantine actually starts holding mail.
+    /// </summary>
+    [Fact]
+    public async Task AtQuarantineInTestingMode_WhenAligned_RecommendsLeavingTestingMode()
+    {
+        await using var db = NewDb();
+        var (_, domainId) = await SeedAsync(db, "quarantine", ("203.0.113.10", 1000, true));
+
+        var dns = new TestDnsTxtResolver().Publish(
+            "_dmarc.acme.example",
+            "v=DMARC1; p=quarantine; t=y; rua=mailto:dmarc@acme.example");
+
+        var g = await Service(db, dns).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+
+        Assert.NotNull(g);
+        Assert.True(g!.CurrentTesting);
+        Assert.True(g.ReadyToAdvance);
+        Assert.Equal("quarantine", g.RecommendedPolicy);
+        Assert.False(g.RecommendedTesting);
+        Assert.Contains("t=y", g.RecommendedAction);
+        Assert.Equal(
+            "v=DMARC1; p=quarantine; rua=mailto:dmarc@acme.example",
+            g.RecordChange!.Recommended);
+    }
+
+    [Fact]
+    public async Task AtQuarantineEnforcing_WhenAligned_RecommendsReject()
+    {
+        await using var db = NewDb();
+        var (_, domainId) = await SeedAsync(db, "quarantine", ("203.0.113.10", 1000, true));
+
+        var dns = new TestDnsTxtResolver().Publish(
+            "_dmarc.acme.example",
+            "v=DMARC1; p=quarantine; rua=mailto:dmarc@acme.example");
+
+        var g = await Service(db, dns).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+
+        Assert.NotNull(g);
+        Assert.False(g!.CurrentTesting);
+        Assert.Equal("reject", g.RecommendedPolicy);
+        Assert.False(g.RecommendedTesting);
+        Assert.Equal("v=DMARC1; p=reject; rua=mailto:dmarc@acme.example", g.RecordChange!.Recommended);
+    }
+
+    /// <summary>
+    /// "If the live record could not be read, say so and show nothing." A lookup that
+    /// timed out is not evidence of anything, so there is no record to hand over.
+    /// </summary>
+    [Fact]
+    public async Task WhenTheLiveLookupFailed_NoRecordIsOffered()
+    {
+        await using var db = NewDb();
+        var (_, domainId) = await SeedAsync(db, "none", ("203.0.113.10", 1000, true));
+
+        var dns = new TestDnsTxtResolver().FailFor("_dmarc.acme.example");
+        var g = await Service(db, dns).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+
+        Assert.NotNull(g);
+        Assert.Null(g!.RecordChange);
+    }
+
+    /// <summary>
+    /// An inherited policy belongs to the organisational domain. Offering its record as
+    /// "the record to publish" would have the operator edit a record that covers every
+    /// sibling domain too.
+    /// </summary>
+    [Fact]
+    public async Task WhenThePolicyIsInherited_NoRecordIsOffered()
+    {
+        await using var db = NewDb();
+        var (_, domainId) = await SeedAsync(db, "none", "mail.acme.example", [("203.0.113.10", 1000, true)]);
+
+        // mail.acme.example publishes nothing of its own; the organisational domain does,
+        // so the tree walk finds the policy there.
+        var dns = new TestDnsTxtResolver().Publish(
+            "_dmarc.acme.example", "v=DMARC1; p=none; rua=mailto:dmarc@acme.example");
+
+        var g = await Service(db, dns).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+
+        Assert.NotNull(g);
+        Assert.Null(g!.RecordChange);
+    }
+
+    /// <summary>
+    /// Both records carry a retired pct=. Dropping one is worth doing, but it is not a
+    /// step: a record under a recommendation that says "keep it in place and change
+    /// nothing", or "fix your sources first", contradicts the sentence above it.
+    /// </summary>
+    [Theory]
+    [InlineData("v=DMARC1; p=none; rua=mailto:dmarc@acme.example")]
+    [InlineData("v=DMARC1; p=none; pct=100; rua=mailto:dmarc@acme.example")]
+    public async Task WhenBlockedByFailingSources_NoRecordIsOffered(string live)
+    {
+        await using var db = NewDb();
+        var (_, domainId) = await SeedAsync(db, "none",
+            ("203.0.113.10", 800, true),
+            ("198.51.100.24", 200, false));
+
+        var dns = new TestDnsTxtResolver().Publish("_dmarc.acme.example", live);
+
+        var g = await Service(db, dns).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+
+        Assert.NotNull(g);
+        Assert.False(g!.ReadyToAdvance);
+        Assert.Null(g.RecordChange);
+    }
+
+    [Fact]
+    public async Task WithNoDataInTheWindow_APctToDropDoesNotConjureARecord()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedStaleDomainAsync(db, "reject");
+
+        var dns = new TestDnsTxtResolver().Publish(
+            "_dmarc.stale.example", "v=DMARC1; p=reject; pct=100; rua=mailto:dmarc@stale.example");
+
+        var g = await Service(db, dns).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+
+        Assert.NotNull(g);
+        Assert.Equal(0, g!.Messages);
+        Assert.Contains("before changing anything", g.Rationale);
+        Assert.Null(g.RecordChange);
+    }
+
+    /// <summary>At p=reject and aligned there is no step, so there is nothing to publish.</summary>
+    [Fact]
+    public async Task AtReject_APctToDropDoesNotConjureARecord()
+    {
+        await using var db = NewDb();
+        var (_, domainId) = await SeedAsync(db, "reject", ("203.0.113.10", 500, true));
+
+        var dns = new TestDnsTxtResolver().Publish(
+            "_dmarc.acme.example", "v=DMARC1; p=reject; pct=100; rua=mailto:dmarc@acme.example");
+
+        var g = await Service(db, dns).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+
+        Assert.NotNull(g);
+        Assert.Equal("Maintain enforcement", g!.RecommendedAction);
+        Assert.Null(g.RecordChange);
+    }
+
+    /// <summary>
+    /// "A recommendation on thin data reads the same as one on a month of traffic" —
+    /// so the guidance carries what it was drawn from.
+    /// </summary>
+    [Fact]
+    public async Task TheGuidanceReportsHowMuchEvidenceItRestsOn()
+    {
+        await using var db = NewDb();
+        var (_, domainId) = await SeedAsync(db, "none",
+            ("203.0.113.10", 3, true),
+            ("198.51.100.24", 1, true));
+
+        var g = await Service(db, TestDnsTxtResolver.WithPolicy("acme.example", "none"))
+            .GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+
+        Assert.NotNull(g);
+        Assert.Equal(4, g!.Evidence.Messages);
+        Assert.Equal(2, g.Evidence.Sources);
+        Assert.Equal(1, g.Evidence.Reports);
+        Assert.Equal(1, g.Evidence.DaysWithData);
+        Assert.NotNull(g.Evidence.FirstSeenUtc);
+        Assert.NotNull(g.Evidence.LastSeenUtc);
+    }
+
+    [Fact]
+    public async Task WithNoDataInTheWindow_TheEvidenceIsEmptyRatherThanAbsent()
+    {
+        await using var db = NewDb();
+        var domainId = await SeedStaleDomainAsync(db, "reject");
+
+        var g = await Service(db, TestDnsTxtResolver.WithPolicy("stale.example", "reject"))
+            .GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+
+        Assert.NotNull(g);
+        Assert.Equal(0, g!.Evidence.Messages);
+        Assert.Equal(0, g.Evidence.Reports);
+        Assert.Equal(0, g.Evidence.DaysWithData);
+        Assert.Null(g.Evidence.FirstSeenUtc);
+        Assert.Null(g.RecordChange);
+    }
+
+    /// <summary>
+    /// RFC 9989 Appendix A.6 retired pct. Whatever the live record carries, the record
+    /// we hand an operator must not reintroduce it — and the rationale must not advise it.
+    /// </summary>
+    [Fact]
+    public async Task TheRecommendationNeverMentionsOrEmitsPct()
+    {
+        await using var db = NewDb();
+        var (_, domainId) = await SeedAsync(db, "none", ("203.0.113.10", 1000, true));
+
+        var dns = new TestDnsTxtResolver().Publish(
+            "_dmarc.acme.example", "v=DMARC1; p=none; pct=100; rua=mailto:dmarc@acme.example");
+
+        var g = await Service(db, dns).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+
+        Assert.NotNull(g);
+        Assert.DoesNotContain("pct", g!.RecommendedAction);
+        Assert.DoesNotContain("pct", g.Rationale);
+        Assert.Equal(
+            "v=DMARC1; p=quarantine; t=y; rua=mailto:dmarc@acme.example",
+            g.RecordChange!.Recommended);
+        Assert.Contains("pct", g.RecordChange.ChangedTags);
     }
 
     [Fact]
@@ -203,6 +445,29 @@ public sealed class EnforcementGuidanceTests
         Assert.Equal("reject", g.RecommendedPolicy);
         Assert.Equal(EnforcementStatus.Enforced, g.EnforcementStatus);
         Assert.Empty(g.BlockingSources);
+    }
+
+    /// <summary>
+    /// p=reject with t=y is not full enforcement — receivers apply quarantine. Telling
+    /// this domain to "maintain enforcement" would leave it one tag short of the policy
+    /// it believes it is publishing.
+    /// </summary>
+    [Fact]
+    public async Task AtRejectInTestingMode_IsNotTreatedAsFullyEnforced()
+    {
+        await using var db = NewDb();
+        var (_, domainId) = await SeedAsync(db, "reject", ("203.0.113.10", 500, true));
+
+        var dns = new TestDnsTxtResolver().Publish(
+            "_dmarc.acme.example", "v=DMARC1; p=reject; t=y; rua=mailto:dmarc@acme.example");
+
+        var g = await Service(db, dns).GetEnforcementGuidanceAsync(domainId, 30, CancellationToken.None);
+
+        Assert.NotNull(g);
+        Assert.True(g!.CurrentTesting);
+        Assert.NotEqual("Maintain enforcement", g.RecommendedAction);
+        Assert.Contains("quarantine", g.Rationale);
+        Assert.Equal("v=DMARC1; p=reject; rua=mailto:dmarc@acme.example", g.RecordChange!.Recommended);
     }
 
     [Fact]

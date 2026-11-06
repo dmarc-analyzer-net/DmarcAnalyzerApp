@@ -313,8 +313,11 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   - plaintext passthrough with startup warning when no key is configured
 
 - Guided path to enforcement:
-  - `GET /api/v1/analytics/domains/{id}/enforcement` — server-computed recommendation for the next safe policy step (none → quarantine → reject), rationale, `readyToAdvance`, and the blocking sources still sending unaligned mail
-  - Domain Detail "Path to enforcement" panel upgraded with the server guidance banner + blocking-source quick links (expand via `?source=`)
+  - `GET /api/v1/analytics/domains/{id}/enforcement` — server-computed recommendation for the next safe policy step, rationale, `readyToAdvance`, and the blocking sources still sending unaligned mail
+  - the ladder is RFC 9989's: `p=none` → `p=quarantine; t=y` → enforced `p=quarantine` → `p=reject`. `pct=` is never advised (RFC 9989 Appendix A.6 retired it), and `t=y` is read as well as written — under it a receiver applies one level below the stated policy (§4.7), so a domain at `p=quarantine; t=y` is not enforcing quarantine and dropping the tag is a step of its own
+  - `recordChange` — the exact record to publish, built by editing the live record so `rua`, `ruf`, `sp`, `adkim`, `aspf`, `fo` and anything unrecognized survive; null when the step moves neither `p` nor `t`, and null (with the console naming the possible causes) when the lookup failed, the policy is inherited, or the live record is one a receiver reads differently than it looks — a mis-cased known tag, a repeated tag name, a `v=` that is not exactly `DMARC1` (all per RFC 6376 §3.2, adopted by RFC 9989 §4.7). Record inspection reports those; the builder refuses to hand back a record that would look repaired and not be. A retired `pct=` is dropped from a record a real step produces but is never on its own a reason to offer one — "publish this" under "change nothing" contradicts itself
+  - `evidence` — messages, sources, reports, days with data and the date span behind the verdict, so a call on four messages does not read like one on a month of traffic
+  - Domain Detail "Path to enforcement" panel upgraded with the server guidance banner, the evidence line, the record to publish with a copy button, and blocking-source quick links (expand via `?source=`)
 
 - Threat feed (spoofing investigation):
   - `GET /api/v1/analytics/threats` — tenant-scoped list of (source IP, domain) pairs with fully unauthenticated volume (DKIM and SPF both failed), worst first, with first/last-seen
@@ -324,6 +327,7 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
 - Record inspection (published vs observed):
   - `IDnsTxtResolver` (DnsClient against the host's configured resolver — no third-party DoH) with short-lived caching
   - `GET /api/v1/analytics/domains/{id}/records` — live `_dmarc`/SPF TXT records parsed tag-by-tag (multiple-record permerror, missing rua, +all, 10-lookup count) and compared field-by-field against the latest `policy_published` reporters observed
+  - tag-value syntax faults are reported as well as tag values, because they fail silently and totally: a known tag published in the wrong case (`RUA=` is not `rua=`, so no reports are sent), a tag name appearing twice (invalidates the whole record), a `v=` that is not exactly `DMARC1`, and a segment that is not `name=value`. RFC 9989 §4.7 takes its syntax from RFC 6376 §3.2, which is case-sensitive and forbids duplicates; the parser itself stays lenient so the card still has something to show
   - Domain Detail "Record inspection" card, fetched separately so slow DNS never blocks the analytics render
 
 - MTA-STS monitoring (RFC 8461):

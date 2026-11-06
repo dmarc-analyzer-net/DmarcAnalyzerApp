@@ -606,9 +606,31 @@ public sealed class AnalyticsQueryService(
             })
             .ToListAsync(ct);
 
+        // How much the verdict rests on. Reports and days are a second pass rather than
+        // a widening of the aggregate above: both are counts of distinct values, which
+        // a GROUP BY SourceIp cannot carry without double-counting a report that
+        // reached several sources.
+        var evidenceRows = await (
+                from rec in db.DmarcReportRecords.AsNoTracking()
+                join rep in db.DmarcReports.AsNoTracking() on rec.DmarcReportId equals rep.Id
+                where rep.DomainId == domainId
+                      && rec.ReportRangeBeginUtc >= window.BeginUtc
+                      && rec.ReportRangeBeginUtc <= window.EndUtc
+                select new { rec.DmarcReportId, Day = rec.ReportRangeBeginUtc.Date })
+            .Distinct()
+            .ToListAsync(ct);
+
         var messages = sourceRows.Sum(x => x.Messages);
         var compliant = sourceRows.Sum(x => x.Compliant);
         var rate = Rate(compliant, messages);
+
+        var evidence = new EnforcementEvidenceDto(
+            messages,
+            sourceRows.Count,
+            evidenceRows.Select(x => x.DmarcReportId).Distinct().Count(),
+            evidenceRows.Select(x => x.Day).Distinct().Count(),
+            sourceRows.Count == 0 ? null : sourceRows.Min(x => x.FirstSeen),
+            sourceRows.Count == 0 ? null : sourceRows.Max(x => x.LastSeen));
 
         var blocking = sourceRows
             .Where(x => x.Messages - x.Compliant > 0)
@@ -624,8 +646,18 @@ public sealed class AnalyticsQueryService(
             .ToList();
 
         var currentPolicy = published.Policy;
+        var currentTesting = string.Equals(published.Record.Testing, "y", StringComparison.OrdinalIgnoreCase);
         var status = EnforcementStatus.Resolve(messages, rate, currentPolicy);
-        var (recommendedPolicy, action, rationale, ready) = RecommendEnforcement(messages, rate, currentPolicy, blocking.Count);
+        var step = RecommendEnforcement(messages, rate, currentPolicy, currentTesting, blocking.Count);
+
+        // Only a record the domain publishes itself can be edited into the next one.
+        // An inherited policy lives on an ancestor — editing that record would change
+        // every sibling with it — and a failed lookup or a missing record leaves nothing
+        // to start from. In all three cases the honest output is none at all: the issue
+        // this answers asked for the live record changed, not for a record invented.
+        var recordChange = published.Status == RecordLookupStatus.Found
+            ? EnforcementRecordBuilder.Build(domainRow.Name, published.Record.Raw, step.Policy, step.Testing)
+            : null;
 
         return new EnforcementGuidanceDto(
             domainRow.Id,
@@ -633,16 +665,20 @@ public sealed class AnalyticsQueryService(
             window,
             currentPolicy,
             published.Record.Pct,
+            currentTesting,
             status,
             messages,
             compliant,
             rate,
             messages - compliant,
             blocking.Count,
-            recommendedPolicy,
-            action,
-            rationale,
-            ready,
+            step.Policy,
+            step.Testing,
+            step.Action,
+            step.Rationale,
+            step.Ready,
+            evidence,
+            recordChange,
             blocking.Take(20).ToArray());
     }
 
@@ -753,8 +789,32 @@ public sealed class AnalyticsQueryService(
     // meaningful share of mail would be caught by the stricter policy.
     private const double AdvanceThreshold = 0.99;
 
-    private static (string Policy, string Action, string Rationale, bool Ready) RecommendEnforcement(
-        long messages, double rate, string? currentPolicy, int blockingSources)
+    /// <summary>One rung of the path to enforcement: the record to publish, and why.</summary>
+    /// <param name="Testing">Whether the step publishes <c>t=y</c> (RFC 9989 §4.7).</param>
+    private sealed record EnforcementStep(string Policy, bool Testing, string Action, string Rationale, bool Ready);
+
+    /// <summary>
+    /// The ladder, in RFC 9989 terms: p=none, then p=quarantine in testing mode
+    /// (<c>t=y</c>), then enforced p=quarantine, then p=reject.
+    ///
+    /// <para>
+    /// The testing rung replaces the <c>pct=25</c> ramp this used to advise. RFC 9989
+    /// Appendix A.6 removed <c>pct</c>, so advising it pointed operators at a tag the
+    /// current spec has retired; <c>t=y</c> is the mechanism that took its place, and it
+    /// is a cleaner one — a receiver applies one level below the stated policy to *all*
+    /// failing mail instead of the full policy to a quarter of it, so what you learn is
+    /// not a sample.
+    /// </para>
+    ///
+    /// <para>
+    /// Which is also why <paramref name="testing"/> is an input and not only an output:
+    /// a domain sitting at <c>p=quarantine; t=y</c> is not enforcing quarantine, and
+    /// reading its <c>p=</c> alone would send it straight to <c>p=reject</c>, skipping
+    /// the step where quarantine is actually applied.
+    /// </para>
+    /// </summary>
+    private static EnforcementStep RecommendEnforcement(
+        long messages, double rate, string? currentPolicy, bool testing, int blockingSources)
     {
         if (messages == 0)
         {
@@ -766,14 +826,14 @@ public sealed class AnalyticsQueryService(
             // all of them at p=reject, being advised to publish p=none.
             if (!string.IsNullOrEmpty(currentPolicy))
             {
-                return (currentPolicy, "Collect more data",
+                return new EnforcementStep(currentPolicy, testing, "Collect more data",
                     $"No DMARC report data in this window. DNS publishes p={currentPolicy} — keep it in place and let reports accumulate before changing anything.",
                     false);
             }
 
             // Reaching here means DNS has no usable DMARC record, so starting at
             // p=none is the right first step rather than a weakening.
-            return ("none", "Collect more data",
+            return new EnforcementStep("none", false, "Collect more data",
                 "No DMARC record is published in DNS for this domain — publish a p=none record and let reports accumulate before advancing.",
                 false);
         }
@@ -781,34 +841,59 @@ public sealed class AnalyticsQueryService(
         var policy = string.IsNullOrEmpty(currentPolicy) ? "none" : currentPolicy;
         var pct = Math.Round(rate * 100, 1);
 
-        if (policy == "reject")
+        // What a receiver actually does today. Under t=y that is one level below the
+        // published policy, so the rung the domain stands on is not the one it publishes.
+        var applied = testing ? OneLevelBelow(policy) : policy;
+
+        if (policy == "reject" && !testing)
         {
-            return ("reject", "Maintain enforcement",
+            return new EnforcementStep("reject", false, "Maintain enforcement",
                 $"You're at p=reject — full protection. {pct}% of mail is aligned; keep watching for new sending sources.",
                 true);
         }
 
-        var next = policy == "quarantine" ? "reject" : "quarantine";
         var ready = rate >= AdvanceThreshold;
 
         if (!ready)
         {
-            return (policy, "Fix blocking sources before advancing",
-                $"{pct}% of mail is aligned. {blockingSources} sending source{(blockingSources == 1 ? "" : "s")} still send unaligned mail — authenticate or retire them before moving to p={next}.",
-                false);
+            var blocked = testing
+                ? $"{pct}% of mail is aligned. DNS publishes p={policy} with t=y, so receivers are applying {applied} while you test. {blockingSources} sending source{(blockingSources == 1 ? "" : "s")} still send unaligned mail — authenticate or retire them before dropping t=y."
+                : $"{pct}% of mail is aligned. {blockingSources} sending source{(blockingSources == 1 ? "" : "s")} still send unaligned mail — authenticate or retire them before moving to p={(policy == "quarantine" ? "reject" : "quarantine")}.";
+
+            return new EnforcementStep(policy, testing, "Fix blocking sources before advancing", blocked, false);
         }
 
-        if (next == "quarantine")
+        if (testing)
         {
-            return ("quarantine", "Move to p=quarantine (start at pct=25)",
-                $"{pct}% of mail is aligned and nothing significant is failing. Begin enforcing: move to p=quarantine and ramp pct from 25 toward 100.",
+            // The record already names the policy; what is missing is the enforcement of it.
+            return new EnforcementStep(policy, false, $"Leave testing mode (remove t=y from p={policy})",
+                $"{pct}% of mail is aligned while p={policy} is published with t=y, so receivers are still applying {applied}. Remove t=y to start enforcing p={policy} for real.",
                 true);
         }
 
-        return ("reject", "Move to p=reject",
-            $"{pct}% of mail is aligned at p=quarantine with nothing significant failing — you're ready for full enforcement at p=reject.",
+        if (policy != "quarantine")
+        {
+            return new EnforcementStep("quarantine", true, "Move to p=quarantine in testing mode (t=y)",
+                $"{pct}% of mail is aligned and nothing significant is failing. Publish p=quarantine with t=y: receivers keep applying none while reporting against the stricter policy, so you see the effect before any mail is held. Drop t=y once the aligned share holds.",
+                true);
+        }
+
+        return new EnforcementStep("reject", false, "Move to p=reject",
+            $"{pct}% of mail is aligned at an enforced p=quarantine with nothing significant failing — you're ready for full enforcement at p=reject.",
             true);
     }
+
+    /// <summary>
+    /// What a receiver applies under <c>t=y</c>: RFC 9989 §4.7 has the Domain Owner
+    /// expect "the policy applied to any failing messages will be one level below the
+    /// specified policy". Below none is still none.
+    /// </summary>
+    private static string OneLevelBelow(string policy) => policy switch
+    {
+        "reject" => "quarantine",
+        "quarantine" => "none",
+        _ => "none",
+    };
 
     private async Task<IReadOnlyList<AnalyticsTrendPointDto>> TrendAsync(
         IQueryable<Data.Entities.DmarcReportRecord> records,

@@ -36,6 +36,7 @@ import {
   type DrilldownDomain,
   type DrilldownTotals,
   type EnforcementGuidance,
+  type EnforcementRecordChange,
   type EvaluatedCombo,
   type MtaStsLiveMx,
   type MtaStsReadiness,
@@ -51,6 +52,7 @@ import {
 import { ApiError, fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin, isStaff } from '@/lib/authz'
+import { enforcementEvidenceLine } from '@/lib/enforcement'
 import type {
   Domain,
   MtaStsPolicyApplyOutcome,
@@ -245,6 +247,73 @@ export function ValueList({
       ))}
     </ul>
   )
+}
+
+/**
+ * The record to publish for the recommended step, ready to paste into a zone.
+ *
+ * Shown only when the server built one — which it does from the domain's own live
+ * record and nothing else. A failed lookup, a record it cannot rewrite safely, a
+ * policy inherited from the organisational domain, or a step that moves no policy
+ * tag all arrive here as null. The first three say so; the last renders nothing,
+ * because there is no step to explain away. A guessed record is the one output
+ * worse than no suggestion: it is pasted, it is wrong, and nothing bounces.
+ */
+export function EnforcementStepRecord({
+  change,
+  unavailable,
+}: {
+  change: EnforcementRecordChange | null
+  unavailable: boolean
+}) {
+  if (!change) {
+    return unavailable ? (
+      <p className="mt-2.5 border-t border-[color-mix(in_srgb,currentColor_12%,transparent)] pt-2 text-xs leading-relaxed text-secondary">
+        No record to copy for this step: the DNS lookup failed, this domain publishes no DMARC
+        record of its own that can be edited safely, or its policy is inherited from a parent
+        domain. See record inspection below for what is published.
+      </p>
+    ) : null
+  }
+
+  return (
+    <div className="mt-2.5 border-t border-[color-mix(in_srgb,currentColor_12%,transparent)] pt-2.5">
+      <div className="grid grid-cols-[3.5rem_minmax(0,1fr)] items-baseline gap-x-2 gap-y-1 text-xs">
+        <span className="text-secondary">Host</span>
+        <span className="break-all font-mono text-body">{change.host}</span>
+
+        <span className="text-secondary">Now</span>
+        <span className="break-all font-mono text-secondary">{change.current}</span>
+
+        <span className="text-secondary">Publish</span>
+        <span className="flex min-w-0 items-start gap-1">
+          <span className="min-w-0 break-all font-mono font-semibold text-body">
+            {change.recommended}
+          </span>
+          <CopyButton value={change.recommended} label="the record to publish" />
+        </span>
+      </div>
+      <p className="mt-1.5 text-xs text-secondary">
+        Changes {listTags(change.changedTags)}. Everything else stays as published.
+      </p>
+      {change.notes.length > 0 ? (
+        <ul className="mt-1.5 space-y-1">
+          {change.notes.map((note) => (
+            <li key={note} className="text-xs leading-relaxed text-secondary">
+              {note}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  )
+}
+
+/** "p=", or "p= and t=", or "p=, t= and pct=" — the tags a step touches, read aloud. */
+function listTags(tags: string[]): string {
+  const named = tags.map((tag) => `${tag}=`)
+  if (named.length <= 1) return named.join('') || 'nothing'
+  return `${named.slice(0, -1).join(', ')} and ${named[named.length - 1]}`
 }
 
 // --- Path to enforcement checklist (derived from real signals) ---
@@ -2280,8 +2349,21 @@ export function DomainDetailPage() {
                         {guidance.recommendedAction}
                       </div>
                       <p className="mt-0.5 text-xs leading-relaxed text-secondary">{guidance.rationale}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-secondary">
+                        {enforcementEvidenceLine(guidance.evidence)}
+                      </p>
                     </div>
                   </div>
+                  <EnforcementStepRecord
+                    change={guidance.recordChange}
+                    // A step that changes a tag but produced no record means the live
+                    // record could not be read — worth saying, rather than leaving the
+                    // operator to wonder where the copy button went.
+                    unavailable={
+                      guidance.recommendedPolicy !== guidance.currentPolicy ||
+                      guidance.recommendedTesting !== guidance.currentTesting
+                    }
+                  />
                   {!guidance.readyToAdvance && guidance.blockingSources.length > 0 ? (
                     <ul className="mt-2.5 space-y-1 border-t border-[color-mix(in_srgb,currentColor_12%,transparent)] pt-2">
                       {guidance.blockingSources.slice(0, 5).map((source) => (

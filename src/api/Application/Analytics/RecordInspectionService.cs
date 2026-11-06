@@ -282,6 +282,7 @@ public sealed class RecordInspectionService(
 
         var raw = records[0];
         var tags = ParseTags(raw);
+        issues.AddRange(SyntaxIssues(raw));
 
         tags.TryGetValue("p", out var policy);
         tags.TryGetValue("rua", out var rua);
@@ -306,6 +307,16 @@ public sealed class RecordInspectionService(
         if (rua is null)
         {
             issues.Add("No rua= tag — you are not receiving aggregate reports.");
+        }
+        else if (rua.Length == 0)
+        {
+            // A published but empty rua= is the worst of both: it reads as a configured
+            // reporting address, it silences the warning above, and it carries none of
+            // the "syntactically valid reporting URI" RFC 9989 §4.10.1 requires before a
+            // receiver sends anything. Reports simply never start.
+            issues.Add(
+                "rua= is published with no address — receivers have nowhere to send aggregate reports, " +
+                "so none arrive. Give it a mailto: or https: URI, or remove the tag.");
         }
 
         int? pct = null;
@@ -393,11 +404,102 @@ public sealed class RecordInspectionService(
             }
 
             var key = part[..eq].Trim();
-            // First occurrence wins, matching receiver behavior for duplicate tags.
+            // Deliberately lenient: first occurrence wins and case is ignored, so the
+            // panel still has something to show for a record a receiver would reject.
+            // What a receiver actually does with those records is reported instead, by
+            // SyntaxIssues below — reading them leniently and saying nothing is what
+            // would mislead.
             tags.TryAdd(key, part[(eq + 1)..].Trim());
         }
 
         return tags;
+    }
+
+    /// <summary>
+    /// The tag names RFC 9989 §9.3 registers, in the spelling it registers them in.
+    /// </summary>
+    private static readonly string[] RegisteredDmarcTags =
+        ["adkim", "aspf", "fo", "np", "p", "pct", "psd", "rf", "ri", "rua", "ruf", "sp", "t", "v"];
+
+    /// <summary>
+    /// What the tag-value syntax itself rejects, as opposed to what an individual tag
+    /// value means. DMARC Policy Records "follow the extensible 'tag-value' syntax for
+    /// DNS-based key records defined in DKIM" (RFC 9989 §4.7), and RFC 6376 §3.2 is
+    /// strict about two things this parser is deliberately lenient about: "Tags MUST be
+    /// interpreted in a case-sensitive manner", and "Tags with duplicate names MUST NOT
+    /// occur within a single tag-list; if a tag name does occur more than once, the
+    /// entire tag-list is invalid."
+    ///
+    /// <para>
+    /// Both are silent in production and expensive: <c>RUA=</c> looks like a reporting
+    /// address in a zone file and is not one to any receiver, so the reports never start
+    /// and nothing says why.
+    /// </para>
+    /// </summary>
+    private static List<string> SyntaxIssues(string record)
+    {
+        var issues = new List<string>();
+        var seen = new List<string>();
+
+        foreach (var part in record.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var eq = part.IndexOf('=');
+            if (eq <= 0)
+            {
+                issues.Add($"\"{part}\" is not a name=value tag — receivers discard it.");
+                continue;
+            }
+
+            var name = part[..eq].Trim();
+            var value = part[(eq + 1)..].Trim();
+
+            // "This tag MUST be the first tag in the list. The tag value is case
+            // sensitive, and the only possible value is 'DMARC1'... then the entire
+            // record MUST be ignored" (RFC 9989 §4.7). Our own lookup matches the
+            // version prefix loosely so that such a record is found and explained
+            // rather than reported as no record at all.
+            //
+            // Case counts on both halves of this tag, and for the same reason: a receiver
+            // looking for a first tag spelled "v" with the value "DMARC1" finds neither
+            // V=DMARC1 nor v=dmarc1, so in both cases the version tag is absent and the
+            // whole record goes with it. That consequence is specific enough to say here,
+            // and to say instead of the generic mis-cased-tag line below — "receivers
+            // ignore this tag entirely" badly understates losing the record.
+            if (seen.Count == 0
+                && string.Equals(name, "v", StringComparison.OrdinalIgnoreCase)
+                && (name != "v" || value != "DMARC1"))
+            {
+                issues.Add(
+                    $"{name}={value} is not v=DMARC1 — receivers ignore the entire record, so no policy " +
+                    "applies and no reports are sent.");
+                seen.Add(name);
+                continue;
+            }
+
+            if (seen.Contains(name, StringComparer.Ordinal))
+            {
+                issues.Add(
+                    $"{name}= appears more than once, which makes the whole record invalid — " +
+                    "receivers apply no DMARC policy at all. Keep one of them.");
+            }
+
+            seen.Add(name);
+
+            if (RegisteredDmarcTags.Contains(name, StringComparer.Ordinal)
+                || !RegisteredDmarcTags.Contains(name, StringComparer.OrdinalIgnoreCase))
+            {
+                // Correctly spelled, or a tag we have never heard of — and unknown tags
+                // "MUST be ignored" (RFC 9989 §4.8), so they are harmless.
+                continue;
+            }
+
+            var registered = RegisteredDmarcTags.First(t => string.Equals(t, name, StringComparison.OrdinalIgnoreCase));
+            issues.Add(
+                $"{name}= is not {registered}= — DMARC tag names are case-sensitive, so receivers " +
+                $"ignore this tag entirely. Republish it as {registered}=.");
+        }
+
+        return issues;
     }
 
     // --- SPF (RFC 7208) ---
