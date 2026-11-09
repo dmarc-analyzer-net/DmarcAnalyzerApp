@@ -89,15 +89,74 @@ export type EnforcementStatusMeta = {
   badge: 'success' | 'warning' | 'danger' | 'neutral'
   /** Status-dot color (CSS var) matching the badge variant. */
   dot: string
+  /**
+   * Fill for the posture bar. Differs from `dot` only for `no_data`: the dot can
+   * share "monitoring" grey because the two never sit next to each other, but in a
+   * stacked bar they are adjacent segments and "publishing p=none" must not look
+   * like "we have never heard from this domain".
+   */
+  bar: string
+  /** One line on what the posture means, for the posture-bar legend. */
+  description: string
 }
 
 /** Status Badge label/variant + dot color for each enforcement posture. */
 export const ENFORCEMENT_STATUS_META: Record<EnforcementStatus, EnforcementStatusMeta> = {
-  enforced: { label: 'Enforced', badge: 'success', dot: 'var(--status-ok-dot)' },
-  ramping: { label: 'Ramping', badge: 'warning', dot: 'var(--status-warn-dot)' },
-  spoofing: { label: 'Spoofing', badge: 'danger', dot: 'var(--status-danger-dot)' },
-  monitoring: { label: 'Monitoring', badge: 'neutral', dot: 'var(--status-neutral-dot)' },
-  no_data: { label: 'No data', badge: 'neutral', dot: 'var(--status-neutral-dot)' },
+  enforced: {
+    label: 'Enforced',
+    badge: 'success',
+    dot: 'var(--status-ok-dot)',
+    bar: 'var(--status-ok-dot)',
+    description: 'p=reject — receivers are blocking spoofed mail',
+  },
+  ramping: {
+    label: 'Ramping',
+    badge: 'warning',
+    dot: 'var(--status-warn-dot)',
+    bar: 'var(--status-warn-dot)',
+    description: 'p=quarantine — partial enforcement on the way to reject',
+  },
+  spoofing: {
+    label: 'Spoofing',
+    badge: 'danger',
+    dot: 'var(--status-danger-dot)',
+    bar: 'var(--status-danger-dot)',
+    description: 'Unenforced and failing — spoofed mail is being delivered',
+  },
+  monitoring: {
+    label: 'Monitoring',
+    badge: 'neutral',
+    dot: 'var(--status-neutral-dot)',
+    bar: 'var(--status-neutral-dot)',
+    description: 'Unenforced but compliant — nothing alarming yet',
+  },
+  no_data: {
+    label: 'No data',
+    badge: 'neutral',
+    dot: 'var(--status-neutral-dot)',
+    bar: 'var(--border-strong)',
+    description: 'No reports in this window — nothing can be said either way',
+  },
+}
+
+/**
+ * Bar and legend order: strongest posture first, with the two that say nothing
+ * about protection (`monitoring`, `no_data`) kept apart by `spoofing`, which is
+ * the one an operator is scanning for.
+ */
+export const ENFORCEMENT_STATUS_ORDER: EnforcementStatus[] = [
+  'enforced',
+  'ramping',
+  'monitoring',
+  'spoofing',
+  'no_data',
+]
+
+/** Narrows a URL query value to a posture, or null when it names none. */
+export function parseEnforcementStatus(value: string | null): EnforcementStatus | null {
+  return value != null && (ENFORCEMENT_STATUS_ORDER as string[]).includes(value)
+    ? (value as EnforcementStatus)
+    : null
 }
 
 /**

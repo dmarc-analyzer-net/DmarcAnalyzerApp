@@ -9,11 +9,16 @@ type StatCardProps = {
   value: React.ReactNode
   /** Trailing badge or delta. A plain string renders as a brand badge. */
   extra?: React.ReactNode
+  /**
+   * Supporting visual under the number — a meter, a segment bar, a line of
+   * breakdown copy. Kept optional so the plain one-number tiles stay plain.
+   */
+  children?: React.ReactNode
   className?: string
 }
 
 /** Dashboard metric: small secondary label over a large display number. */
-export function StatCard({ label, value, extra, className }: StatCardProps) {
+export function StatCard({ label, value, extra, children, className }: StatCardProps) {
   return (
     <Card className={cn('px-4 pt-4 pb-[18px] sm:px-5', className)}>
       <div className="mb-2 text-sm text-secondary">{label}</div>
@@ -27,6 +32,7 @@ export function StatCard({ label, value, extra, className }: StatCardProps) {
         </span>
         {typeof extra === 'string' ? <Badge variant="brand">{extra}</Badge> : extra}
       </div>
+      {children != null ? <div className="mt-2.5">{children}</div> : null}
     </Card>
   )
 }

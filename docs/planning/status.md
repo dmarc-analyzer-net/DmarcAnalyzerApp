@@ -563,6 +563,40 @@ Current implementation snapshot for `DmarcAnalyzerApp`.
   the ~36 single-child headings that grouping everything would have added. The
   parent is usually *not* monitored (reports only arrive for the sending
   subdomain), so that heading is a label with no metrics and nothing to click.
+  Such a heading now carries the group's own compliance rollup, so a group of ten
+  subdomains has a readable total instead of being the one row with no numbers.
+
+- Visual analytics on Domains and Domain detail, built on one shared `SegmentBar`
+  primitive so a stacked bar means the same thing everywhere it appears:
+  - **Enforcement posture panel** above the Domains table — the domains in scope
+    stacked by posture, with a legend whose entries are filter toggles
+    (`?status=`, linkable and carried into the drill-down and back). The bar
+    reflects the client/search/policy filters but deliberately *not* the posture
+    filter, which would otherwise collapse it to the segment just selected. A
+    posture with no domains stays visible and unclickable: the absence of a
+    `Spoofing` segment is information. `no_data` gets a fill of its own rather
+    than sharing `monitoring`'s grey, because as adjacent segments "publishes
+    p=none" must not look like "we have never heard from this domain".
+  - Compliance reads as a **composition** (aligned teal / failing red against the
+    window's message total) rather than a single fill whose colour steps at 95%
+    and 75% — a domain at 99.4% shows a red sliver you can see is a sliver. The
+    verdict stays with the Status badge, so the bar does not encode it twice.
+  - DKIM and SPF pass rates sit under it as paired micro meters, both in **one
+    neutral brand tone, not a traffic light**: DMARC passes when either aligns,
+    so a forwarding-heavy sender legitimately sits at 40% SPF with 99%
+    compliance, and reddening that would assert a failure that is not one. On
+    Domain detail the same pair becomes an "Alignment" tile headlined by the
+    mechanism actually carrying it.
+  - Volume bars scale against the busiest domain in view, so the column reads as
+    a ranking; Domain detail gains a **disposition** tile (delivered /
+    quarantined / rejected, delivered derived as the remainder) and a daily
+    average, replacing the bare "quarantined + rejected" count.
+  - `TrendChart` gained a pass/fail key, the peak-day value (it has no y axis),
+    a per-day `<title>` with a full-height hit area, and one `role="img"`
+    summary for the whole plot.
+  - Every bar carries an accessible name and no state is colour-only. Rows with
+    no reports in the window render "—" rather than a zeroed bar, so no data
+    never reads as total failure.
   Sort order is preserved: a group appears where its first member landed, so
   worst-compliance-first still puts the worst group first.
 

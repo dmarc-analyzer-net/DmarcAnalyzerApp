@@ -567,6 +567,31 @@ step is independently shippable.
       below as ordinary items (fleet-wide MTA-STS overview page; a TLS-RPT
       failure-spike alert rule; digest coverage for MTA-STS/TLS-RPT).
 
+- [x] (done) **Visual analytics on Domains and Domain detail.** An enforcement
+      posture panel over the domains in scope whose legend doubles as a
+      linkable `?status=` filter; compliance rendered as a composition (aligned
+      vs failing) instead of a threshold-coloured fill; paired DKIM/SPF micro
+      meters answering *which* mechanism carries alignment; volume bars scaled
+      against the busiest domain in view; a disposition breakdown and an
+      alignment tile on the detail page; a key, a peak-day value and per-day
+      tooltips on `TrendChart`. One shared `SegmentBar` primitive behind all of
+      it. Two things were deliberately *not* done: the DKIM/SPF meters are one
+      neutral tone rather than a traffic light (DMARC passes on either, so
+      reddening 40% SPF next to 99% compliance asserts a failure that is not
+      one), and rows with no reports keep their "—" instead of a zeroed bar.
+
+- [ ] (todo) Put **SPF and MTA-STS posture on the Domains list**, the two
+      columns the reference design has and this app does not. MTA-STS is the
+      cheap half: `mta_sts_state` is already one persisted row per domain, so
+      `ListDomainAnalyticsAsync` can join it in memory without touching the
+      window scan. SPF is the expensive half — it is live-lookup only
+      (`RecordInspectionService`), with nothing cached on the domain row, so it
+      needs a worker pass and `Domain.Spf*` columns alongside the existing
+      `Dns*` cache before a list view can show it without one lookup per row.
+      Do not show a placeholder for either in the meantime: a blank SPF cell
+      that reads as "no SPF record" is exactly the silent-and-expensive wrong
+      answer this product exists to prevent.
+
 ## Parking Lot
 
 - [ ] (todo) Investigate DNS and WHOIS enrichment for sending infrastructure insights.

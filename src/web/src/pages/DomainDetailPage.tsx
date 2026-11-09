@@ -3,7 +3,10 @@ import type { FormEvent, ReactNode } from 'react'
 import { Link, useParams, useSearchParams } from 'react-router-dom'
 
 import { ComplianceBar } from '@/components/data/ComplianceBar'
+import { ComplianceSplitBar } from '@/components/data/ComplianceSplitBar'
+import { MiniMeter } from '@/components/data/MiniMeter'
 import { PolicyBadge } from '@/components/data/PolicyBadge'
+import { SegmentBar } from '@/components/data/SegmentBar'
 import { SortHeader, type SortDir } from '@/components/data/SortHeader'
 import { StatCard } from '@/components/data/StatCard'
 import { TrendChart } from '@/components/data/TrendChart'
@@ -52,6 +55,8 @@ import {
 import { ApiError, fetchJson } from '@/lib/api'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin, isStaff } from '@/lib/authz'
+import { describeSegments } from '@/lib/bars'
+import { describeAlignmentCarrier, dispositionBreakdown } from '@/lib/domain-health'
 import { enforcementEvidenceLine } from '@/lib/enforcement'
 import type {
   Domain,
@@ -2085,6 +2090,9 @@ export function DomainDetailPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const days = parseAnalyticsDays(searchParams.get('days'))
   const clientParam = searchParams.get('client')
+  // Carried through untouched so the back link lands on the posture view the user
+  // drilled in from; this page never reads it for anything else.
+  const statusParam = searchParams.get('status')
   const selectedSource = searchParams.get('source')
 
   const loader = useLoader(
@@ -2137,9 +2145,10 @@ export function DomainDetailPage() {
     const params = new URLSearchParams()
     if (days !== 30) params.set('days', String(days))
     if (clientParam) params.set('client', clientParam)
+    if (statusParam) params.set('status', statusParam)
     const query = params.toString()
     return query ? `/domains?${query}` : '/domains'
-  }, [days, clientParam])
+  }, [days, clientParam, statusParam])
 
   const setDays = (next: AnalyticsDays) => {
     setSearchParams(
@@ -2217,6 +2226,12 @@ export function DomainDetailPage() {
   const enfMeta = enforcement ? ENFORCEMENT_STATUS_META[enforcement] : null
   const alignment = domain ? alignmentSummary(domain) : null
 
+  // Every tile below distinguishes "no mail reported" from "all of it failed", so
+  // the condition is named once rather than re-derived per tile.
+  const noReportedMail = !totals || totals.messages === 0
+  const dispositionSegments = dispositionBreakdown(totals)
+  const alignmentCarrier = describeAlignmentCarrier(totals)
+
   const subtitleParts: string[] = []
   if (domain && domain.clientSlug !== 'default') subtitleParts.push(domain.clientName)
   if (drilldown) {
@@ -2286,34 +2301,98 @@ export function DomainDetailPage() {
 
       {drilldown && totals && domain ? (
         <div className={cn('space-y-3.5 transition-opacity', busy && 'opacity-60')}>
-          <div className="grid grid-cols-2 gap-3.5 xl:grid-cols-4">
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard
               label="Compliance"
-              value={totals.status === 'no_data' ? '—' : formatPercent(totals.complianceRate)}
-            />
-            <StatCard label={`Messages ${days}d`} value={formatCompact(totals.messages)} />
-            <StatCard label="DKIM pass rate" value={formatPercent(totals.dkimPassRate)} />
-            <StatCard label="SPF pass rate" value={formatPercent(totals.spfPassRate)} />
+              value={noReportedMail ? '—' : formatPercent(totals.complianceRate)}
+            >
+              {noReportedMail ? (
+                <p className="text-xs text-secondary">No reports in this window.</p>
+              ) : (
+                <>
+                  <ComplianceSplitBar
+                    compliant={totals.compliantMessages}
+                    messages={totals.messages}
+                  />
+                  <p className="mt-1.5 text-xs text-secondary">
+                    {formatCompact(totals.compliantMessages)} of {formatCompact(totals.messages)}{' '}
+                    messages aligned
+                  </p>
+                </>
+              )}
+            </StatCard>
+
+            {/* DKIM and SPF share a tile because DMARC reads them together: a
+                message passes when *either* aligns, so the two rates only mean
+                something side by side. The headline names the mechanism actually
+                carrying that alignment, which is what decides how much a
+                forwarding path costs this domain. */}
+            <StatCard
+              label="Alignment"
+              value={noReportedMail ? '—' : formatPercent(alignmentCarrier.rate)}
+              extra={noReportedMail ? undefined : alignmentCarrier.label}
+            >
+              <div className="flex flex-col gap-1">
+                <MiniMeter
+                  label="DKIM"
+                  value={noReportedMail ? null : totals.dkimPassRate}
+                  width={64}
+                  title="Share of reported mail that passed DKIM alignment"
+                />
+                <MiniMeter
+                  label="SPF"
+                  value={noReportedMail ? null : totals.spfPassRate}
+                  width={64}
+                  title="Share of reported mail that passed SPF alignment"
+                />
+              </div>
+            </StatCard>
+
+            <StatCard label="Disposition" value={formatCompact(totals.messages)} extra="messages">
+              {noReportedMail ? (
+                <p className="text-xs text-secondary">Nothing reported to dispose of.</p>
+              ) : (
+                <>
+                  <SegmentBar
+                    segments={dispositionSegments}
+                    total={totals.messages}
+                    height={8}
+                    label={`Dispositions: ${describeSegments(dispositionSegments)}`}
+                  />
+                  <p className="mt-1.5 text-xs text-secondary">
+                    {describeSegments(dispositionSegments)}
+                  </p>
+                </>
+              )}
+            </StatCard>
+
+            {/* Divided by the window the server actually returned, not by the
+                requested `days` — the window anchors to the newest report, so a
+                7-day request against five days of data would otherwise understate
+                the average by two days' worth. */}
+            <StatCard
+              label="Daily average"
+              value={formatCompact(
+                Math.round(totals.messages / Math.max(1, drilldown.window.days)),
+              )}
+              extra="per day"
+            >
+              <p className="text-xs text-secondary">
+                over {drilldown.window.days} days, from {totals.reports.toLocaleString('en-US')}{' '}
+                {totals.reports === 1 ? 'report' : 'reports'}
+              </p>
+            </StatCard>
           </div>
 
-          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2">
             <StatCard label="Sending sources" value={totals.sources.toLocaleString('en-US')} />
             <StatCard label="Reporters" value={totals.reporters.toLocaleString('en-US')} />
-            <StatCard
-              label="Quarantined + rejected"
-              value={formatCompact(totals.quarantined + totals.rejected)}
-              extra={
-                totals.quarantined + totals.rejected > 0 ? (
-                  <Badge variant="danger">blocked</Badge>
-                ) : undefined
-              }
-            />
           </div>
 
           <div className="grid grid-cols-1 items-start gap-3.5 lg:grid-cols-[1.6fr_1fr]">
             <Card pad>
               <CardHeader title="Message volume" description="Daily messages, compliant vs failed" />
-              <TrendChart data={trendData(drilldown.trend)} height={170} />
+              <TrendChart data={trendData(drilldown.trend)} height={170} legend />
             </Card>
 
             <Card pad>
