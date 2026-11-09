@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+#
+# CodeRabbit's review allowance is hourly, and it is shared across every
+# repository and every agent session in this org. Through early November 2026 we
+# spent it on commits nobody was going to read and got "review limit reached"
+# back instead of a review. Both settings below narrow *when* a review fires.
+# Neither narrows what a review looks at.
+reviews:
+  auto_review:
+    # Do not re-review on every push. The pull request gets its review when it is
+    # marked ready; after that, ask for another pass with `@coderabbitai review`
+    # when a push is worth one.
+    auto_incremental_review: false
+    # Already CodeRabbit's default — pinned here because the draft-until-ready
+    # workflow in AGENTS.md depends on it, and a default is not a promise.
+    drafts: false
