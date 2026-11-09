@@ -2353,9 +2353,12 @@ export function DomainDetailPage() {
                 <p className="text-xs text-secondary">Nothing reported to dispose of.</p>
               ) : (
                 <>
+                  {/* No explicit total: the segments already sum to the window's
+                      messages in the normal case, and when overlapping reporters
+                      push quarantine + reject past it, dividing by the sum keeps
+                      the proportions right instead of overflowing the track. */}
                   <SegmentBar
                     segments={dispositionSegments}
-                    total={totals.messages}
                     height={8}
                     label={`Dispositions: ${describeSegments(dispositionSegments)}`}
                   />

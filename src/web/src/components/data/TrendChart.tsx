@@ -61,7 +61,7 @@ export function TrendChart({
           </div>
           {/* The plot has no y axis, so without this the tallest bar has no value. */}
           <span className="text-xs tabular-nums text-faint">
-            {peak > 0 ? `peak ${formatCompact(peak)}/day` : 'no volume'}
+            {peak > 0 ? `Peak ${formatCompact(peak)}/day` : 'No volume'}
           </span>
         </div>
       ) : null}

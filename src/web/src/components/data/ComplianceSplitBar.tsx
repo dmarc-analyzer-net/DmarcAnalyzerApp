@@ -45,8 +45,16 @@ export function ComplianceSplitBar({
   const rate = messages > 0 ? (aligned / messages) * 100 : null
 
   return (
-    <span className={cn('inline-flex items-center gap-3', className)}>
-      <span className="inline-block shrink-0" style={{ width: width ?? '100%' }}>
+    // Without a width the bar flexes and the trailing percentage keeps its own
+    // space; a 100%-wide bar inside an inline-flex claims the whole row and pushes
+    // the percentage out of the card.
+    <span
+      className={cn('items-center gap-3', width == null ? 'flex w-full' : 'inline-flex', className)}
+    >
+      <span
+        className={cn('inline-block', width == null ? 'min-w-0 flex-1' : 'shrink-0')}
+        style={width != null ? { width } : undefined}
+      >
         <SegmentBar
           segments={segments}
           total={messages}

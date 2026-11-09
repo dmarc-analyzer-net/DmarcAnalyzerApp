@@ -580,13 +580,19 @@ export function DomainsPage() {
         />
       </div>
 
-      <PosturePanel
-        className={cn('mb-3.5 transition-opacity', busy && 'opacity-60')}
-        totals={posture}
-        active={statusFilter}
-        onSelect={setStatusFilter}
-        days={days}
-      />
+      {/* Held back until the first response lands. An empty `rows` would otherwise
+          render "No domains in scope · adjust the filters above" while nothing is
+          filtered and nothing has loaded — and it would stay there if the load
+          failed, next to the error banner contradicting it. */}
+      {loader.data ? (
+        <PosturePanel
+          className={cn('mb-3.5 transition-opacity', busy && 'opacity-60')}
+          totals={posture}
+          active={statusFilter}
+          onSelect={setStatusFilter}
+          days={days}
+        />
+      ) : null}
 
       <Card>
         <div className={cn('overflow-x-auto transition-opacity', busy && 'opacity-60')}>
