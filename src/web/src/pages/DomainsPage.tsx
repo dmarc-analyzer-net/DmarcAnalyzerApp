@@ -2,8 +2,11 @@ import { Fragment, useCallback, useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
-import { ComplianceBar } from '@/components/data/ComplianceBar'
+import { ComplianceSplitBar } from '@/components/data/ComplianceSplitBar'
+import { MiniMeter } from '@/components/data/MiniMeter'
 import { PolicyBadge } from '@/components/data/PolicyBadge'
+import { PosturePanel } from '@/components/data/PosturePanel'
+import { SegmentBar } from '@/components/data/SegmentBar'
 import { SortHeader, type SortDir } from '@/components/data/SortHeader'
 import { DaysSelector } from '@/components/DaysSelector'
 import { Badge } from '@/components/ui/badge'
@@ -23,17 +26,19 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import {
   ENFORCEMENT_STATUS_META,
   parseAnalyticsDays,
+  parseEnforcementStatus,
   type AnalyticsDays,
   type DmarcPublishedPolicy,
   type DomainAnalytics,
   type EnforcementStatus,
 } from '@/lib/analytics'
 import { fetchJson } from '@/lib/api'
-import { groupBySharedParent } from '@/lib/domain-grouping'
 import { useAuth } from '@/lib/auth-context'
 import { isAdmin } from '@/lib/authz'
+import { postureTotals } from '@/lib/bars'
+import { groupBySharedParent } from '@/lib/domain-grouping'
 import type { Client, Domain } from '@/lib/entities'
-import { formatCompact } from '@/lib/format'
+import { formatCompact, formatPercent } from '@/lib/format'
 import { loadErrorMessage, useLoader } from '@/lib/use-loader'
 import { usePageTitle } from '@/lib/use-page-title'
 import { cn } from '@/lib/utils'
@@ -149,6 +154,9 @@ export function DomainsPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const days = parseAnalyticsDays(searchParams.get('days'))
   const clientFilter = searchParams.get('client') ?? ''
+  // In the URL alongside days/client so a posture view is linkable — "show me the
+  // spoofing domains" is the link an agency pastes into a ticket.
+  const statusFilter = parseEnforcementStatus(searchParams.get('status'))
 
   const loader = useLoader(
     useCallback(async () => {
@@ -180,6 +188,18 @@ export function DomainsPage() {
         const params = new URLSearchParams(prev)
         if (next === 30) params.delete('days')
         else params.set('days', String(next))
+        return params
+      },
+      { replace: true },
+    )
+  }
+
+  const setStatusFilter = (next: EnforcementStatus | null) => {
+    setSearchParams(
+      (prev) => {
+        const params = new URLSearchParams(prev)
+        if (next) params.set('status', next)
+        else params.delete('status')
         return params
       },
       { replace: true },
@@ -267,7 +287,12 @@ export function DomainsPage() {
     [rows],
   )
 
-  const filteredRows = useMemo(() => {
+  /**
+   * Everything the client/search/policy filters admit. The posture panel sums these
+   * rather than the posture-filtered set below — selecting "Spoofing" must not
+   * collapse the portfolio bar to a single segment.
+   */
+  const scopedRows = useMemo(() => {
     const q = search.toLowerCase().trim()
     return rows.filter((row) => {
       if (clientFilter && row.clientId !== clientFilter) return false
@@ -276,6 +301,24 @@ export function DomainsPage() {
       return row.name.toLowerCase().includes(q) || (row.clientName ?? '').toLowerCase().includes(q)
     })
   }, [search, clientFilter, policyFilter, rows])
+
+  const posture = useMemo(() => postureTotals(scopedRows), [scopedRows])
+
+  const filteredRows = useMemo(
+    () =>
+      statusFilter ? scopedRows.filter((row) => row.enforcementStatus === statusFilter) : scopedRows,
+    [scopedRows, statusFilter],
+  )
+
+  /**
+   * Denominator for the per-row volume bars: the busiest domain in view, so the
+   * bars compare domains against each other rather than against an absolute scale
+   * no instance shares.
+   */
+  const maxMessages = useMemo(
+    () => Math.max(0, ...filteredRows.map((row) => row.messages)),
+    [filteredRows],
+  )
 
   // Default: worst compliance first, no_data last; ties broken by volume, then name.
 
@@ -293,9 +336,10 @@ export function DomainsPage() {
     const params = new URLSearchParams()
     if (days !== 30) params.set('days', String(days))
     if (clientFilter) params.set('client', clientFilter)
+    if (statusFilter) params.set('status', statusFilter)
     const query = params.toString()
     return query ? `?${query}` : ''
-  }, [days, clientFilter])
+  }, [days, clientFilter, statusFilter])
 
   const resetDialog = () => {
     setDialogOpen(false)
@@ -406,13 +450,63 @@ export function DomainsPage() {
                     </TableCell>
                     <TableCell>
                       {noData ? (
-                        <span className="text-faint">—</span>
+                        <span className="text-faint" title="No reports in this window">
+                          —
+                        </span>
                       ) : (
-                        <ComplianceBar value={row.complianceRate * 100} width={130} />
+                        <>
+                          <ComplianceSplitBar
+                            compliant={row.compliantMessages}
+                            messages={row.messages}
+                            width={130}
+                          />
+                          {/* Which mechanism is carrying alignment. A domain at 99%
+                              compliance on DKIM alone and one at 99% on both are a
+                              different risk the moment a forwarder is involved. */}
+                          <div className="mt-1 flex flex-wrap items-center gap-x-3">
+                            <MiniMeter
+                              label="DKIM"
+                              value={row.dkimPassRate}
+                              title={`${formatPercent(row.dkimPassRate)} of reported mail passed DKIM alignment`}
+                            />
+                            <MiniMeter
+                              label="SPF"
+                              value={row.spfPassRate}
+                              title={`${formatPercent(row.spfPassRate)} of reported mail passed SPF alignment`}
+                            />
+                          </div>
+                        </>
                       )}
                     </TableCell>
-                    <TableCell mono align="right">
-                      {noData ? <span className="text-faint">—</span> : formatCompact(row.messages)}
+                    <TableCell align="right">
+                      {noData ? (
+                        <span className="text-faint">—</span>
+                      ) : (
+                        <>
+                          <span className="font-mono text-sm tabular-nums text-body">
+                            {formatCompact(row.messages)}
+                          </span>
+                          {/* Scaled against the busiest domain in view, so the column
+                              reads as a ranking and not just as numbers to compare. */}
+                          <span className="mt-1 ml-auto block w-[72px]">
+                            <SegmentBar
+                              segments={[
+                                {
+                                  key: 'volume',
+                                  label: 'messages',
+                                  value: row.messages,
+                                  color: 'var(--brand)',
+                                },
+                              ]}
+                              total={maxMessages}
+                              height={4}
+                              label={`${formatCompact(row.messages)} messages, against ${formatCompact(
+                                maxMessages,
+                              )} for the busiest domain in view`}
+                            />
+                          </span>
+                        </>
+                      )}
                     </TableCell>
                     <TableCell align="right">
                       <Badge variant={meta.badge}>{meta.label}</Badge>
@@ -486,6 +580,20 @@ export function DomainsPage() {
         />
       </div>
 
+      {/* Held back until the first response lands. An empty `rows` would otherwise
+          render "No domains in scope · adjust the filters above" while nothing is
+          filtered and nothing has loaded — and it would stay there if the load
+          failed, next to the error banner contradicting it. */}
+      {loader.data ? (
+        <PosturePanel
+          className={cn('mb-3.5 transition-opacity', busy && 'opacity-60')}
+          totals={posture}
+          active={statusFilter}
+          onSelect={setStatusFilter}
+          days={days}
+        />
+      ) : null}
+
       <Card>
         <div className={cn('overflow-x-auto transition-opacity', busy && 'opacity-60')}>
           <Table>
@@ -527,10 +635,27 @@ export function DomainsPage() {
                          nothing to click. */
                       <TableRow className="hover:bg-transparent">
                         <TableCell colSpan={canManage ? 6 : 5} className="py-2">
-                          <span className="font-mono text-xs text-secondary">{item.parent}</span>
-                          <span className="ml-2 text-xs text-faint">
-                            not monitored · {item.members.length} subdomains
-                          </span>
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <span className="font-mono text-xs text-secondary">{item.parent}</span>
+                            <span className="text-xs text-faint">
+                              not monitored · {item.members.length} subdomains
+                            </span>
+                            {/* The group's own rollup. Without it the heading is the one
+                                row on screen with no numbers, and a group of ten
+                                subdomains has no readable total anywhere. */}
+                            {(() => {
+                              const rollup = postureTotals(item.members)
+                              return rollup.messages > 0 ? (
+                                <ComplianceSplitBar
+                                  className="ml-auto"
+                                  compliant={rollup.compliantMessages}
+                                  messages={rollup.messages}
+                                  width={130}
+                                  showFailing
+                                />
+                              ) : null
+                            })()}
+                          </div>
                         </TableCell>
                       </TableRow>
                     )}
@@ -545,8 +670,16 @@ export function DomainsPage() {
               <Icon name="globe" size={32} className="text-faint" />
               <p className="text-sm text-secondary">
                 No domains found
-                {search || clientFilter || policyFilter ? ' for the current filters' : ''}.
+                {search || clientFilter || policyFilter || statusFilter
+                  ? ' for the current filters'
+                  : ''}
+                .
               </p>
+              {statusFilter ? (
+                <Button variant="secondary" size="sm" onClick={() => setStatusFilter(null)}>
+                  Show every posture
+                </Button>
+              ) : null}
             </div>
           ) : null}
         </div>
