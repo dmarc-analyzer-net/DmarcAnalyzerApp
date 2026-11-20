@@ -68,11 +68,12 @@ services:
   # Console: http://localhost:8082/ui/console (zitadel-admin@zitadel.localhost / Password1!)
   # Setup guide: docs/ops/oidc-zitadel.md
   #
-  # v4, because v2.65.1 could not start against the Postgres 18 below: its
+  # v4, because v2.65.1 could not start against Postgres 18: its
   # 34_add_cache_schema migration does CREATE UNLOGGED on a partitioned table,
   # which Postgres 18 refuses ("partitioned tables cannot be unlogged"). The
   # container crash-looped, so the OIDC path this stack exists to exercise was
-  # broken for anyone who cloned the repo.
+  # broken for anyone who cloned the repo. v4.16.2 initialises cleanly on the
+  # Postgres 19 below.
   #
   # Deliberately still one container, which is what the feature flag below buys.
   # v4 defaults to its login-v2 UI, and that ships as a *separate* container that
@@ -152,7 +153,7 @@ services:
   # broker is gone and server+worker+db is the whole stack. Do not copy a
   # Redis service back in from upstream docs without checking it is needed.
   authentik-postgres:
-    image: postgres:18-alpine
+    image: postgres:19-alpine
     profiles: ["authentik"]
     environment:
       POSTGRES_DB: authentik
@@ -211,7 +212,7 @@ services:
         condition: service_healthy
 
   postgres:
-    image: postgres:18-alpine
+    image: postgres:19-alpine
     environment:
       POSTGRES_DB: dmarc_analyzer
       POSTGRES_USER: postgres

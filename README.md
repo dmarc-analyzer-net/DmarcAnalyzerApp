@@ -221,7 +221,7 @@ Ops runbook:
   every deployment shape. Kept true by `ConfigurationContractTests`.
 - `docs/ops/migrating-a-running-instance.md` — bringing a running instance onto a
   newer image, including why a green healthcheck does not prove the schema is current.
-- `docs/ops/upgrading-postgresql.md` — the PostgreSQL 17 → 18 migration. A major
+- `docs/ops/upgrading-postgresql.md` — the PostgreSQL 18 → 19 migration. A major
   version cannot upgrade in place; this is the dump-and-restore window.
 - `docs/ops/aws-rds-iam.md` — Postgres on AWS with no database password: IAM tokens,
   which CA to verify against (RDS endpoint vs RDS Proxy), and the Compose and Helm recipe.

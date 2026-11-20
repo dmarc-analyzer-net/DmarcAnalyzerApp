@@ -22,7 +22,7 @@ namespace DmarcAnalyzer.Api.IntegrationTests;
 /// </summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:18-alpine")
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:19-alpine")
         .WithDatabase("dmarc_analyzer")
         .Build();
 

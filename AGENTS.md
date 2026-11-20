@@ -99,7 +99,7 @@ cd src/web && npm install              # ~274M; or symlink node_modules if packa
 - [Configuration reference](docs/ops/configuration.md) — **every** setting, and the same set on Compose and Kubernetes. `ConfigurationContractTests` fails the build if a setting exists in code and is missing here, so treat it as canonical; the website's configuration page links to it rather than copying it.
 - [Cutting a release](docs/ops/release.md) — tag-driven; merging to `main` does not publish a release. A tag also publishes the Helm chart to `oci://ghcr.io/dmarc-analyzer-net/charts/dmarc-analyzer`.
 - [Migrating a running instance](docs/ops/migrating-a-running-instance.md) — and why a green healthcheck does not prove the schema is current.
-- [Upgrading PostgreSQL](docs/ops/upgrading-postgresql.md) — 17 to 18. No in-place path exists; a premature tag bump fails loudly and is reversible.
+- [Upgrading PostgreSQL](docs/ops/upgrading-postgresql.md) — 18 to 19. No in-place path exists; a premature tag bump fails loudly and is reversible.
 - [Mailbox sync operations](docs/ops/mailbox-sync.md)
 - [Postgres on AWS without a password](docs/ops/aws-rds-iam.md) — `Database__IamAuth`; which CA to verify against is the operator's call because an RDS endpoint needs the Amazon RDS bundle and an RDS Proxy endpoint needs the system store
 - [OIDC login with Zitadel (dev setup)](docs/ops/oidc-zitadel.md)
